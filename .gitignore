@@ -1,0 +1,38 @@
+# Python
+.venv/
+.conda/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+build/
+dist/
+
+# Local configuration and secrets
+.env
+.env.*
+!.env.example
+
+# NOVA-RTL generated data
+runs/
+artifacts/
+benchmark/build/
+*.vcd
+*.fst
+*.wlf
+
+# Local agent and workspace metadata
+.agents/
+.codex/
+.superpowers/
+.worktrees/
+
+# Editor and operating-system files
+.idea/
+.vscode/
+*.swp
+.DS_Store

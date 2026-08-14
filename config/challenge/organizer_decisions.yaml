@@ -1,0 +1,13 @@
+schema_version: 1
+generated_clock_interpretation:
+  effective_value: 21_PER_MASTER
+  masters: 5
+  total_generated_clocks: 105
+  source: CONSERVATIVE_INTERNAL_DEFAULT
+psm_interpretation:
+  effective_value: FSM_STATE_MACHINE_OPTIMIZATION
+  source: CONSERVATIVE_INTERNAL_DEFAULT
+organizer_response:
+  status: NOT_RECEIVED
+  evidence_artifact_id: null
+override_rule: CONFIG_ONLY_WITH_NEW_RUN_ID

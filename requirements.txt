@@ -1,0 +1,2 @@
+# Convenience development installer. pyproject.toml is authoritative.
+-e .[dev]

@@ -1,0 +1,7 @@
+name: nova-rtl
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip>=24,<27
+  - make
