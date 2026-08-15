@@ -21,6 +21,10 @@ class DoctorTests(unittest.TestCase):
             [(check.name, check.status) for check in report.checks],
             [("missing_yosys", "FAIL"), ("missing_opensta", "FAIL")],
         )
+        self.assertEqual(
+            [check.issues[0].code for check in report.checks],
+            ["TOOL_MISSING", "TOOL_MISSING"],
+        )
 
     def test_available_tool_is_versioned_and_fingerprinted(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -54,6 +58,18 @@ class DoctorTests(unittest.TestCase):
         )
         self.assertEqual(report.checks[-1].status, "FAIL")
         self.assertIsNone(report.platform_lock_hash)
+        self.assertEqual(report.checks[-1].issues[0].code, "PLATFORM_LOCK_MISSING")
+
+    def test_platform_lock_symlink_loop_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            loop = Path(directory) / "loop.lock.yaml"
+            loop.symlink_to(loop.name)
+
+            report = run_doctor(required_tools=(), platform_lock=loop)
+
+        self.assertEqual(report.status, "FAIL")
+        self.assertEqual(report.exit_code, 2)
+        self.assertEqual(report.checks[0].issues[0].code, "PLATFORM_LOCK_IO_ERROR")
 
 
 if __name__ == "__main__":
