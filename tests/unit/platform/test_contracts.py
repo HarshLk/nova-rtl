@@ -27,7 +27,14 @@ def hash_ref(digit: str) -> str:
 
 
 def archive_metadata() -> ArchiveMetadata:
-    return ArchiveMetadata(byte_size=1, archive_format="TAR_GZ", strip_components=1)
+    return ArchiveMetadata(
+        byte_size=1,
+        archive_format="TAR_GZ",
+        strip_components=1,
+        max_decompressed_bytes=1024,
+        max_regular_file_bytes=1024,
+        max_entries=8,
+    )
 
 
 def artifact(
@@ -163,6 +170,7 @@ def test_archive_source_rejects_moving_latest_url() -> None:
                 ),
             ),
             archive=archive_metadata(),
+            allowed_redirect_hosts=(),
         )
 
 
@@ -178,6 +186,7 @@ def test_git_source_requires_full_commit_and_no_archive_hash() -> None:
             license="BSD-3-Clause",
             executables=(),
             archive=None,
+            allowed_redirect_hosts=(),
         )
 
 
@@ -197,6 +206,7 @@ def test_manifest_rejects_duplicate_executable_ownership() -> None:
         license="ISC",
         executables=(executable,),
         archive=archive_metadata(),
+        allowed_redirect_hosts=(),
     )
     second = ToolSource(
         component_id="second_suite",
@@ -208,6 +218,7 @@ def test_manifest_rejects_duplicate_executable_ownership() -> None:
         license="ISC",
         executables=(executable,),
         archive=archive_metadata(),
+        allowed_redirect_hosts=(),
     )
 
     with pytest.raises(ValidationError, match="owned by more than one component"):

@@ -2,27 +2,46 @@
 
 from __future__ import annotations
 
+import fcntl
+import gzip
 import hashlib
 import io
 import json
+import lzma
 import os
 import platform
 import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
 from collections.abc import Callable
+from contextlib import closing, contextmanager
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 from typing import Any
-from urllib.parse import urlsplit
-from urllib.request import Request, urlopen
+from urllib.error import HTTPError
+from urllib.parse import urljoin, urlsplit
+from urllib.request import HTTPRedirectHandler, Request, build_opener
 
 import yaml
 import zstandard as zstd
 
 from nova_rtl.contracts.base import HashRef, canonical_json_bytes
 from nova_rtl.contracts.platform import ArchiveMetadata, ToolchainSourceManifest, ToolSource
+
+HTTP_TIMEOUT_SECONDS = 30
+GIT_TIMEOUT_SECONDS = 300
+MAX_REDIRECTS = 5
+LOCK_TIMEOUT_SECONDS = 30
+
+
+class _NoRedirect(HTTPRedirectHandler):
+    def redirect_request(self, *args: Any, **kwargs: Any) -> None:
+        return None
+
+
+_DEFAULT_OPENER = build_opener(_NoRedirect()).open
 
 
 class HydrationError(RuntimeError):
@@ -84,18 +103,16 @@ def _hash_file(path: Path) -> HashRef:
     return f"sha256:{digest.hexdigest()}"
 
 
-def _validate_final_url(requested_url: str, final_url: str) -> None:
-    requested = urlsplit(requested_url)
-    final = urlsplit(final_url)
+def _validate_redirect_url(url: str, allowed_hosts: set[str]) -> None:
+    final = urlsplit(url)
     if (
         final.scheme.lower() != "https"
         or final.hostname is None
         or final.username is not None
         or final.password is not None
-        or final.hostname.lower() != (requested.hostname or "").lower()
-        or final.port != requested.port
+        or final.hostname.lower() not in allowed_hosts
     ):
-        raise HydrationError("final URL violates the source HTTPS host policy")
+        raise HydrationError("redirect host violates the manifest allowlist")
 
 
 def _verify_archive(path: Path, source: ToolSource) -> None:
@@ -114,11 +131,42 @@ def _verify_archive(path: Path, source: ToolSource) -> None:
         raise HydrationError(f"archive SHA-256 mismatch for {source.component_id}")
 
 
+def _call_opener(opener: Callable[..., Any], request: Request) -> Any:
+    try:
+        return opener(request, timeout=HTTP_TIMEOUT_SECONDS)
+    except HTTPError as error:
+        return error
+    except TypeError:
+        try:
+            return opener(request)
+        except HTTPError as error:
+            return error
+
+
+def _copy_response_bounded(
+    source: Any,
+    destination: Any,
+    limit: int,
+    initial_size: int,
+    limit_message: str = "archive response exceeds expected size",
+) -> int:
+    written = initial_size
+    while True:
+        remaining = limit - written
+        chunk = source.read(min(1024 * 1024, remaining + 1))
+        if not chunk:
+            return written
+        if len(chunk) > remaining:
+            raise HydrationError(limit_message)
+        destination.write(chunk)
+        written += len(chunk)
+
+
 def download_archive(
     source: ToolSource,
     cache_directory: Path,
     *,
-    opener: Callable[[Request], Any] = urlopen,
+    opener: Callable[..., Any] = _DEFAULT_OPENER,
 ) -> Path:
     """Download an immutable archive to a content-addressed cache with safe resume."""
 
@@ -137,26 +185,75 @@ def download_archive(
             return cached
 
     offset = partial.stat().st_size if partial.exists() else 0
-    headers = {"Range": f"bytes={offset}-"} if offset else {}
-    request = Request(source.source_url, headers=headers)
+    if offset > source.archive.byte_size:
+        partial.unlink(missing_ok=True)
+        offset = 0
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=cache_directory, prefix=f".{digest}.transfer-", suffix=".part"
+    )
+    transfer = Path(temporary_name)
+    invalid = False
     try:
-        with opener(request) as response:
-            _validate_final_url(source.source_url, response.geturl())
-            status = getattr(response, "status", None)
-            append = offset > 0 and status == 206
-            if offset > 0 and status not in {200, 206}:
-                raise HydrationError(f"unexpected HTTP status while resuming archive: {status}")
-            with partial.open("ab" if append else "wb") as stream:
-                shutil.copyfileobj(response, stream, length=1024 * 1024)
-                stream.flush()
-                os.fsync(stream.fileno())
-    except HydrationError:
+        with os.fdopen(descriptor, "wb") as stream:
+            if offset:
+                with partial.open("rb") as previous:
+                    shutil.copyfileobj(previous, stream, length=1024 * 1024)
+            current_url = source.source_url
+            source_host = urlsplit(source.source_url).hostname
+            assert source_host is not None
+            allowed_hosts = {source_host.lower(), *source.allowed_redirect_hosts}
+            for redirect_count in range(MAX_REDIRECTS + 1):
+                headers = {"Range": f"bytes={offset}-"} if offset else {}
+                response = _call_opener(opener, Request(current_url, headers=headers))
+                try:
+                    status = getattr(response, "status", None)
+                    if status is None:
+                        status = response.getcode()
+                    response_url = response.geturl()
+                    if response_url != current_url:
+                        raise HydrationError("redirect handling must remain explicit")
+                    if status in {301, 302, 303, 307, 308}:
+                        location = response.headers.get("Location")
+                        if not location or redirect_count == MAX_REDIRECTS:
+                            raise HydrationError("redirect limit or Location policy violation")
+                        current_url = urljoin(current_url, location)
+                        _validate_redirect_url(current_url, allowed_hosts)
+                        continue
+                    if status not in {200, 206}:
+                        raise HydrationError(
+                            f"unexpected HTTP status while downloading archive: {status}"
+                        )
+                    if offset and status == 200:
+                        stream.seek(0)
+                        stream.truncate()
+                        offset = 0
+                    _copy_response_bounded(response, stream, source.archive.byte_size, offset)
+                    stream.flush()
+                    os.fsync(stream.fileno())
+                    break
+                finally:
+                    response.close()
+            else:
+                raise HydrationError("redirect limit exceeded")
+        _verify_archive(transfer, source)
+        os.replace(transfer, cached)
+        partial.unlink(missing_ok=True)
+        return cached
+    except HydrationError as error:
+        invalid = "exceeds expected size" in str(error) or (
+            transfer.exists() and transfer.stat().st_size > source.archive.byte_size
+        )
+        if invalid:
+            partial.unlink(missing_ok=True)
         raise
     except OSError as error:
         raise HydrationError(f"archive download failed: {error}") from error
-    _verify_archive(partial, source)
-    os.replace(partial, cached)
-    return cached
+    finally:
+        if transfer.exists():
+            if not invalid and transfer.stat().st_size <= source.archive.byte_size:
+                os.replace(transfer, partial)
+            else:
+                transfer.unlink(missing_ok=True)
 
 
 def _safe_member_path(name: str, strip_components: int) -> PurePosixPath | None:
@@ -187,7 +284,12 @@ def _safe_link_target(link_path: PurePosixPath, target: str) -> None:
 
 def _extract_tar(archive: tarfile.TarFile, destination: Path, metadata: ArchiveMetadata) -> None:
     entries: list[tuple[tarfile.TarInfo, PurePosixPath | None]] = []
+    regular_file_bytes = 0
+    member_count = 0
     for member in archive.getmembers():
+        member_count += 1
+        if member_count > metadata.max_entries:
+            raise HydrationError("archive entry-count budget exceeded")
         relative = _safe_member_path(member.name, metadata.strip_components)
         if relative is None:
             continue
@@ -195,6 +297,10 @@ def _extract_tar(archive: tarfile.TarFile, destination: Path, metadata: ArchiveM
             raise HydrationError(f"unsupported archive entry: {member.name!r}")
         if member.issym():
             _safe_link_target(relative, member.linkname)
+        if member.isfile():
+            regular_file_bytes += member.size
+            if regular_file_bytes > metadata.max_regular_file_bytes:
+                raise HydrationError("archive regular-file byte budget exceeded")
         entries.append((member, relative))
 
     destination.mkdir(parents=True, exist_ok=False)
@@ -256,22 +362,38 @@ def _deb_data_tar(archive_path: Path, temporary_directory: Path) -> Path:
     raise HydrationError("Debian archive has no data.tar member")
 
 
-def _decompress_zstd(compressed_path: Path, temporary_directory: Path) -> Path:
-    """Stream a Debian zstd payload to a private tar file without invoking system tools."""
+def _decompress_to_tar(
+    compressed_path: Path,
+    temporary_directory: Path,
+    compression: str,
+    maximum_bytes: int,
+) -> Path:
+    """Bounded-stream a declared compression format to a private tar file."""
 
     descriptor, temporary_name = tempfile.mkstemp(
         dir=temporary_directory, prefix=".data-", suffix=".tar"
     )
     temporary = Path(temporary_name)
     try:
-        with (
-            os.fdopen(descriptor, "wb") as output,
-            compressed_path.open("rb") as compressed,
-            zstd.ZstdDecompressor().stream_reader(compressed) as reader,
-        ):
-            shutil.copyfileobj(reader, output, length=1024 * 1024)
+        with os.fdopen(descriptor, "wb") as output, compressed_path.open("rb") as compressed:
+            if compression == "GZ":
+                reader = gzip.GzipFile(fileobj=compressed)
+            elif compression == "XZ":
+                reader = lzma.LZMAFile(compressed)  # noqa: SIM115 - closed through closing(reader)
+            elif compression == "ZST":
+                reader = zstd.ZstdDecompressor().stream_reader(compressed)
+            else:
+                raise HydrationError(f"unsupported declared archive compression: {compression}")
+            with closing(reader):
+                _copy_response_bounded(
+                    reader,
+                    output,
+                    maximum_bytes,
+                    0,
+                    "archive decompressed byte budget exceeded",
+                )
         return temporary
-    except (OSError, zstd.ZstdError):
+    except (OSError, lzma.LZMAError, zstd.ZstdError):
         temporary.unlink(missing_ok=True)
         raise
 
@@ -290,28 +412,49 @@ def safe_extract_archive(
         if metadata.archive_format == "DEB":
             data_archive = _deb_data_tar(archive_path, destination.parent)
             temporary_paths.append(data_archive)
-            if data_archive.suffix == ".zst":
-                tar_input: str | Path = _decompress_zstd(data_archive, destination.parent)
-                temporary_paths.append(Path(tar_input))
-            else:
-                tar_input = data_archive
+            deb_compressions = {".gz": "GZ", ".xz": "XZ", ".zst": "ZST"}
+            compression = deb_compressions.get(data_archive.suffix)
+            if compression is None:
+                raise HydrationError("unsupported Debian data archive compression")
+            tar_input: str | Path = _decompress_to_tar(
+                data_archive, destination.parent, compression, metadata.max_decompressed_bytes
+            )
+            temporary_paths.append(Path(tar_input))
+        elif metadata.archive_format == "TAR_GZ":
+            tar_input = _decompress_to_tar(
+                archive_path, destination.parent, "GZ", metadata.max_decompressed_bytes
+            )
+            temporary_paths.append(Path(tar_input))
+        elif metadata.archive_format == "TAR_XZ":
+            tar_input = _decompress_to_tar(
+                archive_path, destination.parent, "XZ", metadata.max_decompressed_bytes
+            )
+            temporary_paths.append(Path(tar_input))
         else:
-            tar_input = archive_path
-        with tarfile.open(tar_input, mode="r:*") as archive:
+            raise HydrationError(f"unsupported archive format: {metadata.archive_format}")
+        with tarfile.open(tar_input, mode="r:") as archive:
             _extract_tar(archive, destination, metadata)
     except zstd.ZstdError as error:
         raise HydrationError(f"zstd Debian payload could not be decompressed: {error}") from error
     except (OSError, tarfile.TarError) as error:
-        raise HydrationError(f"archive extraction failed: {error}") from error
+        raise HydrationError(
+            f"declared archive format mismatch or extraction failed: {error}"
+        ) from error
     finally:
         for temporary_path in reversed(temporary_paths):
             temporary_path.unlink(missing_ok=True)
 
 
-def _run_git(command: tuple[str, ...], run: Callable[..., Any]) -> Any:
+def _run_git(command: tuple[str, ...], run: Callable[..., Any], timeout_seconds: int) -> Any:
     try:
-        completed = run(command, capture_output=True, check=False, text=True)
-    except (OSError, subprocess.SubprocessError) as error:
+        completed = run(
+            command,
+            capture_output=True,
+            check=False,
+            text=True,
+            timeout=timeout_seconds,
+        )
+    except (OSError, subprocess.SubprocessError, TimeoutError) as error:
         raise HydrationError(f"Git command failed to start: {error}") from error
     if completed.returncode != 0:
         detail = (completed.stderr or "").strip()
@@ -324,6 +467,7 @@ def checkout_git_source(
     destination: Path,
     *,
     run: Callable[..., Any] = subprocess.run,
+    timeout_seconds: int = GIT_TIMEOUT_SECONDS,
 ) -> None:
     """Clone and detach exactly at the manifest's full Git commit."""
 
@@ -331,6 +475,8 @@ def checkout_git_source(
         raise HydrationError("checkout_git_source requires a GIT source")
     if destination.exists():
         raise HydrationError(f"Git destination already exists: {destination}")
+    if timeout_seconds <= 0:
+        raise HydrationError("Git timeout must be positive")
     _run_git(
         (
             "git",
@@ -345,9 +491,16 @@ def checkout_git_source(
             str(destination),
         ),
         run,
+        timeout_seconds,
     )
-    _run_git(("git", "-C", str(destination), "checkout", "--detach", source.git_commit), run)
-    completed = _run_git(("git", "-C", str(destination), "rev-parse", "HEAD"), run)
+    _run_git(
+        ("git", "-C", str(destination), "checkout", "--detach", source.git_commit),
+        run,
+        timeout_seconds,
+    )
+    completed = _run_git(
+        ("git", "-C", str(destination), "rev-parse", "HEAD"), run, timeout_seconds
+    )
     if completed.stdout.strip().lower() != source.git_commit:
         raise HydrationError(
             f"Git commit mismatch for {source.component_id}: expected {source.git_commit}"
@@ -390,14 +543,54 @@ def _host_identity() -> tuple[str, str]:
     return platform.system().lower(), {"amd64": "x86_64"}.get(machine, machine)
 
 
+def _reject_symlink_ancestors(path: Path) -> Path:
+    absolute = path.absolute()
+    for ancestor in (absolute, *absolute.parents):
+        if ancestor.is_symlink():
+            raise HydrationError(f"storage path must not traverse a symlink: {ancestor}")
+    return absolute
+
+
+def _confined_path(path: Path, root: Path, label: str) -> Path:
+    checked = _reject_symlink_ancestors(path)
+    try:
+        checked.relative_to(root)
+    except ValueError as error:
+        raise HydrationError(f"{label} must be confined beneath the tool root") from error
+    return checked
+
+
+@contextmanager
+def _root_lock(root: Path, timeout_seconds: float):
+    if timeout_seconds < 0:
+        raise HydrationError("lock timeout must not be negative")
+    lock_path = root / ".hydrate.lock"
+    with lock_path.open("a+") as lock:
+        deadline = time.monotonic() + timeout_seconds
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as error:
+                if time.monotonic() >= deadline:
+                    raise HydrationError("hydration lock timeout") from error
+                time.sleep(0.05)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
 def hydrate_toolchain(
     manifest_or_loaded: ToolchainSourceManifest | LoadedToolchainSourceManifest,
     tool_root: Path,
     *,
     cache_directory: Path | None = None,
-    opener: Callable[[Request], Any] = urlopen,
+    opener: Callable[..., Any] = _DEFAULT_OPENER,
     git_run: Callable[..., Any] = subprocess.run,
     host_system: tuple[str, str] | None = None,
+    lock_timeout_seconds: float = LOCK_TIMEOUT_SECONDS,
+    git_timeout_seconds: int = GIT_TIMEOUT_SECONDS,
 ) -> HydrationResult:
     """Safely hydrate all manifest components and publish each only with a receipt."""
 
@@ -416,13 +609,17 @@ def hydrate_toolchain(
             f"got {actual_host[0]}/{actual_host[1]}"
         )
 
-    root = tool_root.resolve()
+    if tool_root.name != loaded.manifest.tool_root_name:
+        raise HydrationError("tool root basename does not match the manifest")
+    root = _reject_symlink_ancestors(tool_root)
     components_directory = root / "components"
     receipts_directory = root / "receipts"
-    archive_cache = cache_directory.resolve() if cache_directory else root / "cache"
+    archive_cache = _confined_path(cache_directory or root / "cache", root, "cache directory")
     results: list[HydratedComponent] = []
-    for source in loaded.manifest.components:
-        destination = components_directory / source.component_id
+    root.mkdir(parents=True, exist_ok=True)
+    with _root_lock(root, lock_timeout_seconds):
+      for source in loaded.manifest.components:
+        destination = _confined_path(components_directory / source.component_id, root, "component")
         receipt_path = receipts_directory / f"{source.component_id}.json"
         internal_receipt = destination / ".nova-hydration-receipt.json"
         receipt = _receipt_bytes(loaded.content_identity_hash, source)
@@ -444,7 +641,6 @@ def hydrate_toolchain(
                 f"unreceipted component exists and will not be activated: {destination}"
             )
 
-        root.mkdir(parents=True, exist_ok=True)
         staging = Path(tempfile.mkdtemp(dir=root, prefix=f".{source.component_id}.staging-"))
         staged_component = staging / source.component_id
         try:
@@ -452,15 +648,14 @@ def hydrate_toolchain(
                 archive = download_archive(source, archive_cache, opener=opener)
                 safe_extract_archive(archive, staged_component, source.archive)
             else:
-                checkout_git_source(source, staged_component, run=git_run)
+                checkout_git_source(
+                    source, staged_component, run=git_run, timeout_seconds=git_timeout_seconds
+                )
             _atomic_write(staged_component / ".nova-hydration-receipt.json", receipt)
             components_directory.mkdir(parents=True, exist_ok=True)
             os.replace(staged_component, destination)
             _atomic_write(receipt_path, receipt)
         except Exception:
-            if destination.exists() and not internal_receipt.exists():
-                # The component was never validly published; leave no active partial install.
-                shutil.rmtree(destination, ignore_errors=True)
             raise
         finally:
             shutil.rmtree(staging, ignore_errors=True)

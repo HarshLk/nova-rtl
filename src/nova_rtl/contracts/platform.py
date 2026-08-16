@@ -94,6 +94,9 @@ class ArchiveMetadata(StrictContract):
     byte_size: int = Field(gt=0)
     archive_format: Literal["TAR_GZ", "TAR_XZ", "DEB"]
     strip_components: int = Field(ge=0, le=32)
+    max_decompressed_bytes: int = Field(gt=0)
+    max_regular_file_bytes: int = Field(gt=0)
+    max_entries: int = Field(gt=0)
 
 
 class RuntimeEnvironmentEntry(StrictContract):
@@ -134,6 +137,7 @@ class ToolSource(StrictContract):
     executables: tuple[ToolExecutableSource, ...]
     archive: ArchiveMetadata | None = None
     runtime_environment: tuple[RuntimeEnvironmentEntry, ...] = ()
+    allowed_redirect_hosts: tuple[str, ...]
 
     @field_validator("source_url")
     @classmethod
@@ -162,6 +166,14 @@ class ToolSource(StrictContract):
         runtime_names = [item.name for item in self.runtime_environment]
         if len(runtime_names) != len(set(runtime_names)):
             raise ValueError("duplicate runtime environment variable within component")
+        if len(self.allowed_redirect_hosts) != len(set(self.allowed_redirect_hosts)):
+            raise ValueError("duplicate redirect host within component")
+        for host in self.allowed_redirect_hosts:
+            if host != host.lower() or not re.fullmatch(
+                r"[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+",
+                host,
+            ):
+                raise ValueError("redirect host must be a normalized DNS hostname")
         return self
 
 
@@ -177,8 +189,8 @@ class ToolchainSourceManifest(StrictContract):
     @classmethod
     def tool_root_is_one_relative_directory(cls, value: str) -> str:
         validated = _validate_relative_path(value)
-        if len(PurePosixPath(validated).parts) != 1:
-            raise ValueError("tool_root_name must name one relative directory")
+        if validated != ".nova-tools":
+            raise ValueError("tool_root_name must be exactly .nova-tools")
         return validated
 
     @model_validator(mode="after")

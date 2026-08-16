@@ -50,15 +50,19 @@ def source(data: bytes, *, component_id: str = "suite", size: int | None = None)
             byte_size=len(data) if size is None else size,
             archive_format="TAR_GZ",
             strip_components=1,
+            max_decompressed_bytes=1024 * 1024,
+            max_regular_file_bytes=1024 * 1024,
+            max_entries=128,
         ),
         runtime_environment=(),
+        allowed_redirect_hosts=(),
     )
 
 
 def manifest(data: bytes, **kwargs: object) -> ToolchainSourceManifest:
     return ToolchainSourceManifest(
         host=HostPlatform(os="linux", architecture="x86_64"),
-        tool_root_name=".nova_tools",
+        tool_root_name=".nova-tools",
         components=(source(data, **kwargs),),
     )
 
@@ -78,6 +82,16 @@ def tar_bytes(entries: dict[str, bytes], *, link: tuple[str, str] | None = None)
     return stream.getvalue()
 
 
+def raw_tar_bytes(entries: dict[str, bytes]) -> bytes:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w") as archive:
+        for name, data in entries.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
+    return stream.getvalue()
+
+
 def deb_bytes(data_tar: bytes, *, data_name: str = "data.tar.gz") -> bytes:
     def member(name: str, data: bytes) -> bytes:
         header = f"{name + '/':<16}{0:<12}{0:<6}{0:<6}{0o100644:<8}{len(data):<10}`\n"
@@ -87,10 +101,13 @@ def deb_bytes(data_tar: bytes, *, data_name: str = "data.tar.gz") -> bytes:
 
 
 class Response(io.BytesIO):
-    def __init__(self, data: bytes, url: str, status: int = 200) -> None:
+    def __init__(
+        self, data: bytes, url: str, status: int = 200, headers: dict[str, str] | None = None
+    ) -> None:
         super().__init__(data)
         self._url = url
         self.status = status
+        self.headers = headers or {}
 
     def geturl(self) -> str:
         return self._url
@@ -118,10 +135,10 @@ def test_hydration_rejects_archive_size_mismatch_before_extraction(tmp_path: Pat
 
     with pytest.raises(HydrationError, match="archive size mismatch"):
         hydrate_toolchain(
-            manifest(data, size=len(data) + 1), tmp_path / ".nova_tools", opener=opener
+            manifest(data, size=len(data) + 1), tmp_path / ".nova-tools", opener=opener
         )
 
-    assert not (tmp_path / ".nova_tools" / "components" / "suite").exists()
+    assert not (tmp_path / ".nova-tools" / "components" / "suite").exists()
 
 
 def test_hydration_rejects_archive_hash_mismatch_before_extraction(tmp_path: Path) -> None:
@@ -133,9 +150,9 @@ def test_hydration_rejects_archive_hash_mismatch_before_extraction(tmp_path: Pat
     )
 
     with pytest.raises(HydrationError, match="SHA-256 mismatch"):
-        hydrate_toolchain(source_manifest, tmp_path / ".nova_tools", opener=opener)
+        hydrate_toolchain(source_manifest, tmp_path / ".nova-tools", opener=opener)
 
-    assert not (tmp_path / ".nova_tools" / "components" / "suite").exists()
+    assert not (tmp_path / ".nova-tools" / "components" / "suite").exists()
 
 
 def test_safe_extraction_rejects_parent_traversal(tmp_path: Path) -> None:
@@ -175,7 +192,14 @@ def test_safe_debian_extraction_uses_the_data_archive_only(tmp_path: Path) -> No
     package = deb_bytes(tar_bytes({"usr/bin/openroad": b"tool"}))
     archive = tmp_path / "openroad.deb"
     archive.write_bytes(package)
-    metadata = ArchiveMetadata(byte_size=len(package), archive_format="DEB", strip_components=0)
+    metadata = ArchiveMetadata(
+        byte_size=len(package),
+        archive_format="DEB",
+        strip_components=0,
+        max_decompressed_bytes=1024 * 1024,
+        max_regular_file_bytes=1024 * 1024,
+        max_entries=128,
+    )
 
     safe_extract_archive(archive, tmp_path / "destination", metadata)
 
@@ -183,11 +207,18 @@ def test_safe_debian_extraction_uses_the_data_archive_only(tmp_path: Path) -> No
 
 
 def test_safe_debian_extraction_streams_zstd_data_archive(tmp_path: Path) -> None:
-    compressed = zstd.ZstdCompressor().compress(tar_bytes({"usr/bin/openroad": b"tool"}))
+    compressed = zstd.ZstdCompressor().compress(raw_tar_bytes({"usr/bin/openroad": b"tool"}))
     package = deb_bytes(compressed, data_name="data.tar.zst")
     archive = tmp_path / "openroad.deb"
     archive.write_bytes(package)
-    metadata = ArchiveMetadata(byte_size=len(package), archive_format="DEB", strip_components=0)
+    metadata = ArchiveMetadata(
+        byte_size=len(package),
+        archive_format="DEB",
+        strip_components=0,
+        max_decompressed_bytes=1024 * 1024,
+        max_regular_file_bytes=1024 * 1024,
+        max_entries=128,
+    )
 
     safe_extract_archive(archive, tmp_path / "destination", metadata)
 
@@ -199,13 +230,18 @@ def test_malformed_zstd_debian_payload_never_publishes_a_component(tmp_path: Pat
     archive_source = source(package).model_copy(
         update={
             "archive": ArchiveMetadata(
-                byte_size=len(package), archive_format="DEB", strip_components=0
+                byte_size=len(package),
+                archive_format="DEB",
+                strip_components=0,
+                max_decompressed_bytes=1024 * 1024,
+                max_regular_file_bytes=1024 * 1024,
+                max_entries=128,
             )
         }
     )
     source_manifest = manifest(package).model_copy(update={"components": (archive_source,)})
     opener, _ = opener_for(package)
-    root = tmp_path / ".nova_tools"
+    root = tmp_path / ".nova-tools"
 
     with pytest.raises(HydrationError, match="zstd"):
         hydrate_toolchain(source_manifest, root, opener=opener)
@@ -219,8 +255,8 @@ def test_hydration_rejects_redirect_to_another_host(tmp_path: Path) -> None:
     data = tar_bytes({"suite/bin/yosys": b"tool"})
     opener, _ = opener_for(data, final_url="https://untrusted.example.test/suite.tar.gz")
 
-    with pytest.raises(HydrationError, match="final URL"):
-        hydrate_toolchain(manifest(data), tmp_path / ".nova_tools", opener=opener)
+    with pytest.raises(HydrationError, match="redirect"):
+        hydrate_toolchain(manifest(data), tmp_path / ".nova-tools", opener=opener)
 
 
 def test_download_resumes_a_partial_archive_only_when_server_confirms_range(tmp_path: Path) -> None:
@@ -246,7 +282,7 @@ def test_download_resumes_a_partial_archive_only_when_server_confirms_range(tmp_
 def test_hydration_never_publishes_a_partial_component(tmp_path: Path) -> None:
     bad_data = tar_bytes({"suite/../../outside": b"unsafe"})
     opener, _ = opener_for(bad_data)
-    root = tmp_path / ".nova_tools"
+    root = tmp_path / ".nova-tools"
 
     with pytest.raises(HydrationError):
         hydrate_toolchain(manifest(bad_data), root, opener=opener)
@@ -267,6 +303,7 @@ def test_git_checkout_rejects_a_different_resolved_commit(tmp_path: Path) -> Non
         executables=(),
         archive=None,
         runtime_environment=(),
+        allowed_redirect_hosts=(),
     )
 
     def run(command: tuple[str, ...], **_: object) -> SimpleNamespace:
@@ -285,7 +322,7 @@ def test_hydration_rejects_an_unsupported_host(tmp_path: Path) -> None:
     with pytest.raises(HydrationError, match="unsupported host"):
         hydrate_toolchain(
             manifest(data),
-            tmp_path / ".nova_tools",
+            tmp_path / ".nova-tools",
             opener=opener,
             host_system=("darwin", "x86_64"),
         )
@@ -294,7 +331,7 @@ def test_hydration_rejects_an_unsupported_host(tmp_path: Path) -> None:
 def test_repeated_hydration_uses_the_existing_receipt_without_network(tmp_path: Path) -> None:
     data = tar_bytes({"suite/bin/yosys": b"tool"})
     opener, calls = opener_for(data)
-    root = tmp_path / ".nova_tools"
+    root = tmp_path / ".nova-tools"
 
     first = hydrate_toolchain(manifest(data), root, opener=opener)
     second = hydrate_toolchain(manifest(data), root, opener=opener)
@@ -318,3 +355,168 @@ def test_manifest_content_identity_is_independent_of_json_or_yaml_spelling(tmp_p
 
     assert from_json.manifest == from_yaml.manifest
     assert from_json.content_identity_hash == from_yaml.content_identity_hash
+
+
+def test_download_rejects_and_cleans_an_overlong_response(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    archive_source = source(data)
+    cache = tmp_path / "cache"
+    opener, _ = opener_for(data + b"unexpected bytes")
+
+    with pytest.raises(HydrationError, match="exceeds expected size"):
+        download_archive(archive_source, cache, opener=opener)
+
+    assert not tuple(cache.glob("*.part*"))
+
+
+def test_safe_extraction_rejects_regular_file_budget_bomb(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"too large"})
+    archive = tmp_path / "bomb.tar.gz"
+    archive.write_bytes(data)
+    metadata = source(data).archive.model_copy(update={"max_regular_file_bytes": 1})
+
+    with pytest.raises(HydrationError, match="regular-file byte budget"):
+        safe_extract_archive(archive, tmp_path / "destination", metadata)
+
+    assert not (tmp_path / "destination").exists()
+
+
+def test_safe_extraction_rejects_zstd_decompression_bomb(tmp_path: Path) -> None:
+    payload = raw_tar_bytes({"usr/bin/openroad": b"x" * 4096})
+    package = deb_bytes(zstd.ZstdCompressor().compress(payload), data_name="data.tar.zst")
+    archive = tmp_path / "bomb.deb"
+    archive.write_bytes(package)
+    metadata = ArchiveMetadata(
+        byte_size=len(package),
+        archive_format="DEB",
+        strip_components=0,
+        max_decompressed_bytes=16,
+        max_regular_file_bytes=8192,
+        max_entries=8,
+    )
+
+    with pytest.raises(HydrationError, match="decompressed byte budget"):
+        safe_extract_archive(archive, tmp_path / "destination", metadata)
+
+    assert not (tmp_path / "destination").exists()
+
+
+def test_download_validates_each_redirect_against_manifest_allowlist(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    archive_source = source(data).model_copy(
+        update={"allowed_redirect_hosts": ("release-assets.githubusercontent.com",)}
+    )
+    responses = iter(
+        (
+            Response(
+                b"",
+                archive_source.source_url,
+                status=302,
+                headers={"Location": "https://untrusted.example.test/archive"},
+            ),
+        )
+    )
+
+    with pytest.raises(HydrationError, match="redirect host"):
+        download_archive(archive_source, tmp_path / "cache", opener=lambda _: next(responses))
+
+
+def test_download_follows_an_explicitly_allowed_https_redirect(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    archive_source = source(data).model_copy(
+        update={"allowed_redirect_hosts": ("release-assets.githubusercontent.com",)}
+    )
+    redirected_url = "https://release-assets.githubusercontent.com/suite.tar.gz"
+    responses = iter(
+        (
+            Response(
+                b"",
+                archive_source.source_url,
+                status=302,
+                headers={"Location": redirected_url},
+            ),
+            Response(data, redirected_url),
+        )
+    )
+
+    downloaded = download_archive(
+        archive_source, tmp_path / "cache", opener=lambda _: next(responses)
+    )
+
+    assert downloaded.read_bytes() == data
+
+
+def test_hydration_rejects_a_root_or_cache_outside_manifest_tool_root(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    opener, _ = opener_for(data)
+
+    with pytest.raises(HydrationError, match="tool root"):
+        hydrate_toolchain(manifest(data), tmp_path / "wrong-root", opener=opener)
+
+    root = tmp_path / ".nova-tools"
+    with pytest.raises(HydrationError, match="cache directory"):
+        hydrate_toolchain(manifest(data), root, cache_directory=tmp_path / "cache", opener=opener)
+
+
+def test_hydration_rejects_a_symlinked_tool_root(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    root = tmp_path / ".nova-tools"
+    root.symlink_to(tmp_path / "outside", target_is_directory=True)
+
+    with pytest.raises(HydrationError, match="symlink"):
+        hydrate_toolchain(manifest(data), root, opener=opener_for(data)[0])
+
+
+def test_declared_tar_format_must_match_archive_bytes(tmp_path: Path) -> None:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:xz") as archive:
+        member = tarfile.TarInfo("suite/bin/yosys")
+        member.size = 4
+        archive.addfile(member, io.BytesIO(b"tool"))
+    archive = tmp_path / "wrong-format.tar"
+    archive.write_bytes(stream.getvalue())
+    metadata = source(stream.getvalue()).archive
+
+    with pytest.raises(HydrationError, match="format"):
+        safe_extract_archive(archive, tmp_path / "destination", metadata)
+
+
+def test_git_checkout_passes_a_finite_subprocess_timeout(tmp_path: Path) -> None:
+    git_source = ToolSource(
+        component_id="orfs",
+        source_kind="GIT",
+        version="pinned",
+        source_url="https://github.com/example/orfs.git",
+        archive_sha256=None,
+        git_commit="a" * 40,
+        license="BSD-3-Clause",
+        executables=(),
+        archive=None,
+        runtime_environment=(),
+        allowed_redirect_hosts=(),
+    )
+    timeouts: list[int] = []
+
+    def run(command: tuple[str, ...], **kwargs: object) -> SimpleNamespace:
+        timeouts.append(kwargs["timeout"])  # type: ignore[arg-type]
+        stdout = "a" * 40 + "\n" if command[-2:] == ("rev-parse", "HEAD") else ""
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    checkout_git_source(git_source, tmp_path / "checkout", run=run)
+
+    assert timeouts and all(timeout > 0 for timeout in timeouts)
+
+
+def test_hydration_times_out_when_another_process_owns_the_root_lock(tmp_path: Path) -> None:
+    import fcntl
+
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    root = tmp_path / ".nova-tools"
+    root.mkdir()
+    lock_path = root / ".hydrate.lock"
+    with lock_path.open("w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with pytest.raises(HydrationError, match="lock timeout"):
+            hydrate_toolchain(
+                manifest(data), root, opener=opener_for(data)[0], lock_timeout_seconds=0
+            )
