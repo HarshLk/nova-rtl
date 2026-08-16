@@ -498,16 +498,16 @@ def checkout_git_source(
         run,
         timeout_seconds,
     )
-    completed = _run_git(
-        ("git", "-C", str(destination), "rev-parse", "HEAD"), run, timeout_seconds
-    )
+    completed = _run_git(("git", "-C", str(destination), "rev-parse", "HEAD"), run, timeout_seconds)
     if completed.stdout.strip().lower() != source.git_commit:
         raise HydrationError(
             f"Git commit mismatch for {source.component_id}: expected {source.git_commit}"
         )
 
 
-def _receipt_bytes(manifest_hash: HashRef, source: ToolSource) -> bytes:
+def component_receipt_bytes(manifest_hash: HashRef, source: ToolSource) -> bytes:
+    """Serialize the stable receipt shared by hydration and offline activation."""
+
     payload = {
         "archive_sha256": source.archive_sha256,
         "archive_size_bytes": source.archive.byte_size if source.archive else None,
@@ -629,7 +629,7 @@ def hydrate_toolchain(
                 receipts_directory / f"{source.component_id}.json", root, "receipt"
             )
             internal_receipt = destination / ".nova-hydration-receipt.json"
-            receipt = _receipt_bytes(loaded.content_identity_hash, source)
+            receipt = component_receipt_bytes(loaded.content_identity_hash, source)
             if destination.is_symlink():
                 raise HydrationError(f"component destination must not be a symlink: {destination}")
             if (
@@ -687,6 +687,7 @@ __all__ = [
     "HydrationResult",
     "LoadedToolchainSourceManifest",
     "checkout_git_source",
+    "component_receipt_bytes",
     "download_archive",
     "hydrate_toolchain",
     "load_toolchain_source_manifest",

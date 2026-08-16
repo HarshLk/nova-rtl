@@ -2,14 +2,18 @@
 
 from nova_rtl.contracts.platform import (
     ArchiveMetadata,
+    CanonicalEnvironmentEntry,
+    ComponentInventoryEntry,
     DoctorCheck,
     DoctorIssue,
     DoctorReport,
     HostPlatform,
+    InstalledComponentReceipt,
     PlatformArtifact,
     PlatformLock,
     RuntimeEnvironmentEntry,
     TimingCorner,
+    ToolchainReceipt,
     ToolchainSourceManifest,
     ToolExecutableSource,
     ToolFingerprint,
@@ -18,10 +22,13 @@ from nova_rtl.contracts.platform import (
 
 __all__ = [
     "ArchiveMetadata",
+    "CanonicalEnvironmentEntry",
+    "ComponentInventoryEntry",
     "DoctorCheck",
     "DoctorIssue",
     "DoctorReport",
     "HostPlatform",
+    "InstalledComponentReceipt",
     "PlatformArtifact",
     "PlatformLock",
     "RuntimeEnvironmentEntry",
@@ -29,5 +36,6 @@ __all__ = [
     "ToolExecutableSource",
     "ToolFingerprint",
     "ToolSource",
+    "ToolchainReceipt",
     "ToolchainSourceManifest",
 ]

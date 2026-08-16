@@ -100,15 +100,24 @@ class ArchiveMetadata(StrictContract):
 
 
 class RuntimeEnvironmentEntry(StrictContract):
-    """A relative runtime path later activation may add to one environment variable."""
+    """A rooted runtime value contributed by one portable component."""
 
     name: str = Field(pattern=r"^[A-Z_][A-Z0-9_]{0,127}$")
-    relative_path: str
+    operation: Literal["PREPEND_PATH", "SET"] = "PREPEND_PATH"
+    relative_paths: tuple[str, ...] = Field(min_length=1)
 
-    @field_validator("relative_path")
+    @field_validator("relative_paths")
     @classmethod
-    def runtime_path_is_safe(cls, value: str) -> str:
-        return _validate_relative_path(value)
+    def runtime_paths_are_safe(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("runtime paths must be unique within an entry")
+        return tuple(_validate_relative_path(item) for item in value)
+
+    @model_validator(mode="after")
+    def set_has_one_value(self) -> Self:
+        if self.operation == "SET" and len(self.relative_paths) != 1:
+            raise ValueError("SET runtime environment entry requires exactly one path")
+        return self
 
 
 def _validate_https_url(value: str) -> str:
@@ -154,8 +163,10 @@ class ToolSource(StrictContract):
                 raise ValueError(
                     "ARCHIVE source requires archive_sha256, archive metadata, and no git_commit"
                 )
-        elif self.archive_sha256 is not None or self.archive is not None or not re.fullmatch(
-            r"[0-9a-f]{40}", self.git_commit or ""
+        elif (
+            self.archive_sha256 is not None
+            or self.archive is not None
+            or not re.fullmatch(r"[0-9a-f]{40}", self.git_commit or "")
         ):
             raise ValueError(
                 "GIT source requires a full 40-character Git commit and no archive metadata"
@@ -205,6 +216,21 @@ class ToolchainSourceManifest(StrictContract):
         ]
         if len(tool_ids) != len(set(tool_ids)):
             raise ValueError("tool_id is owned by more than one component")
+        operations: dict[str, str] = {}
+        set_contributions: set[str] = set()
+        for component in self.components:
+            for entry in component.runtime_environment:
+                prior = operations.setdefault(entry.name, entry.operation)
+                if prior != entry.operation:
+                    raise ValueError(
+                        f"runtime variable {entry.name} mixes SET and PREPEND_PATH operations"
+                    )
+                if entry.operation == "SET":
+                    if entry.name in set_contributions:
+                        raise ValueError(
+                            f"runtime variable {entry.name} has more than one SET contribution"
+                        )
+                    set_contributions.add(entry.name)
         return self
 
 
@@ -299,6 +325,110 @@ class ToolFingerprint(StrictContract):
     def probe_recipe_is_registered(self) -> Self:
         if self.version_args != _expected_version_args(self.tool_id):
             raise ValueError("version_args do not match the registered probe recipe")
+        return self
+
+
+class ComponentInventoryEntry(StrictContract):
+    """One strict, content-addressed entry in a hydrated component tree."""
+
+    path: str
+    type: Literal["directory", "file", "symlink"]
+    mode: int = Field(ge=0, le=0o7777)
+    sha256: HashRef | None = None
+    target: str | None = None
+
+    @field_validator("path")
+    @classmethod
+    def inventory_path_is_safe(cls, value: str) -> str:
+        return _validate_relative_path(value)
+
+    @model_validator(mode="after")
+    def fields_match_entry_type(self) -> Self:
+        if self.type == "file" and (self.sha256 is None or self.target is not None):
+            raise ValueError("file inventory entry requires only sha256")
+        if self.type == "directory" and (self.sha256 is not None or self.target is not None):
+            raise ValueError("directory inventory entry cannot contain sha256 or target")
+        if self.type == "symlink":
+            if self.sha256 is not None or not self.target:
+                raise ValueError("symlink inventory entry requires only target")
+            target = PurePosixPath(self.target)
+            contains_control = any(
+                ord(character) < 32 or ord(character) == 127 for character in self.target
+            )
+            if "\\" in self.target or contains_control or target.is_absolute():
+                raise ValueError("symlink inventory target must be a safe relative path")
+        return self
+
+
+class InstalledComponentReceipt(StrictContract):
+    """Strict installed identity for one reviewed toolchain source."""
+
+    component_id: EntityId
+    source: ToolSource
+    inventory: tuple[ComponentInventoryEntry, ...]
+    tree_identity: HashRef
+
+
+class CanonicalEnvironmentEntry(StrictContract):
+    """One deterministic, rooted activation variable in a toolchain receipt."""
+
+    operation: Literal["PREPEND_PATH", "SET"]
+    paths: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("paths")
+    @classmethod
+    def paths_are_absolute_and_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("canonical environment paths must be unique")
+        for item in value:
+            path = Path(item)
+            if not path.is_absolute() or path != path.absolute():
+                raise ValueError("canonical environment path must be absolute and normalized")
+        return value
+
+    @model_validator(mode="after")
+    def set_has_one_value(self) -> Self:
+        if self.operation == "SET" and len(self.paths) != 1:
+            raise ValueError("SET canonical environment entry requires exactly one path")
+        return self
+
+
+class ToolchainReceipt(StrictContract):
+    """Versioned global identity of one verified portable toolchain install."""
+
+    schema_version: Literal[1]
+    manifest_hash: HashRef
+    manifest: ToolchainSourceManifest
+    components: tuple[InstalledComponentReceipt, ...] = Field(min_length=1)
+    environment: dict[str, CanonicalEnvironmentEntry]
+    tool_fingerprints: tuple[ToolFingerprint, ...]
+
+    @field_validator("environment")
+    @classmethod
+    def environment_names_are_safe(
+        cls, value: dict[str, CanonicalEnvironmentEntry]
+    ) -> dict[str, CanonicalEnvironmentEntry]:
+        if any(not re.fullmatch(r"[A-Z_][A-Z0-9_]{0,127}", name) for name in value):
+            raise ValueError("canonical environment variable name is invalid")
+        return value
+
+    @model_validator(mode="after")
+    def identities_are_unique_and_manifest_owned(self) -> Self:
+        component_ids = tuple(item.component_id for item in self.components)
+        expected_components = tuple(item.component_id for item in self.manifest.components)
+        if component_ids != expected_components:
+            raise ValueError("receipt component ordering does not match manifest")
+        for installed, source in zip(self.components, self.manifest.components, strict=True):
+            if installed.source != source:
+                raise ValueError("receipt component source does not match manifest")
+        tool_ids = tuple(item.tool_id for item in self.tool_fingerprints)
+        expected_tools = tuple(
+            executable.tool_id
+            for component in self.manifest.components
+            for executable in component.executables
+        )
+        if tool_ids != expected_tools:
+            raise ValueError("receipt fingerprint ordering does not match manifest")
         return self
 
 

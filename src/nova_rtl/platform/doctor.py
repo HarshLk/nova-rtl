@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import shutil
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -14,8 +14,15 @@ from nova_rtl.platform.probe import ToolProbeError, probe_executable, resolve_to
 DEFAULT_REQUIRED_TOOLS = ("yosys", "opensta", "openroad", "eqy", "sby")
 
 
-def _probe_tool(logical_name: str, which: Callable[[str], str | None]) -> DoctorCheck:
-    executable = resolve_tool(logical_name, which)
+def _probe_tool(
+    logical_name: str,
+    which: Callable[[str], str | None],
+    executable: Path | None = None,
+    probe_environment: Mapping[str, str] | None = None,
+    allow_path_resolution: bool = True,
+) -> DoctorCheck:
+    if executable is None and allow_path_resolution:
+        executable = resolve_tool(logical_name, which)
     resolved = str(executable) if executable is not None else None
     if resolved is None:
         return DoctorCheck(
@@ -35,7 +42,7 @@ def _probe_tool(logical_name: str, which: Callable[[str], str | None]) -> Doctor
         )
 
     try:
-        fingerprint = probe_executable(logical_name, executable)
+        fingerprint = probe_executable(logical_name, executable, environment=probe_environment)
     except ToolProbeError as error:
         return DoctorCheck(
             name=logical_name,
@@ -109,8 +116,7 @@ def _check_platform_lock(platform_lock: Path) -> tuple[DoctorCheck, PlatformLock
     artifact_hash = verification.lock_hash
     if verification.status == "FAIL":
         details = "; ".join(
-            f"{issue.code}:{issue.subject}: {issue.message}"
-            for issue in verification.issues
+            f"{issue.code}:{issue.subject}: {issue.message}" for issue in verification.issues
         )
         return (
             DoctorCheck(
@@ -188,10 +194,21 @@ def run_doctor(
     required_tools: Sequence[str] = DEFAULT_REQUIRED_TOOLS,
     platform_lock: Path | None = None,
     which: Callable[[str], str | None] = shutil.which,
+    hydrated_tools: Mapping[str, Path] | None = None,
+    probe_environment: Mapping[str, str] | None = None,
 ) -> DoctorReport:
-    """Check every requested dependency and return a complete immutable report."""
+    """Check dependencies, optionally using only a verified hydrated tool mapping."""
 
-    checks = tuple(_probe_tool(tool, which) for tool in required_tools)
+    checks = tuple(
+        _probe_tool(
+            tool,
+            which,
+            hydrated_tools.get(tool) if hydrated_tools is not None else None,
+            probe_environment,
+            allow_path_resolution=hydrated_tools is None,
+        )
+        for tool in required_tools
+    )
     if platform_lock is not None:
         lock_check, verified_lock = _check_platform_lock(platform_lock)
         if verified_lock is not None:

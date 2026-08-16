@@ -14,6 +14,7 @@ from nova_rtl.contracts.platform import (
     HostPlatform,
     PlatformArtifact,
     PlatformLock,
+    RuntimeEnvironmentEntry,
     TimingCorner,
     ToolchainSourceManifest,
     ToolExecutableSource,
@@ -227,6 +228,91 @@ def test_manifest_rejects_duplicate_executable_ownership() -> None:
             host=HostPlatform(os="linux", architecture="x86_64"),
             tool_root_name=".nova-tools",
             components=(first, second),
+        )
+
+
+def test_runtime_environment_requires_only_nonempty_relative_paths() -> None:
+    with pytest.raises(ValidationError, match="relative_paths"):
+        RuntimeEnvironmentEntry.model_validate(
+            {"name": "PATH", "operation": "PREPEND_PATH", "relative_path": "bin"}
+        )
+
+    with pytest.raises(ValidationError, match="at least 1 item"):
+        RuntimeEnvironmentEntry(name="PATH", operation="PREPEND_PATH", relative_paths=())
+
+    with pytest.raises(ValidationError, match="exactly one path"):
+        RuntimeEnvironmentEntry(name="TOOL_ROOT", operation="SET", relative_paths=("share", "lib"))
+
+
+def test_manifest_rejects_cross_component_runtime_operation_conflict() -> None:
+    first = ToolSource(
+        component_id="first_suite",
+        source_kind="ARCHIVE",
+        version="1",
+        source_url="https://example.test/releases/1/first.tgz",
+        archive_sha256=hash_ref("1"),
+        git_commit=None,
+        license="ISC",
+        executables=(),
+        archive=archive_metadata(),
+        runtime_environment=(
+            RuntimeEnvironmentEntry(
+                name="LD_LIBRARY_PATH", operation="PREPEND_PATH", relative_paths=("lib",)
+            ),
+        ),
+        allowed_redirect_hosts=(),
+    )
+    second = ToolSource(
+        component_id="second_suite",
+        source_kind="ARCHIVE",
+        version="1",
+        source_url="https://example.test/releases/1/second.tgz",
+        archive_sha256=hash_ref("2"),
+        git_commit=None,
+        license="ISC",
+        executables=(),
+        archive=archive_metadata(),
+        runtime_environment=(
+            RuntimeEnvironmentEntry(
+                name="LD_LIBRARY_PATH", operation="SET", relative_paths=("lib",)
+            ),
+        ),
+        allowed_redirect_hosts=(),
+    )
+
+    with pytest.raises(ValidationError, match="mixes SET and PREPEND_PATH"):
+        ToolchainSourceManifest(
+            host=HostPlatform(os="linux", architecture="x86_64"),
+            tool_root_name=".nova-tools",
+            components=(first, second),
+        )
+
+
+def test_manifest_rejects_multiple_set_contributions_for_one_variable() -> None:
+    def component(component_id: str, digit: str) -> ToolSource:
+        return ToolSource(
+            component_id=component_id,
+            source_kind="ARCHIVE",
+            version="1",
+            source_url=f"https://example.test/releases/1/{component_id}.tgz",
+            archive_sha256=hash_ref(digit),
+            git_commit=None,
+            license="ISC",
+            executables=(),
+            archive=archive_metadata(),
+            runtime_environment=(
+                RuntimeEnvironmentEntry(
+                    name="TOOL_ROOT", operation="SET", relative_paths=("share",)
+                ),
+            ),
+            allowed_redirect_hosts=(),
+        )
+
+    with pytest.raises(ValidationError, match="more than one SET contribution"):
+        ToolchainSourceManifest(
+            host=HostPlatform(os="linux", architecture="x86_64"),
+            tool_root_name=".nova-tools",
+            components=(component("first_suite", "1"), component("second_suite", "2")),
         )
 
 

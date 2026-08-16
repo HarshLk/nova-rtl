@@ -45,6 +45,35 @@ class DoctorTests(unittest.TestCase):
         self.assertEqual(fingerprint.version, "sample-tool 1.2.3")
         self.assertRegex(fingerprint.build_hash, r"^sha256:[0-9a-f]{64}$")
 
+    def test_hydrated_mapping_and_probe_environment_bypass_caller_path(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            executable = Path(directory) / "sample_tool"
+            executable.write_text(
+                "#!/bin/sh\n"
+                '[ "$NOVA_TEST_ENV" = ready ] || exit 3\n'
+                "printf 'sample-tool 1.2.3\\n'\n"
+            )
+            executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+
+            report = run_doctor(
+                required_tools=("sample_tool",),
+                which=lambda _: (_ for _ in ()).throw(AssertionError("PATH must not be used")),
+                hydrated_tools={"sample_tool": executable},
+                probe_environment={"NOVA_TEST_ENV": "ready"},
+            )
+
+        self.assertEqual(report.status, "PASS")
+
+    def test_missing_hydrated_mapping_entry_never_falls_back_to_caller_path(self) -> None:
+        report = run_doctor(
+            required_tools=("yosys",),
+            which=lambda _: (_ for _ in ()).throw(AssertionError("PATH must not be used")),
+            hydrated_tools={},
+        )
+
+        self.assertEqual(report.status, "FAIL")
+        self.assertEqual(report.checks[0].issues[0].code, "TOOL_MISSING")
+
     def test_missing_platform_lock_is_reported_after_tool_checks(self) -> None:
         report = run_doctor(
             required_tools=("missing_yosys",),

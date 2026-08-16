@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import shutil
 import subprocess
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 from nova_rtl.contracts.platform import PROBE_VERSION_ARGUMENTS, ToolFingerprint
@@ -49,6 +49,7 @@ def probe_executable(
     adapter_version: str = SUPPORTED_ADAPTER_VERSION,
     version_args: tuple[str, ...] | None = None,
     timeout_seconds: int = 10,
+    environment: Mapping[str, str] | None = None,
 ) -> ToolFingerprint:
     """Fingerprint exact executable bytes together with its version/build output."""
 
@@ -76,6 +77,7 @@ def probe_executable(
             capture_output=True,
             check=False,
             timeout=timeout_seconds,
+            env=dict(environment) if environment is not None else None,
         )
     except (OSError, subprocess.TimeoutExpired) as error:
         raise ToolProbeError(f"version probe failed: {error}") from error
@@ -89,17 +91,14 @@ def probe_executable(
         raise ToolProbeError(f"post-probe executable hash failed: {error}") from error
     identity_fields = ("st_dev", "st_ino", "st_size", "st_mtime_ns", "st_ctime_ns")
     identity_changed = any(
-        getattr(initial_stat, field) != getattr(final_stat, field)
-        for field in identity_fields
+        getattr(initial_stat, field) != getattr(final_stat, field) for field in identity_fields
     )
     if identity_changed or observed_after.digest() != executable_digest.digest():
         raise ToolProbeError("executable changed during version probe")
     version_bytes = (completed.stdout.strip() or completed.stderr.strip()).splitlines()
     if completed.returncode != 0 or not version_bytes:
         detail = completed.stderr.decode("utf-8", errors="replace").strip()
-        raise ToolProbeError(
-            f"version probe returned exit code {completed.returncode}: {detail}"
-        )
+        raise ToolProbeError(f"version probe returned exit code {completed.returncode}: {detail}")
 
     build_digest = executable_digest.copy()
     build_digest.update(completed.stdout)
