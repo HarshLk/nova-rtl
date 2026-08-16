@@ -19,6 +19,7 @@ from urllib.parse import urlsplit
 from urllib.request import Request, urlopen
 
 import yaml
+import zstandard as zstd
 
 from nova_rtl.contracts.base import HashRef, canonical_json_bytes
 from nova_rtl.contracts.platform import ArchiveMetadata, ToolchainSourceManifest, ToolSource
@@ -255,6 +256,26 @@ def _deb_data_tar(archive_path: Path, temporary_directory: Path) -> Path:
     raise HydrationError("Debian archive has no data.tar member")
 
 
+def _decompress_zstd(compressed_path: Path, temporary_directory: Path) -> Path:
+    """Stream a Debian zstd payload to a private tar file without invoking system tools."""
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=temporary_directory, prefix=".data-", suffix=".tar"
+    )
+    temporary = Path(temporary_name)
+    try:
+        with (
+            os.fdopen(descriptor, "wb") as output,
+            compressed_path.open("rb") as compressed,
+            zstd.ZstdDecompressor().stream_reader(compressed) as reader,
+        ):
+            shutil.copyfileobj(reader, output, length=1024 * 1024)
+        return temporary
+    except (OSError, zstd.ZstdError):
+        temporary.unlink(missing_ok=True)
+        raise
+
+
 def safe_extract_archive(
     archive_path: Path,
     destination: Path,
@@ -264,20 +285,27 @@ def safe_extract_archive(
 
     if metadata is None:
         raise HydrationError("archive metadata is required for extraction")
-    temporary_data: Path | None = None
+    temporary_paths: list[Path] = []
     try:
         if metadata.archive_format == "DEB":
-            temporary_data = _deb_data_tar(archive_path, destination.parent)
-            tar_input: str | Path = temporary_data
+            data_archive = _deb_data_tar(archive_path, destination.parent)
+            temporary_paths.append(data_archive)
+            if data_archive.suffix == ".zst":
+                tar_input: str | Path = _decompress_zstd(data_archive, destination.parent)
+                temporary_paths.append(Path(tar_input))
+            else:
+                tar_input = data_archive
         else:
             tar_input = archive_path
         with tarfile.open(tar_input, mode="r:*") as archive:
             _extract_tar(archive, destination, metadata)
+    except zstd.ZstdError as error:
+        raise HydrationError(f"zstd Debian payload could not be decompressed: {error}") from error
     except (OSError, tarfile.TarError) as error:
         raise HydrationError(f"archive extraction failed: {error}") from error
     finally:
-        if temporary_data is not None:
-            temporary_data.unlink(missing_ok=True)
+        for temporary_path in reversed(temporary_paths):
+            temporary_path.unlink(missing_ok=True)
 
 
 def _run_git(command: tuple[str, ...], run: Callable[..., Any]) -> Any:

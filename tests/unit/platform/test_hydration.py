@@ -9,6 +9,7 @@ from types import SimpleNamespace
 
 import pytest
 import yaml
+import zstandard as zstd
 
 from nova_rtl.contracts.platform import (
     ArchiveMetadata,
@@ -77,12 +78,12 @@ def tar_bytes(entries: dict[str, bytes], *, link: tuple[str, str] | None = None)
     return stream.getvalue()
 
 
-def deb_bytes(data_tar: bytes) -> bytes:
+def deb_bytes(data_tar: bytes, *, data_name: str = "data.tar.gz") -> bytes:
     def member(name: str, data: bytes) -> bytes:
         header = f"{name + '/':<16}{0:<12}{0:<6}{0:<6}{0o100644:<8}{len(data):<10}`\n"
         return header.encode("ascii") + data + (b"\n" if len(data) % 2 else b"")
 
-    return b"!<arch>\n" + member("debian-binary", b"2.0\n") + member("data.tar.gz", data_tar)
+    return b"!<arch>\n" + member("debian-binary", b"2.0\n") + member(data_name, data_tar)
 
 
 class Response(io.BytesIO):
@@ -179,6 +180,39 @@ def test_safe_debian_extraction_uses_the_data_archive_only(tmp_path: Path) -> No
     safe_extract_archive(archive, tmp_path / "destination", metadata)
 
     assert (tmp_path / "destination" / "usr" / "bin" / "openroad").read_bytes() == b"tool"
+
+
+def test_safe_debian_extraction_streams_zstd_data_archive(tmp_path: Path) -> None:
+    compressed = zstd.ZstdCompressor().compress(tar_bytes({"usr/bin/openroad": b"tool"}))
+    package = deb_bytes(compressed, data_name="data.tar.zst")
+    archive = tmp_path / "openroad.deb"
+    archive.write_bytes(package)
+    metadata = ArchiveMetadata(byte_size=len(package), archive_format="DEB", strip_components=0)
+
+    safe_extract_archive(archive, tmp_path / "destination", metadata)
+
+    assert (tmp_path / "destination" / "usr" / "bin" / "openroad").read_bytes() == b"tool"
+
+
+def test_malformed_zstd_debian_payload_never_publishes_a_component(tmp_path: Path) -> None:
+    package = deb_bytes(b"not zstd", data_name="data.tar.zst")
+    archive_source = source(package).model_copy(
+        update={
+            "archive": ArchiveMetadata(
+                byte_size=len(package), archive_format="DEB", strip_components=0
+            )
+        }
+    )
+    source_manifest = manifest(package).model_copy(update={"components": (archive_source,)})
+    opener, _ = opener_for(package)
+    root = tmp_path / ".nova_tools"
+
+    with pytest.raises(HydrationError, match="zstd"):
+        hydrate_toolchain(source_manifest, root, opener=opener)
+
+    assert not (root / "components" / "suite").exists()
+    assert not (root / "receipts" / "suite.json").exists()
+    assert not tuple(root.glob(".suite.staging-*"))
 
 
 def test_hydration_rejects_redirect_to_another_host(tmp_path: Path) -> None:
