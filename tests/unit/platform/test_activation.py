@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import stat
+from contextlib import contextmanager
 from pathlib import Path
 
 import pytest
@@ -16,6 +17,7 @@ from nova_rtl.contracts.platform import (
     RuntimeEnvironmentEntry,
     ToolchainSourceManifest,
     ToolExecutableSource,
+    ToolFingerprint,
     ToolSource,
 )
 from nova_rtl.platform.activation import (
@@ -259,3 +261,92 @@ def test_doctor_cli_consumes_verified_toolchain_mapping(tmp_path: Path) -> None:
 
     assert result.exit_code == 0
     assert json.loads(result.stdout)["status"] == "PASS"
+
+
+def test_receipt_operations_acquire_the_hydration_root_lock(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_manifest, root = hydrated_root(tmp_path)
+    acquired: list[Path] = []
+
+    @contextmanager
+    def recording_lock(path: Path, timeout_seconds: float = 30):
+        acquired.append(path)
+        yield
+
+    monkeypatch.setattr("nova_rtl.platform.activation.tool_root_lock", recording_lock)
+
+    create_toolchain_receipt(source_manifest, root)
+    verify_toolchain(source_manifest, root)
+
+    assert acquired == [root, root]
+
+
+@pytest.mark.parametrize("git_metadata", ("symlink", "gitfile"))
+def test_git_verification_rejects_non_directory_git_metadata(
+    tmp_path: Path, git_metadata: str
+) -> None:
+    archive_source = source()
+    git_source = archive_source.model_copy(
+        update={
+            "source_kind": "GIT",
+            "archive_sha256": None,
+            "archive": None,
+            "git_commit": "a" * 40,
+        }
+    )
+    source_manifest = ToolchainSourceManifest(
+        host=HostPlatform(os="linux", architecture="x86_64"),
+        tool_root_name=".nova-tools",
+        components=(git_source,),
+    )
+    root = tmp_path / ".nova-tools"
+    component = root / "components" / "suite"
+    (component / "bin").mkdir(parents=True)
+    (component / "py3bin").mkdir()
+    (component / "share").mkdir()
+    executable = component / "bin" / "yosys"
+    executable.write_text("#!/bin/sh\nprintf 'yosys 1.0\\n'\n", encoding="utf-8")
+    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    if git_metadata == "symlink":
+        outside = tmp_path / "outside-git"
+        outside.mkdir()
+        (component / ".git").symlink_to(outside, target_is_directory=True)
+    else:
+        (component / ".git").write_text("gitdir: /tmp/not-a-repository\n", encoding="utf-8")
+    component_receipt = component_receipt_bytes(
+        manifest_content_identity_hash(source_manifest), git_source
+    )
+    (component / ".nova-hydration-receipt.json").write_bytes(component_receipt)
+    (root / "receipts").mkdir()
+    (root / "receipts" / "suite.json").write_bytes(component_receipt)
+
+    with pytest.raises(ToolchainVerificationError, match="Git metadata"):
+        create_toolchain_receipt(source_manifest, root)
+
+
+def test_receipt_probes_use_each_manifest_executable_recipe(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    source_manifest, root = hydrated_root(tmp_path)
+    seen: list[tuple[str, ...] | None] = []
+
+    def fake_probe(tool_id: str, executable: Path, **kwargs: object) -> ToolFingerprint:
+        version_args = kwargs.get("version_args")
+        seen.append(version_args if isinstance(version_args, tuple) else None)
+        return ToolFingerprint(
+            tool_id=tool_id,
+            executable=str(executable),
+            version="yosys 1.0",
+            version_args=("-V",),
+            executable_sha256=hash_ref(executable.read_bytes()),
+            build_hash=hash_ref(b"build"),
+            adapter_version="bootstrap-doctor-v1",
+            container_digest=None,
+        )
+
+    monkeypatch.setattr("nova_rtl.platform.activation.probe_executable", fake_probe)
+    create_toolchain_receipt(source_manifest, root)
+    verify_toolchain(source_manifest, root)
+
+    assert seen == [("-V",), ("-V",)]

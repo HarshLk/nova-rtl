@@ -25,7 +25,11 @@ from nova_rtl.contracts.platform import (
     ToolchainSourceManifest,
     ToolFingerprint,
 )
-from nova_rtl.platform.hydration import component_receipt_bytes, manifest_content_identity_hash
+from nova_rtl.platform.hydration import (
+    component_receipt_bytes,
+    manifest_content_identity_hash,
+    tool_root_lock,
+)
 from nova_rtl.platform.probe import ToolProbeError, probe_executable
 
 RECEIPT_NAME = "toolchain-receipt.json"
@@ -307,6 +311,18 @@ def _verify_git_state(manifest: ToolchainSourceManifest, root: Path) -> None:
         if source.source_kind != "GIT":
             continue
         component = _confined(root, root / "components" / source.component_id, "component")
+        git_metadata = component / ".git"
+        try:
+            metadata_stat = git_metadata.lstat()
+        except OSError as error:
+            raise ToolchainVerificationError(
+                f"Git metadata is missing or unreadable: {source.component_id}"
+            ) from error
+        if git_metadata.is_symlink() or not stat.S_ISDIR(metadata_stat.st_mode):
+            raise ToolchainVerificationError(
+                f"Git metadata must be a real directory: {source.component_id}"
+            )
+        _confined(component, git_metadata, "Git metadata")
         try:
             head = subprocess.run(
                 ("git", "-C", str(component), "rev-parse", "HEAD"),
@@ -374,31 +390,35 @@ def create_toolchain_receipt(manifest: ToolchainSourceManifest, root: Path) -> P
     """Probe all hydrated executables and atomically publish the global receipt."""
 
     checked_root = _tool_root(manifest, root)
-    components, tool_paths = _component_state(manifest, checked_root)
-    canonical_environment, operations = _runtime_environment(manifest, checked_root)
-    execution_environment = _execution_environment(canonical_environment, operations)
-    fingerprints: dict[str, ToolFingerprint] = {}
-    for source in manifest.components:
-        for executable in source.executables:
-            try:
-                fingerprints[executable.tool_id] = probe_executable(
-                    executable.tool_id,
-                    tool_paths[executable.tool_id],
-                    environment=execution_environment,
+    with tool_root_lock(checked_root):
+        components, tool_paths = _component_state(manifest, checked_root)
+        canonical_environment, operations = _runtime_environment(manifest, checked_root)
+        execution_environment = _execution_environment(canonical_environment, operations)
+        fingerprints: dict[str, ToolFingerprint] = {}
+        for source in manifest.components:
+            for executable in source.executables:
+                try:
+                    fingerprints[executable.tool_id] = probe_executable(
+                        executable.tool_id,
+                        tool_paths[executable.tool_id],
+                        version_args=executable.version_args,
+                        environment=execution_environment,
+                    )
+                except ToolProbeError as error:
+                    raise ToolchainVerificationError(
+                        f"executable probe failed for {executable.tool_id}: {error}"
+                    ) from error
+        _verify_git_state(manifest, checked_root)
+        receipt = _confined(checked_root, checked_root / RECEIPT_NAME, "global receipt")
+        _atomic_write(
+            receipt,
+            canonical_json_bytes(
+                _receipt_payload(
+                    manifest, components, canonical_environment, operations, fingerprints
                 )
-            except ToolProbeError as error:
-                raise ToolchainVerificationError(
-                    f"executable probe failed for {executable.tool_id}: {error}"
-                ) from error
-    _verify_git_state(manifest, checked_root)
-    receipt = _confined(checked_root, checked_root / RECEIPT_NAME, "global receipt")
-    _atomic_write(
-        receipt,
-        canonical_json_bytes(
-            _receipt_payload(manifest, components, canonical_environment, operations, fingerprints)
+            )
+            + b"\n",
         )
-        + b"\n",
-    )
     return receipt
 
 
@@ -406,45 +426,60 @@ def verify_toolchain(manifest: ToolchainSourceManifest, root: Path) -> VerifiedT
     """Verify a completed toolchain receipt without network access."""
 
     checked_root = _tool_root(manifest, root)
-    receipt_path = _confined(checked_root, checked_root / RECEIPT_NAME, "global receipt")
-    try:
-        receipt = ToolchainReceipt.model_validate_json(receipt_path.read_bytes())
-    except (OSError, ValidationError) as error:
-        raise ToolchainVerificationError(f"global toolchain receipt is invalid: {error}") from error
-    if (
-        receipt.manifest_hash != manifest_content_identity_hash(manifest)
-        or receipt.manifest != manifest
-    ):
-        raise ToolchainVerificationError("global receipt manifest mismatch")
-    components, tool_paths = _component_state(manifest, checked_root)
-    if receipt.components != components:
-        raise ToolchainVerificationError("component tree identity or inventory mismatch")
-    canonical_environment, operations = _runtime_environment(manifest, checked_root)
-    expected_environment = {
-        name: CanonicalEnvironmentEntry(operation=operations[name], paths=paths)
-        for name, paths in canonical_environment.items()
-    }
-    if receipt.environment != expected_environment:
-        raise ToolchainVerificationError("canonical environment mismatch")
-    expected_ids = [item.tool_id for source in manifest.components for item in source.executables]
-    fingerprints: dict[str, ToolFingerprint] = {}
-    execution_environment = _execution_environment(canonical_environment, operations)
-    for recorded, tool_id in zip(receipt.tool_fingerprints, expected_ids, strict=True):
-        expected_path = tool_paths[tool_id]
-        if recorded.executable != str(expected_path):
-            raise ToolchainVerificationError(
-                f"receipt executable escapes expected tool path: {tool_id}"
-            )
+    with tool_root_lock(checked_root):
+        receipt_path = _confined(checked_root, checked_root / RECEIPT_NAME, "global receipt")
         try:
-            observed = probe_executable(tool_id, expected_path, environment=execution_environment)
-        except ToolProbeError as error:
+            receipt = ToolchainReceipt.model_validate_json(receipt_path.read_bytes())
+        except (OSError, ValidationError) as error:
             raise ToolchainVerificationError(
-                f"executable verification failed for {tool_id}: {error}"
+                f"global toolchain receipt is invalid: {error}"
             ) from error
-        if recorded != observed:
-            raise ToolchainVerificationError(f"executable fingerprint mismatch: {tool_id}")
-        fingerprints[tool_id] = recorded
-    _verify_git_state(manifest, checked_root)
+        if (
+            receipt.manifest_hash != manifest_content_identity_hash(manifest)
+            or receipt.manifest != manifest
+        ):
+            raise ToolchainVerificationError("global receipt manifest mismatch")
+        components, tool_paths = _component_state(manifest, checked_root)
+        if receipt.components != components:
+            raise ToolchainVerificationError("component tree identity or inventory mismatch")
+        canonical_environment, operations = _runtime_environment(manifest, checked_root)
+        expected_environment = {
+            name: CanonicalEnvironmentEntry(operation=operations[name], paths=paths)
+            for name, paths in canonical_environment.items()
+        }
+        if receipt.environment != expected_environment:
+            raise ToolchainVerificationError("canonical environment mismatch")
+        expected_ids = [
+            item.tool_id for source in manifest.components for item in source.executables
+        ]
+        version_args_by_tool = {
+            item.tool_id: item.version_args
+            for source in manifest.components
+            for item in source.executables
+        }
+        fingerprints: dict[str, ToolFingerprint] = {}
+        execution_environment = _execution_environment(canonical_environment, operations)
+        for recorded, tool_id in zip(receipt.tool_fingerprints, expected_ids, strict=True):
+            expected_path = tool_paths[tool_id]
+            if recorded.executable != str(expected_path):
+                raise ToolchainVerificationError(
+                    f"receipt executable escapes expected tool path: {tool_id}"
+                )
+            try:
+                observed = probe_executable(
+                    tool_id,
+                    expected_path,
+                    version_args=version_args_by_tool[tool_id],
+                    environment=execution_environment,
+                )
+            except ToolProbeError as error:
+                raise ToolchainVerificationError(
+                    f"executable verification failed for {tool_id}: {error}"
+                ) from error
+            if recorded != observed:
+                raise ToolchainVerificationError(f"executable fingerprint mismatch: {tool_id}")
+            fingerprints[tool_id] = recorded
+        _verify_git_state(manifest, checked_root)
     return VerifiedToolchain(
         checked_root, receipt_path, tool_paths, canonical_environment, operations, fingerprints
     )

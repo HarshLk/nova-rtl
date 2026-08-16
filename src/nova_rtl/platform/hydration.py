@@ -561,7 +561,9 @@ def _confined_path(path: Path, root: Path, label: str) -> Path:
 
 
 @contextmanager
-def _root_lock(root: Path, timeout_seconds: float):
+def tool_root_lock(root: Path, timeout_seconds: float = LOCK_TIMEOUT_SECONDS):
+    """Acquire the shared lock guarding all mutations and inspections of one tool root."""
+
     if timeout_seconds < 0:
         raise HydrationError("lock timeout must not be negative")
     lock_path = _confined_path(root / ".hydrate.lock", root, "lock")
@@ -617,7 +619,7 @@ def hydrate_toolchain(
     archive_cache = cache_directory or root / "cache"
     results: list[HydratedComponent] = []
     root.mkdir(parents=True, exist_ok=True)
-    with _root_lock(root, lock_timeout_seconds):
+    with tool_root_lock(root, lock_timeout_seconds):
         components_directory = _confined_path(components_directory, root, "components directory")
         receipts_directory = _confined_path(receipts_directory, root, "receipts directory")
         archive_cache = _confined_path(archive_cache, root, "cache directory")
@@ -693,4 +695,5 @@ __all__ = [
     "load_toolchain_source_manifest",
     "manifest_content_identity_hash",
     "safe_extract_archive",
+    "tool_root_lock",
 ]
