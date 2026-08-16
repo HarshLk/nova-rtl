@@ -399,6 +399,7 @@ def test_safe_extraction_rejects_zstd_decompression_bomb(tmp_path: Path) -> None
         safe_extract_archive(archive, tmp_path / "destination", metadata)
 
     assert not (tmp_path / "destination").exists()
+    assert not tuple(tmp_path.glob(".data-*.tar"))
 
 
 def test_download_validates_each_redirect_against_manifest_allowlist(tmp_path: Path) -> None:
@@ -465,6 +466,20 @@ def test_hydration_rejects_a_symlinked_tool_root(tmp_path: Path) -> None:
 
     with pytest.raises(HydrationError, match="symlink"):
         hydrate_toolchain(manifest(data), root, opener=opener_for(data)[0])
+
+
+def test_hydration_rejects_symlinked_receipts_without_writing_outside_root(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    root = tmp_path / ".nova-tools"
+    outside = tmp_path / "outside"
+    root.mkdir()
+    outside.mkdir()
+    (root / "receipts").symlink_to(outside, target_is_directory=True)
+
+    with pytest.raises(HydrationError, match="symlink"):
+        hydrate_toolchain(manifest(data), root, opener=opener_for(data)[0])
+
+    assert not tuple(outside.iterdir())
 
 
 def test_declared_tar_format_must_match_archive_bytes(tmp_path: Path) -> None:

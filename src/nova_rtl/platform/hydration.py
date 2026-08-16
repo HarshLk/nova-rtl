@@ -393,7 +393,7 @@ def _decompress_to_tar(
                     "archive decompressed byte budget exceeded",
                 )
         return temporary
-    except (OSError, lzma.LZMAError, zstd.ZstdError):
+    except (HydrationError, OSError, lzma.LZMAError, zstd.ZstdError):
         temporary.unlink(missing_ok=True)
         raise
 
@@ -564,7 +564,7 @@ def _confined_path(path: Path, root: Path, label: str) -> Path:
 def _root_lock(root: Path, timeout_seconds: float):
     if timeout_seconds < 0:
         raise HydrationError("lock timeout must not be negative")
-    lock_path = root / ".hydrate.lock"
+    lock_path = _confined_path(root / ".hydrate.lock", root, "lock")
     with lock_path.open("a+") as lock:
         deadline = time.monotonic() + timeout_seconds
         while True:
@@ -614,54 +614,70 @@ def hydrate_toolchain(
     root = _reject_symlink_ancestors(tool_root)
     components_directory = root / "components"
     receipts_directory = root / "receipts"
-    archive_cache = _confined_path(cache_directory or root / "cache", root, "cache directory")
+    archive_cache = cache_directory or root / "cache"
     results: list[HydratedComponent] = []
     root.mkdir(parents=True, exist_ok=True)
     with _root_lock(root, lock_timeout_seconds):
-      for source in loaded.manifest.components:
-        destination = _confined_path(components_directory / source.component_id, root, "component")
-        receipt_path = receipts_directory / f"{source.component_id}.json"
-        internal_receipt = destination / ".nova-hydration-receipt.json"
-        receipt = _receipt_bytes(loaded.content_identity_hash, source)
-        if destination.is_symlink():
-            raise HydrationError(f"component destination must not be a symlink: {destination}")
-        if (
-            destination.is_dir()
-            and internal_receipt.is_file()
-            and internal_receipt.read_bytes() == receipt
-        ):
-            if not receipt_path.is_file() or receipt_path.read_bytes() != receipt:
-                _atomic_write(receipt_path, receipt)
-            results.append(
-                HydratedComponent(source.component_id, destination, receipt_path, reused=True)
+        components_directory = _confined_path(components_directory, root, "components directory")
+        receipts_directory = _confined_path(receipts_directory, root, "receipts directory")
+        archive_cache = _confined_path(archive_cache, root, "cache directory")
+        for source in loaded.manifest.components:
+            destination = _confined_path(
+                components_directory / source.component_id, root, "component"
             )
-            continue
-        if destination.exists():
-            raise HydrationError(
-                f"unreceipted component exists and will not be activated: {destination}"
+            receipt_path = _confined_path(
+                receipts_directory / f"{source.component_id}.json", root, "receipt"
             )
-
-        staging = Path(tempfile.mkdtemp(dir=root, prefix=f".{source.component_id}.staging-"))
-        staged_component = staging / source.component_id
-        try:
-            if source.source_kind == "ARCHIVE":
-                archive = download_archive(source, archive_cache, opener=opener)
-                safe_extract_archive(archive, staged_component, source.archive)
-            else:
-                checkout_git_source(
-                    source, staged_component, run=git_run, timeout_seconds=git_timeout_seconds
+            internal_receipt = destination / ".nova-hydration-receipt.json"
+            receipt = _receipt_bytes(loaded.content_identity_hash, source)
+            if destination.is_symlink():
+                raise HydrationError(f"component destination must not be a symlink: {destination}")
+            if (
+                destination.is_dir()
+                and internal_receipt.is_file()
+                and internal_receipt.read_bytes() == receipt
+            ):
+                if not receipt_path.is_file() or receipt_path.read_bytes() != receipt:
+                    receipt_path = _confined_path(receipt_path, root, "receipt")
+                    _atomic_write(receipt_path, receipt)
+                results.append(
+                    HydratedComponent(source.component_id, destination, receipt_path, reused=True)
                 )
-            _atomic_write(staged_component / ".nova-hydration-receipt.json", receipt)
-            components_directory.mkdir(parents=True, exist_ok=True)
-            os.replace(staged_component, destination)
-            _atomic_write(receipt_path, receipt)
-        except Exception:
-            raise
-        finally:
-            shutil.rmtree(staging, ignore_errors=True)
-        results.append(
-            HydratedComponent(source.component_id, destination, receipt_path, reused=False)
-        )
+                continue
+            if destination.exists():
+                raise HydrationError(
+                    f"unreceipted component exists and will not be activated: {destination}"
+                )
+
+            staging = _confined_path(
+                Path(tempfile.mkdtemp(dir=root, prefix=f".{source.component_id}.staging-")),
+                root,
+                "staging directory",
+            )
+            staged_component = staging / source.component_id
+            try:
+                if source.source_kind == "ARCHIVE":
+                    archive = download_archive(source, archive_cache, opener=opener)
+                    safe_extract_archive(archive, staged_component, source.archive)
+                else:
+                    checkout_git_source(
+                        source, staged_component, run=git_run, timeout_seconds=git_timeout_seconds
+                    )
+                _atomic_write(staged_component / ".nova-hydration-receipt.json", receipt)
+                components_directory = _confined_path(
+                    components_directory, root, "components directory"
+                )
+                components_directory.mkdir(parents=True, exist_ok=True)
+                os.replace(staged_component, destination)
+                receipt_path = _confined_path(receipt_path, root, "receipt")
+                _atomic_write(receipt_path, receipt)
+            except Exception:
+                raise
+            finally:
+                shutil.rmtree(staging, ignore_errors=True)
+            results.append(
+                HydratedComponent(source.component_id, destination, receipt_path, reused=False)
+            )
     return HydrationResult(loaded.content_identity_hash, tuple(results))
 
 
