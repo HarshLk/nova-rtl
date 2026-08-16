@@ -10,239 +10,43 @@ from nova_rtl.platform.hydration import (
 MANIFEST_PATH = (
     Path(__file__).resolve().parents[3] / "config" / "platform" / "toolchain-sources.json"
 )
+EXPECTED_MANIFEST_HASH = "sha256:fcd2317ef809d1d10c6010844ab4c57d7a2bee029906c98011d87322adeb1cc9"
 
 
 def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> None:
     first = load_toolchain_source_manifest(MANIFEST_PATH)
     second = load_toolchain_source_manifest(MANIFEST_PATH)
+    components = {component.component_id: component for component in first.manifest.components}
 
     assert first == second
+    assert first.content_identity_hash == EXPECTED_MANIFEST_HASH
     assert first.content_identity_hash == manifest_content_identity_hash(first.manifest)
-    assert first.manifest.model_dump(mode="json") == {
-        "schema_version": 1,
-        "host": {"os": "linux", "architecture": "x86_64"},
-        "tool_root_name": ".nova-tools",
-        "components": [
-            {
-                "component_id": "oss_cad_suite",
-                "source_kind": "ARCHIVE",
-                "version": "2026-07-29",
-                "source_url": "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-07-29/oss-cad-suite-linux-x64-20260729.tgz",
-                "archive_sha256": (
-                    "sha256:89ea1152ea84bc600f18cc685f721d534d1f018e09831662787865a3d79ce4aa"
-                ),
-                "git_commit": None,
-                "license": "ISC",
-                "executables": [
-                    {"tool_id": "yosys", "relative_path": "bin/yosys", "version_args": ["-V"]},
-                    {"tool_id": "eqy", "relative_path": "bin/eqy", "version_args": ["--version"]},
-                    {"tool_id": "sby", "relative_path": "bin/sby", "version_args": ["--version"]},
-                    {
-                        "tool_id": "slang",
-                        "relative_path": "bin/slang",
-                        "version_args": ["--version"],
-                    },
-                    {
-                        "tool_id": "iverilog",
-                        "relative_path": "bin/iverilog",
-                        "version_args": ["-V"],
-                    },
-                    {
-                        "tool_id": "verilator",
-                        "relative_path": "bin/verilator",
-                        "version_args": ["--version"],
-                    },
-                ],
-                "archive": {
-                    "byte_size": 737344018,
-                    "archive_format": "TAR_GZ",
-                    "strip_components": 1,
-                    "max_decompressed_bytes": 2600000000,
-                    "max_regular_file_bytes": 2600000000,
-                    "max_entries": 25000,
-                },
-                "runtime_environment": [
-                    {
-                        "name": "PATH",
-                        "operation": "PREPEND_PATH",
-                        "relative_paths": ["bin", "py3bin"],
-                    },
-                    {
-                        "name": "VERILATOR_ROOT",
-                        "operation": "SET",
-                        "relative_paths": ["share/verilator"],
-                    },
-                    {
-                        "name": "GHDL_PREFIX",
-                        "operation": "SET",
-                        "relative_paths": ["lib/ghdl"],
-                    },
-                ],
-                "allowed_redirect_hosts": ["release-assets.githubusercontent.com"],
-            },
-            {
-                "component_id": "openroad",
-                "source_kind": "ARCHIVE",
-                "version": "26Q2-1164-g08f67ee5ec",
-                "source_url": "https://vaultlink.precisioninno.com/api/releases/26Q2-1164-g08f67ee5ec/openroad_26Q2-1164-g08f67ee5ec_amd64-ubuntu-24.04.deb/download",
-                "archive_sha256": (
-                    "sha256:f3f1eeaa18f327503f72cc45dcef5b1514ec2e89726ec53b4553bf4f951168a3"
-                ),
-                "git_commit": None,
-                "license": "BSD-3-Clause",
-                "executables": [
-                    {
-                        "tool_id": "openroad",
-                        "relative_path": "usr/bin/openroad",
-                        "version_args": ["-version"],
-                    },
-                    {
-                        "tool_id": "opensta",
-                        "relative_path": "usr/bin/sta",
-                        "version_args": ["-version"],
-                    },
-                ],
-                "archive": {
-                    "byte_size": 63800256,
-                    "archive_format": "DEB",
-                    "strip_components": 0,
-                    "max_decompressed_bytes": 400000000,
-                    "max_regular_file_bytes": 400000000,
-                    "max_entries": 15000,
-                },
-                "runtime_environment": [
-                    {
-                        "name": "LD_LIBRARY_PATH",
-                        "operation": "PREPEND_PATH",
-                        "relative_paths": ["opt/or-tools/lib"],
-                    },
-                ],
-                "allowed_redirect_hosts": ["storage.googleapis.com"],
-            },
-            {
-                "component_id": "libpython3_12t64",
-                "source_kind": "ARCHIVE",
-                "version": "3.12.3-1ubuntu0.15",
-                "source_url": "https://security.ubuntu.com/ubuntu/pool/main/p/python3.12/libpython3.12t64_3.12.3-1ubuntu0.15_amd64.deb",
-                "archive_sha256": (
-                    "sha256:403683f2f773455bfac9ef0c830facbdb6801f616436054dad691ccfd00b4a30"
-                ),
-                "git_commit": None,
-                "license": "PSF-2.0",
-                "executables": [],
-                "archive": {
-                    "byte_size": 2339412,
-                    "archive_format": "DEB",
-                    "strip_components": 0,
-                    "max_decompressed_bytes": 50000000,
-                    "max_regular_file_bytes": 50000000,
-                    "max_entries": 5000,
-                },
-                "runtime_environment": [
-                    {
-                        "name": "LD_LIBRARY_PATH",
-                        "operation": "PREPEND_PATH",
-                        "relative_paths": ["usr/lib/x86_64-linux-gnu"],
-                    }
-                ],
-                "allowed_redirect_hosts": [],
-            },
-            {
-                "component_id": "tcl_tclreadline",
-                "source_kind": "ARCHIVE",
-                "version": "2.3.8-2build2",
-                "source_url": "https://archive.ubuntu.com/ubuntu/pool/universe/t/tclreadline/tcl-tclreadline_2.3.8-2build2_amd64.deb",
-                "archive_sha256": (
-                    "sha256:7f61dca1a7f55c445babfd2c718ff5359de8a61288125089c1c8a9e788c11f00"
-                ),
-                "git_commit": None,
-                "license": "BSD-3-Clause",
-                "executables": [],
-                "archive": {
-                    "byte_size": 51300,
-                    "archive_format": "DEB",
-                    "strip_components": 0,
-                    "max_decompressed_bytes": 50000000,
-                    "max_regular_file_bytes": 50000000,
-                    "max_entries": 5000,
-                },
-                "runtime_environment": [
-                    {
-                        "name": "TCLLIBPATH",
-                        "operation": "SET",
-                        "relative_paths": ["usr/lib/tcltk/x86_64-linux-gnu"],
-                    }
-                ],
-                "allowed_redirect_hosts": [],
-            },
-            {
-                "component_id": "libqt5charts5",
-                "source_kind": "ARCHIVE",
-                "version": "5.15.13-1",
-                "source_url": "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtcharts-opensource-src/libqt5charts5_5.15.13-1_amd64.deb",
-                "archive_sha256": (
-                    "sha256:ecbe66ccf9ad309f0874c12c0cb15a888b4de61933ea175543753a03b5209fd5"
-                ),
-                "git_commit": None,
-                "license": "LGPL-3.0-only",
-                "executables": [],
-                "archive": {
-                    "byte_size": 482186,
-                    "archive_format": "DEB",
-                    "strip_components": 0,
-                    "max_decompressed_bytes": 50000000,
-                    "max_regular_file_bytes": 50000000,
-                    "max_entries": 5000,
-                },
-                "runtime_environment": [
-                    {
-                        "name": "LD_LIBRARY_PATH",
-                        "operation": "PREPEND_PATH",
-                        "relative_paths": ["usr/lib/x86_64-linux-gnu"],
-                    }
-                ],
-                "allowed_redirect_hosts": [],
-            },
-            {
-                "component_id": "libyaml_cpp0_8",
-                "source_kind": "ARCHIVE",
-                "version": "0.8.0+dfsg-6build1",
-                "source_url": "https://archive.ubuntu.com/ubuntu/pool/main/y/yaml-cpp/libyaml-cpp0.8_0.8.0+dfsg-6build1_amd64.deb",
-                "archive_sha256": (
-                    "sha256:2be57b812a1b082011d1b9bf6140fb875f19e153730be1ba965185b890b387f5"
-                ),
-                "git_commit": None,
-                "license": "MIT",
-                "executables": [],
-                "archive": {
-                    "byte_size": 115458,
-                    "archive_format": "DEB",
-                    "strip_components": 0,
-                    "max_decompressed_bytes": 50000000,
-                    "max_regular_file_bytes": 50000000,
-                    "max_entries": 5000,
-                },
-                "runtime_environment": [
-                    {
-                        "name": "LD_LIBRARY_PATH",
-                        "operation": "PREPEND_PATH",
-                        "relative_paths": ["usr/lib/x86_64-linux-gnu"],
-                    }
-                ],
-                "allowed_redirect_hosts": [],
-            },
-            {
-                "component_id": "orfs",
-                "source_kind": "GIT",
-                "version": "4c06bcb2466996a90d31101d85d705ad015950bc",
-                "source_url": "https://github.com/The-OpenROAD-Project/OpenROAD-flow-scripts.git",
-                "archive_sha256": None,
-                "git_commit": "4c06bcb2466996a90d31101d85d705ad015950bc",
-                "license": "BSD-3-Clause",
-                "executables": [],
-                "archive": None,
-                "runtime_environment": [],
-                "allowed_redirect_hosts": [],
-            },
-        ],
+    assert tuple(components) == (
+        "oss_cad_suite",
+        "openroad",
+        "libpython3_12t64",
+        "tcl_tclreadline",
+        "libqt5charts5",
+        "libyaml_cpp0_8",
+        "orfs",
+    )
+    assert {
+        executable.tool_id: (executable.relative_path, executable.version_args)
+        for component in first.manifest.components
+        for executable in component.executables
+    } == {
+        "yosys": ("bin/yosys", ("-V",)),
+        "eqy": ("bin/eqy", ("--version",)),
+        "sby": ("bin/sby", ("--version",)),
+        "slang": ("bin/slang", ("--version",)),
+        "iverilog": ("bin/iverilog", ("-V",)),
+        "verilator": ("bin/verilator", ("--version",)),
+        "openroad": ("usr/bin/openroad", ("-version",)),
+        "opensta": ("usr/bin/sta", ("-version",)),
     }
+    assert components["oss_cad_suite"].archive_sha256 == (
+        "sha256:89ea1152ea84bc600f18cc685f721d534d1f018e09831662787865a3d79ce4aa"
+    )
+    assert components["oss_cad_suite"].archive.byte_size == 737344018
+    assert components["oss_cad_suite"].archive.max_entries == 25000
+    assert components["orfs"].git_commit == "4c06bcb2466996a90d31101d85d705ad015950bc"

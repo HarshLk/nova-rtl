@@ -13,7 +13,7 @@
       "source_url": "https://github.com/YosysHQ/oss-cad-suite-build/releases/download/2026-07-29/oss-cad-suite-linux-x64-20260729.tgz",
       "archive_sha256": "sha256:89ea1152ea84bc600f18cc685f721d534d1f018e09831662787865a3d79ce4aa",
       "git_commit": null,
-      "license": "ISC",
+      "license": "MULTIPLE",
       "executables": [
         {"tool_id": "yosys", "relative_path": "bin/yosys", "version_args": ["-V"]},
         {"tool_id": "eqy", "relative_path": "bin/eqy", "version_args": ["--version"]},
