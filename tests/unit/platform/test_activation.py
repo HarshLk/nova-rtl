@@ -71,8 +71,28 @@ def manifest() -> ToolchainSourceManifest:
     )
 
 
-def hydrated_root(tmp_path: Path) -> tuple[ToolchainSourceManifest, Path]:
-    source_manifest = manifest()
+def literal_manifest() -> ToolchainSourceManifest:
+    source_with_literal = source().model_copy(
+        update={
+            "runtime_environment": (
+                *source().runtime_environment,
+                RuntimeEnvironmentEntry(
+                    name="PYTHONDONTWRITEBYTECODE", operation="SET_LITERAL", literal_value="1"
+                ),
+            )
+        }
+    )
+    return ToolchainSourceManifest(
+        host=HostPlatform(os="linux", architecture="x86_64"),
+        tool_root_name=".nova-tools",
+        components=(source_with_literal,),
+    )
+
+
+def hydrated_root(
+    tmp_path: Path, source_manifest: ToolchainSourceManifest | None = None
+) -> tuple[ToolchainSourceManifest, Path]:
+    source_manifest = source_manifest or manifest()
     root = tmp_path / ".nova-tools"
     component = root / "components" / "suite"
     (component / "bin").mkdir(parents=True)
@@ -81,11 +101,66 @@ def hydrated_root(tmp_path: Path) -> tuple[ToolchainSourceManifest, Path]:
     executable = component / "bin" / "yosys"
     executable.write_text("#!/bin/sh\nprintf 'yosys 1.0\\n'\n", encoding="utf-8")
     executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
-    receipt = component_receipt_bytes(manifest_content_identity_hash(source_manifest), source())
+    receipt = component_receipt_bytes(
+        manifest_content_identity_hash(source_manifest), source_manifest.components[0]
+    )
     (component / ".nova-hydration-receipt.json").write_bytes(receipt)
     (root / "receipts").mkdir()
     (root / "receipts" / "suite.json").write_bytes(receipt)
     return source_manifest, root
+
+
+def test_literal_runtime_value_is_receipted_rendered_and_stops_python_bytecode_writes(
+    tmp_path: Path,
+) -> None:
+    source_manifest, root = hydrated_root(tmp_path, literal_manifest())
+    executable = root / "components" / "suite" / "bin" / "yosys"
+    helper = executable.with_name("probe_helper.py")
+    helper.write_text("VALUE = 'loaded'\n", encoding="utf-8")
+    executable.write_text(
+        "#!/usr/bin/env python3\nimport probe_helper\nprint('yosys 1.0')\n", encoding="utf-8"
+    )
+    executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+
+    create_toolchain_receipt(source_manifest, root)
+
+    assert not tuple(helper.parent.glob("__pycache__/*"))
+    verified = verify_toolchain(source_manifest, root)
+    assert verified.literal_environment == {"PYTHONDONTWRITEBYTECODE": "1"}
+    assert json.loads(verified.receipt_path.read_text(encoding="utf-8"))["environment"][
+        "PYTHONDONTWRITEBYTECODE"
+    ] == {"operation": "SET_LITERAL", "paths": [], "literal_value": "1"}
+    assert render_shell_environment(
+        verified.canonical_environment,
+        verified.environment_operations,
+        verified.literal_environment,
+    ).endswith("export PYTHONDONTWRITEBYTECODE='1'\n")
+
+
+def test_toolchain_env_json_emits_a_structured_literal_value(tmp_path: Path) -> None:
+    source_manifest, root = hydrated_root(tmp_path, literal_manifest())
+    create_toolchain_receipt(source_manifest, root)
+    manifest_path = tmp_path / "sources.json"
+    manifest_path.write_text(json.dumps(source_manifest.model_dump(mode="json")), encoding="utf-8")
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "toolchain",
+            "env",
+            "--manifest",
+            str(manifest_path),
+            "--project-root",
+            str(tmp_path),
+            "--json",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["environment"]["PYTHONDONTWRITEBYTECODE"] == {
+        "operation": "SET_LITERAL",
+        "literal_value": "1",
+    }
 
 
 def test_receipt_verification_is_offline_and_detects_component_mutation(tmp_path: Path) -> None:

@@ -120,15 +120,27 @@ def toolchain_env(
             payload = {
                 "status": "PASS",
                 "environment": {
-                    name: {"operation": verified.environment_operations[name], "paths": list(paths)}
-                    for name, paths in verified.canonical_environment.items()
+                    name: (
+                        {
+                            "operation": "SET_LITERAL",
+                            "literal_value": verified.literal_environment[name],
+                        }
+                        if verified.environment_operations[name] == "SET_LITERAL"
+                        else {
+                            "operation": verified.environment_operations[name],
+                            "paths": list(verified.canonical_environment[name]),
+                        }
+                    )
+                    for name in verified.environment_operations
                 },
             }
             typer.echo(json.dumps(payload, separators=(",", ":"), sort_keys=True))
         else:
             typer.echo(
                 render_shell_environment(
-                    verified.canonical_environment, verified.environment_operations
+                    verified.canonical_environment,
+                    verified.environment_operations,
+                    verified.literal_environment,
                 ),
                 nl=False,
             )

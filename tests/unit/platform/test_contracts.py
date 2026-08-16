@@ -244,6 +244,61 @@ def test_runtime_environment_requires_only_nonempty_relative_paths() -> None:
         RuntimeEnvironmentEntry(name="TOOL_ROOT", operation="SET", relative_paths=("share", "lib"))
 
 
+def test_runtime_environment_accepts_an_explicit_control_free_literal() -> None:
+    entry = RuntimeEnvironmentEntry.model_validate(
+        {
+            "name": "PYTHONDONTWRITEBYTECODE",
+            "operation": "SET_LITERAL",
+            "literal_value": "1",
+        }
+    )
+
+    assert entry.relative_paths == ()
+    assert entry.literal_value == "1"
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    (
+        (
+            {"name": "PYTHONDONTWRITEBYTECODE", "operation": "SET_LITERAL"},
+            "literal_value",
+        ),
+        (
+            {
+                "name": "PYTHONDONTWRITEBYTECODE",
+                "operation": "SET_LITERAL",
+                "relative_paths": ["bin"],
+                "literal_value": "1",
+            },
+            "relative_paths",
+        ),
+        (
+            {
+                "name": "TOOL_ROOT",
+                "operation": "SET",
+                "relative_paths": ["share"],
+                "literal_value": "value",
+            },
+            "literal_value",
+        ),
+        (
+            {
+                "name": "PYTHONDONTWRITEBYTECODE",
+                "operation": "SET_LITERAL",
+                "literal_value": "line\nbreak",
+            },
+            "control",
+        ),
+    ),
+)
+def test_runtime_environment_rejects_ambiguous_or_unsafe_literal_values(
+    payload: dict[str, object], message: str
+) -> None:
+    with pytest.raises(ValidationError, match=message):
+        RuntimeEnvironmentEntry.model_validate(payload)
+
+
 def test_manifest_rejects_cross_component_runtime_operation_conflict() -> None:
     first = ToolSource(
         component_id="first_suite",

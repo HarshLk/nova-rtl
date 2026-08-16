@@ -33,7 +33,8 @@
       "runtime_environment": [
         {"name": "PATH", "operation": "PREPEND_PATH", "relative_paths": ["bin", "py3bin"]},
         {"name": "VERILATOR_ROOT", "operation": "SET", "relative_paths": ["share/verilator"]},
-        {"name": "GHDL_PREFIX", "operation": "SET", "relative_paths": ["lib/ghdl"]}
+        {"name": "GHDL_PREFIX", "operation": "SET", "relative_paths": ["lib/ghdl"]},
+        {"name": "PYTHONDONTWRITEBYTECODE", "operation": "SET_LITERAL", "literal_value": "1"}
       ],
       "allowed_redirect_hosts": ["release-assets.githubusercontent.com"]
     },
@@ -102,6 +103,7 @@
         "max_entries": 5000
       },
       "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]},
         {"name": "TCLLIBPATH", "operation": "SET", "relative_paths": ["usr/lib/tcltk/x86_64-linux-gnu"]}
       ],
       "allowed_redirect_hosts": []

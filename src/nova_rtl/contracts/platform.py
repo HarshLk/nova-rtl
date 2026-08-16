@@ -103,8 +103,20 @@ class RuntimeEnvironmentEntry(StrictContract):
     """A rooted runtime value contributed by one portable component."""
 
     name: str = Field(pattern=r"^[A-Z_][A-Z0-9_]{0,127}$")
-    operation: Literal["PREPEND_PATH", "SET"] = "PREPEND_PATH"
-    relative_paths: tuple[str, ...] = Field(min_length=1)
+    operation: Literal["PREPEND_PATH", "SET", "SET_LITERAL"] = "PREPEND_PATH"
+    relative_paths: tuple[str, ...] = ()
+    literal_value: str | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def path_operations_require_relative_paths_in_input(cls, value: object) -> object:
+        if (
+            isinstance(value, dict)
+            and value.get("operation", "PREPEND_PATH") != "SET_LITERAL"
+            and "relative_paths" not in value
+        ):
+            raise ValueError("path-based runtime environment entry requires relative_paths")
+        return value
 
     @field_validator("relative_paths")
     @classmethod
@@ -114,7 +126,27 @@ class RuntimeEnvironmentEntry(StrictContract):
         return tuple(_validate_relative_path(item) for item in value)
 
     @model_validator(mode="after")
-    def set_has_one_value(self) -> Self:
+    def operation_value_is_unambiguous(self) -> Self:
+        if self.literal_value is not None and any(
+            ord(character) < 32 or ord(character) == 127 for character in self.literal_value
+        ):
+            raise ValueError("literal_value must not contain control characters")
+        if self.operation == "SET_LITERAL":
+            if self.relative_paths:
+                raise ValueError(
+                    "SET_LITERAL runtime environment entry cannot declare relative_paths"
+                )
+            if not self.literal_value:
+                raise ValueError(
+                    "SET_LITERAL runtime environment entry requires a nonempty literal_value"
+                )
+            return self
+        if not self.relative_paths:
+            raise ValueError(
+                "runtime environment entry relative_paths must contain at least 1 item"
+            )
+        if self.literal_value is not None:
+            raise ValueError("path-based runtime environment entry cannot declare literal_value")
         if self.operation == "SET" and len(self.relative_paths) != 1:
             raise ValueError("SET runtime environment entry requires exactly one path")
         return self
@@ -225,7 +257,7 @@ class ToolchainSourceManifest(StrictContract):
                     raise ValueError(
                         f"runtime variable {entry.name} mixes SET and PREPEND_PATH operations"
                     )
-                if entry.operation == "SET":
+                if entry.operation in {"SET", "SET_LITERAL"}:
                     if entry.name in set_contributions:
                         raise ValueError(
                             f"runtime variable {entry.name} has more than one SET contribution"
@@ -372,8 +404,9 @@ class InstalledComponentReceipt(StrictContract):
 class CanonicalEnvironmentEntry(StrictContract):
     """One deterministic, rooted activation variable in a toolchain receipt."""
 
-    operation: Literal["PREPEND_PATH", "SET"]
-    paths: tuple[str, ...] = Field(min_length=1)
+    operation: Literal["PREPEND_PATH", "SET", "SET_LITERAL"]
+    paths: tuple[str, ...] = ()
+    literal_value: str | None = None
 
     @field_validator("paths")
     @classmethod
@@ -387,7 +420,23 @@ class CanonicalEnvironmentEntry(StrictContract):
         return value
 
     @model_validator(mode="after")
-    def set_has_one_value(self) -> Self:
+    def operation_value_is_unambiguous(self) -> Self:
+        if self.literal_value is not None and any(
+            ord(character) < 32 or ord(character) == 127 for character in self.literal_value
+        ):
+            raise ValueError("literal_value must not contain control characters")
+        if self.operation == "SET_LITERAL":
+            if self.paths:
+                raise ValueError("SET_LITERAL canonical environment entry cannot declare paths")
+            if not self.literal_value:
+                raise ValueError(
+                    "SET_LITERAL canonical environment entry requires a nonempty literal_value"
+                )
+            return self
+        if not self.paths:
+            raise ValueError("path-based canonical environment entry requires at least 1 path")
+        if self.literal_value is not None:
+            raise ValueError("path-based canonical environment entry cannot declare literal_value")
         if self.operation == "SET" and len(self.paths) != 1:
             raise ValueError("SET canonical environment entry requires exactly one path")
         return self

@@ -49,12 +49,15 @@ class VerifiedToolchain:
     tool_paths: Mapping[str, Path]
     canonical_environment: Mapping[str, tuple[str, ...]]
     environment_operations: Mapping[str, str]
+    literal_environment: Mapping[str, str]
     tool_fingerprints: Mapping[str, ToolFingerprint]
 
     def execution_environment(self) -> dict[str, str]:
         """Return a process environment rooted in this verified install."""
 
-        return _execution_environment(self.canonical_environment, self.environment_operations)
+        return _execution_environment(
+            self.canonical_environment, self.environment_operations, self.literal_environment
+        )
 
 
 def _canonical_bytes(value: Any) -> bytes:
@@ -196,16 +199,28 @@ def component_tree_identity(inventory: tuple[ComponentInventoryEntry, ...]) -> s
 
 def _runtime_environment(
     manifest: ToolchainSourceManifest, root: Path
-) -> tuple[dict[str, tuple[str, ...]], dict[str, str]]:
+) -> tuple[dict[str, tuple[str, ...]], dict[str, str], dict[str, str]]:
     values: dict[str, list[str]] = {}
     operations: dict[str, str] = {}
+    literals: dict[str, str] = {}
     for source in manifest.components:
         component = _confined(root, root / "components" / source.component_id, "component")
         for entry in source.runtime_environment:
             operation = operations.setdefault(entry.name, entry.operation)
             if operation != entry.operation:
                 raise ToolchainVerificationError(
-                    f"runtime variable {entry.name} mixes SET and PREPEND_PATH operations"
+                    f"runtime variable {entry.name} mixes runtime environment operations"
+                )
+            if entry.operation == "SET_LITERAL":
+                if entry.name in values or entry.name in literals or entry.literal_value is None:
+                    raise ToolchainVerificationError(
+                        f"runtime variable {entry.name} has an invalid literal contribution"
+                    )
+                literals[entry.name] = entry.literal_value
+                continue
+            if entry.name in literals:
+                raise ToolchainVerificationError(
+                    f"runtime variable {entry.name} mixes literal and path contributions"
                 )
             values.setdefault(entry.name, [])
             for relative in entry.relative_paths:
@@ -215,16 +230,26 @@ def _runtime_environment(
                 if not candidate.is_dir():
                     raise ToolchainVerificationError(f"runtime path is missing: {candidate}")
                 values[entry.name].append(str(candidate))
-    return ({name: tuple(paths) for name, paths in values.items()}, operations)
+    return ({name: tuple(paths) for name, paths in values.items()}, operations, literals)
 
 
 def _execution_environment(
-    canonical_environment: Mapping[str, tuple[str, ...]], operations: Mapping[str, str]
+    canonical_environment: Mapping[str, tuple[str, ...]],
+    operations: Mapping[str, str],
+    literal_environment: Mapping[str, str],
 ) -> dict[str, str]:
+    if set(canonical_environment) & set(literal_environment) or set(operations) != (
+        set(canonical_environment) | set(literal_environment)
+    ):
+        raise ToolchainVerificationError("canonical environment values and operations do not match")
     environment = dict(os.environ)
-    for name, paths in canonical_environment.items():
+    for name, operation in operations.items():
+        if operation == "SET_LITERAL":
+            environment[name] = literal_environment[name]
+            continue
+        paths = canonical_environment[name]
         joined = ":".join(paths)
-        if operations[name] == "SET":
+        if operation == "SET":
             environment[name] = joined
         else:
             environment[name] = f"{joined}:{environment[name]}" if environment.get(name) else joined
@@ -232,24 +257,34 @@ def _execution_environment(
 
 
 def render_shell_environment(
-    canonical_environment: Mapping[str, tuple[str, ...]], operations: Mapping[str, str]
+    canonical_environment: Mapping[str, tuple[str, ...]],
+    operations: Mapping[str, str],
+    literal_environment: Mapping[str, str] | None = None,
 ) -> str:
     """Render sourceable POSIX shell exports from reviewed rooted paths only."""
 
-    if canonical_environment.keys() != operations.keys():
+    literal_environment = literal_environment or {}
+    if set(canonical_environment) & set(literal_environment) or set(operations) != (
+        set(canonical_environment) | set(literal_environment)
+    ):
         raise ToolchainVerificationError("environment values and operations do not match")
     lines: list[str] = []
-    for name, paths in canonical_environment.items():
+    for name, operation in operations.items():
         if not re.fullmatch(r"[A-Z_][A-Z0-9_]{0,127}", name):
             raise ToolchainVerificationError(f"invalid environment variable name: {name!r}")
         try:
-            entry = CanonicalEnvironmentEntry(operation=operations[name], paths=paths)
+            entry = CanonicalEnvironmentEntry(
+                operation=operation,
+                paths=canonical_environment.get(name, ()),
+                literal_value=literal_environment.get(name),
+            )
         except ValidationError as error:
             raise ToolchainVerificationError(
                 f"invalid canonical environment value for {name}: {error}"
             ) from error
-        quoted = ":".join("'" + path.replace("'", "'\\\"'\\\"'") + "'" for path in paths)
-        if entry.operation == "SET":
+        values = (entry.literal_value,) if entry.operation == "SET_LITERAL" else entry.paths
+        quoted = ":".join("'" + value.replace("'", "'\\\"'\\\"'") + "'" for value in values)
+        if entry.operation in {"SET", "SET_LITERAL"}:
             lines.append(f"export {name}={quoted}")
         else:
             lines.append(f"export {name}={quoted}${{{name}:+:${name}}}")
@@ -355,6 +390,7 @@ def _receipt_payload(
     components: tuple[InstalledComponentReceipt, ...],
     canonical_environment: Mapping[str, tuple[str, ...]],
     operations: Mapping[str, str],
+    literal_environment: Mapping[str, str],
     fingerprints: Mapping[str, ToolFingerprint],
 ) -> ToolchainReceipt:
     return ToolchainReceipt(
@@ -363,8 +399,12 @@ def _receipt_payload(
         manifest=manifest,
         components=components,
         environment={
-            name: CanonicalEnvironmentEntry(operation=operations[name], paths=paths)
-            for name, paths in canonical_environment.items()
+            name: CanonicalEnvironmentEntry(
+                operation=operation,
+                paths=canonical_environment.get(name, ()),
+                literal_value=literal_environment.get(name),
+            )
+            for name, operation in operations.items()
         },
         tool_fingerprints=tuple(fingerprints.values()),
     )
@@ -392,8 +432,12 @@ def create_toolchain_receipt(manifest: ToolchainSourceManifest, root: Path) -> P
     checked_root = _tool_root(manifest, root)
     with tool_root_lock(checked_root):
         components, tool_paths = _component_state(manifest, checked_root)
-        canonical_environment, operations = _runtime_environment(manifest, checked_root)
-        execution_environment = _execution_environment(canonical_environment, operations)
+        canonical_environment, operations, literal_environment = _runtime_environment(
+            manifest, checked_root
+        )
+        execution_environment = _execution_environment(
+            canonical_environment, operations, literal_environment
+        )
         fingerprints: dict[str, ToolFingerprint] = {}
         for source in manifest.components:
             for executable in source.executables:
@@ -414,7 +458,12 @@ def create_toolchain_receipt(manifest: ToolchainSourceManifest, root: Path) -> P
             receipt,
             canonical_json_bytes(
                 _receipt_payload(
-                    manifest, components, canonical_environment, operations, fingerprints
+                    manifest,
+                    components,
+                    canonical_environment,
+                    operations,
+                    literal_environment,
+                    fingerprints,
                 )
             )
             + b"\n",
@@ -442,10 +491,16 @@ def verify_toolchain(manifest: ToolchainSourceManifest, root: Path) -> VerifiedT
         components, tool_paths = _component_state(manifest, checked_root)
         if receipt.components != components:
             raise ToolchainVerificationError("component tree identity or inventory mismatch")
-        canonical_environment, operations = _runtime_environment(manifest, checked_root)
+        canonical_environment, operations, literal_environment = _runtime_environment(
+            manifest, checked_root
+        )
         expected_environment = {
-            name: CanonicalEnvironmentEntry(operation=operations[name], paths=paths)
-            for name, paths in canonical_environment.items()
+            name: CanonicalEnvironmentEntry(
+                operation=operation,
+                paths=canonical_environment.get(name, ()),
+                literal_value=literal_environment.get(name),
+            )
+            for name, operation in operations.items()
         }
         if receipt.environment != expected_environment:
             raise ToolchainVerificationError("canonical environment mismatch")
@@ -458,7 +513,9 @@ def verify_toolchain(manifest: ToolchainSourceManifest, root: Path) -> VerifiedT
             for item in source.executables
         }
         fingerprints: dict[str, ToolFingerprint] = {}
-        execution_environment = _execution_environment(canonical_environment, operations)
+        execution_environment = _execution_environment(
+            canonical_environment, operations, literal_environment
+        )
         for recorded, tool_id in zip(receipt.tool_fingerprints, expected_ids, strict=True):
             expected_path = tool_paths[tool_id]
             if recorded.executable != str(expected_path):
@@ -481,7 +538,13 @@ def verify_toolchain(manifest: ToolchainSourceManifest, root: Path) -> VerifiedT
             fingerprints[tool_id] = recorded
         _verify_git_state(manifest, checked_root)
     return VerifiedToolchain(
-        checked_root, receipt_path, tool_paths, canonical_environment, operations, fingerprints
+        checked_root,
+        receipt_path,
+        tool_paths,
+        canonical_environment,
+        operations,
+        literal_environment,
+        fingerprints,
     )
 
 

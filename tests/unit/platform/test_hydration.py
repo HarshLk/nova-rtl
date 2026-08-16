@@ -522,6 +522,45 @@ def test_git_checkout_passes_a_finite_subprocess_timeout(tmp_path: Path) -> None
     assert timeouts and all(timeout > 0 for timeout in timeouts)
 
 
+def test_git_checkout_avoids_downloading_unneeded_blob_history(tmp_path: Path) -> None:
+    git_source = ToolSource(
+        component_id="orfs",
+        source_kind="GIT",
+        version="pinned",
+        source_url="https://github.com/example/orfs.git",
+        archive_sha256=None,
+        git_commit="a" * 40,
+        license="BSD-3-Clause",
+        executables=(),
+        archive=None,
+        runtime_environment=(),
+        allowed_redirect_hosts=(),
+    )
+    commands: list[tuple[str, ...]] = []
+
+    def run(command: tuple[str, ...], **_: object) -> SimpleNamespace:
+        commands.append(command)
+        stdout = "a" * 40 + "\n" if command[-2:] == ("rev-parse", "HEAD") else ""
+        return SimpleNamespace(returncode=0, stdout=stdout, stderr="")
+
+    checkout_git_source(git_source, tmp_path / "checkout", run=run)
+
+    assert commands[0] == (
+        "git",
+        "-c",
+        "http.followRedirects=false",
+        "-c",
+        "protocol.file.allow=never",
+        "clone",
+        "--filter=blob:none",
+        "--no-checkout",
+        "--no-recurse-submodules",
+        "--",
+        "https://github.com/example/orfs.git",
+        str(tmp_path / "checkout"),
+    )
+
+
 def test_hydration_times_out_when_another_process_owns_the_root_lock(tmp_path: Path) -> None:
     import fcntl
 

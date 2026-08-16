@@ -10,7 +10,7 @@ from nova_rtl.platform.hydration import (
 MANIFEST_PATH = (
     Path(__file__).resolve().parents[3] / "config" / "platform" / "toolchain-sources.json"
 )
-EXPECTED_MANIFEST_HASH = "sha256:fcd2317ef809d1d10c6010844ab4c57d7a2bee029906c98011d87322adeb1cc9"
+EXPECTED_MANIFEST_HASH = "sha256:1f5fef34f43078285ee6f432d80e7279f8d6c9baa7c7d62909b7e13d4a46f686"
 
 
 def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> None:
@@ -50,3 +50,14 @@ def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> Non
     assert components["oss_cad_suite"].archive.byte_size == 737344018
     assert components["oss_cad_suite"].archive.max_entries == 25000
     assert components["orfs"].git_commit == "4c06bcb2466996a90d31101d85d705ad015950bc"
+    assert {
+        entry.name: (entry.operation, entry.relative_paths, entry.literal_value)
+        for entry in components["tcl_tclreadline"].runtime_environment
+    } == {
+        "LD_LIBRARY_PATH": ("PREPEND_PATH", ("usr/lib/x86_64-linux-gnu",), None),
+        "TCLLIBPATH": ("SET", ("usr/lib/tcltk/x86_64-linux-gnu",), None),
+    }
+    assert {
+        entry.name: (entry.operation, entry.relative_paths, entry.literal_value)
+        for entry in components["oss_cad_suite"].runtime_environment
+    }["PYTHONDONTWRITEBYTECODE"] == ("SET_LITERAL", (), "1")
