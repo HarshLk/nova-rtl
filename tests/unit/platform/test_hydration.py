@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gzip
 import hashlib
 import io
 import json
@@ -20,6 +21,8 @@ from nova_rtl.contracts.platform import (
 )
 from nova_rtl.platform.hydration import (
     HydrationError,
+    _deb_data_tar,
+    _decompress_to_tar,
     checkout_git_source,
     download_archive,
     hydrate_toolchain,
@@ -42,9 +45,7 @@ def source(data: bytes, *, component_id: str = "suite", size: int | None = None)
         git_commit=None,
         license="ISC",
         executables=(
-            ToolExecutableSource(
-                tool_id="yosys", relative_path="bin/yosys", version_args=("-V",)
-            ),
+            ToolExecutableSource(tool_id="yosys", relative_path="bin/yosys", version_args=("-V",)),
         ),
         archive=ArchiveMetadata(
             byte_size=len(data) if size is None else size,
@@ -145,9 +146,7 @@ def test_hydration_rejects_archive_hash_mismatch_before_extraction(tmp_path: Pat
     data = tar_bytes({"suite/bin/yosys": b"tool"})
     opener, _ = opener_for(data)
     bad_source = source(data).model_copy(update={"archive_sha256": hash_ref(b"other")})
-    source_manifest = manifest(data).model_copy(
-        update={"components": (bad_source,)}
-    )
+    source_manifest = manifest(data).model_copy(update={"components": (bad_source,)})
 
     with pytest.raises(HydrationError, match="SHA-256 mismatch"):
         hydrate_toolchain(source_manifest, tmp_path / ".nova-tools", opener=opener)
@@ -340,6 +339,60 @@ def test_repeated_hydration_uses_the_existing_receipt_without_network(tmp_path: 
     assert second.components[0].reused is True
     assert len(calls) == 1
     assert (root / "receipts" / "suite.json").is_file()
+
+
+def test_rehydration_rejects_a_component_mutated_after_publication(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"original"})
+    opener, _ = opener_for(data)
+    root = tmp_path / ".nova-tools"
+
+    hydrate_toolchain(manifest(data), root, opener=opener)
+    executable = root / "components" / "suite" / "bin" / "yosys"
+    executable.write_bytes(b"mutated")
+
+    with pytest.raises(HydrationError, match="receipt"):
+        hydrate_toolchain(manifest(data), root, opener=opener)
+
+
+def test_safe_extraction_bounds_entries_without_materializing_getmembers(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    archive_path = tmp_path / "suite.tar.gz"
+    archive_path.write_bytes(data)
+
+    def fail_getmembers(_: tarfile.TarFile) -> list[tarfile.TarInfo]:
+        raise AssertionError("getmembers materializes the complete archive")
+
+    monkeypatch.setattr(tarfile.TarFile, "getmembers", fail_getmembers)
+
+    safe_extract_archive(archive_path, tmp_path / "destination", source(data).archive)
+
+    assert (tmp_path / "destination" / "bin" / "yosys").read_bytes() == b"tool"
+
+
+def test_truncated_gzip_decompression_cleans_the_partial_tar(tmp_path: Path) -> None:
+    compressed = tmp_path / "truncated.tar.gz"
+    compressed.write_bytes(gzip.compress(b"payload")[:-4])
+
+    with pytest.raises(EOFError):
+        _decompress_to_tar(compressed, tmp_path, "GZ", 1024)
+
+    assert not tuple(tmp_path.glob(".data-*.tar"))
+
+
+def test_truncated_debian_data_member_cleans_the_partial_archive(tmp_path: Path) -> None:
+    member_size = 12
+    header = (f"{'data.tar.gz/':<16}{0:<12}{0:<6}{0:<6}{0o100644:<8}{member_size:<10}`\n").encode(
+        "ascii"
+    )
+    archive = tmp_path / "truncated.deb"
+    archive.write_bytes(b"!<arch>\n" + header + b"short")
+
+    with pytest.raises(HydrationError, match="truncated Debian archive member"):
+        _deb_data_tar(archive, tmp_path)
+
+    assert not tuple(tmp_path.glob(".data-*.gz"))
 
 
 def test_manifest_content_identity_is_independent_of_json_or_yaml_spelling(tmp_path: Path) -> None:

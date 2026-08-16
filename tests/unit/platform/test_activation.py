@@ -26,7 +26,11 @@ from nova_rtl.platform.activation import (
     render_shell_environment,
     verify_toolchain,
 )
-from nova_rtl.platform.hydration import component_receipt_bytes, manifest_content_identity_hash
+from nova_rtl.platform.hydration import (
+    component_inventory,
+    component_receipt_bytes,
+    manifest_content_identity_hash,
+)
 
 
 def hash_ref(data: bytes) -> str:
@@ -102,7 +106,9 @@ def hydrated_root(
     executable.write_text("#!/bin/sh\nprintf 'yosys 1.0\\n'\n", encoding="utf-8")
     executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
     receipt = component_receipt_bytes(
-        manifest_content_identity_hash(source_manifest), source_manifest.components[0]
+        manifest_content_identity_hash(source_manifest),
+        source_manifest.components[0],
+        component_inventory(component),
     )
     (component / ".nova-hydration-receipt.json").write_bytes(receipt)
     (root / "receipts").mkdir()
@@ -121,6 +127,14 @@ def test_literal_runtime_value_is_receipted_rendered_and_stops_python_bytecode_w
         "#!/usr/bin/env python3\nimport probe_helper\nprint('yosys 1.0')\n", encoding="utf-8"
     )
     executable.chmod(executable.stat().st_mode | stat.S_IXUSR)
+    component = root / "components" / "suite"
+    receipt = component_receipt_bytes(
+        manifest_content_identity_hash(source_manifest),
+        source_manifest.components[0],
+        component_inventory(component),
+    )
+    (component / ".nova-hydration-receipt.json").write_bytes(receipt)
+    (root / "receipts" / "suite.json").write_bytes(receipt)
 
     create_toolchain_receipt(source_manifest, root)
 
@@ -175,7 +189,7 @@ def test_receipt_verification_is_offline_and_detects_component_mutation(tmp_path
     )
 
     (root / "components" / "suite" / "share" / "changed").write_text("changed")
-    with pytest.raises(ToolchainVerificationError, match="tree identity"):
+    with pytest.raises(ToolchainVerificationError, match="receipt mismatch"):
         verify_toolchain(source_manifest, root)
 
 
@@ -390,7 +404,9 @@ def test_git_verification_rejects_non_directory_git_metadata(
     else:
         (component / ".git").write_text("gitdir: /tmp/not-a-repository\n", encoding="utf-8")
     component_receipt = component_receipt_bytes(
-        manifest_content_identity_hash(source_manifest), git_source
+        manifest_content_identity_hash(source_manifest),
+        git_source,
+        component_inventory(component, exclude_git_metadata=True),
     )
     (component / ".nova-hydration-receipt.json").write_bytes(component_receipt)
     (root / "receipts").mkdir()

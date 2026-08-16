@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import hashlib
-import json
 import os
 import re
 import stat
@@ -12,21 +10,22 @@ import tempfile
 from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
-from typing import Any
 
 from pydantic import ValidationError
 
 from nova_rtl.contracts.base import canonical_json_bytes
 from nova_rtl.contracts.platform import (
     CanonicalEnvironmentEntry,
-    ComponentInventoryEntry,
     InstalledComponentReceipt,
     ToolchainReceipt,
     ToolchainSourceManifest,
     ToolFingerprint,
 )
 from nova_rtl.platform.hydration import (
+    HydrationError,
+    component_inventory,
     component_receipt_bytes,
+    component_tree_identity,
     manifest_content_identity_hash,
     tool_root_lock,
 )
@@ -60,29 +59,6 @@ class VerifiedToolchain:
         )
 
 
-def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, allow_nan=False, ensure_ascii=False, separators=(",", ":"), sort_keys=True
-    ).encode("utf-8")
-
-
-def _sha256_bytes(value: bytes) -> str:
-    return f"sha256:{hashlib.sha256(value).hexdigest()}"
-
-
-def _sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    try:
-        with path.open("rb") as stream:
-            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
-                digest.update(chunk)
-    except OSError as error:
-        raise ToolchainVerificationError(
-            f"component file cannot be read: {path}: {error}"
-        ) from error
-    return f"sha256:{digest.hexdigest()}"
-
-
 def _no_symlink_ancestors(path: Path) -> Path:
     absolute = path.absolute()
     for ancestor in (absolute, *absolute.parents):
@@ -112,89 +88,6 @@ def _confined(root: Path, path: Path, label: str) -> Path:
     except ValueError as error:
         raise ToolchainVerificationError(f"{label} escapes the tool root") from error
     return checked
-
-
-def _safe_link_target(relative: PurePosixPath, target: str) -> None:
-    target_path = PurePosixPath(target)
-    if not target or "\\" in target or target_path.is_absolute():
-        raise ToolchainVerificationError(f"unsafe symlink target: {target!r}")
-    resolved = list(relative.parent.parts)
-    for part in target_path.parts:
-        if part in {"", "."}:
-            continue
-        if part == "..":
-            if not resolved:
-                raise ToolchainVerificationError(f"unsafe symlink target: {target!r}")
-            resolved.pop()
-        else:
-            resolved.append(part)
-
-
-def component_inventory(component: Path) -> tuple[ComponentInventoryEntry, ...]:
-    """Return a complete, stable inventory of a confined component worktree."""
-
-    if component.is_symlink() or not component.is_dir():
-        raise ToolchainVerificationError(f"component is missing or unsafe: {component}")
-    entries: list[ComponentInventoryEntry] = []
-
-    def visit(directory: Path, prefix: PurePosixPath) -> None:
-        try:
-            children = sorted(directory.iterdir(), key=lambda item: item.name)
-        except OSError as error:
-            raise ToolchainVerificationError(
-                f"component directory cannot be read: {directory}: {error}"
-            ) from error
-        for child in children:
-            relative = prefix / child.name
-            if relative.parts[0] == ".git" or relative == PurePosixPath(
-                ".nova-hydration-receipt.json"
-            ):
-                continue
-            try:
-                observed = child.lstat()
-            except OSError as error:
-                raise ToolchainVerificationError(
-                    f"component path cannot be inspected: {child}: {error}"
-                ) from error
-            mode = stat.S_IMODE(observed.st_mode)
-            if stat.S_ISDIR(observed.st_mode):
-                entries.append(
-                    ComponentInventoryEntry(path=relative.as_posix(), type="directory", mode=mode)
-                )
-                visit(child, relative)
-            elif stat.S_ISREG(observed.st_mode):
-                entries.append(
-                    ComponentInventoryEntry(
-                        path=relative.as_posix(),
-                        type="file",
-                        mode=mode,
-                        sha256=_sha256_file(child),
-                    )
-                )
-            elif stat.S_ISLNK(observed.st_mode):
-                try:
-                    target = os.readlink(child)
-                except OSError as error:
-                    raise ToolchainVerificationError(
-                        f"symlink cannot be read: {child}: {error}"
-                    ) from error
-                _safe_link_target(relative, target)
-                entries.append(
-                    ComponentInventoryEntry(
-                        path=relative.as_posix(), type="symlink", mode=mode, target=target
-                    )
-                )
-            else:
-                raise ToolchainVerificationError(f"unsupported component file type: {child}")
-
-    visit(component, PurePosixPath("."))
-    return tuple(entries)
-
-
-def component_tree_identity(inventory: tuple[ComponentInventoryEntry, ...]) -> str:
-    """Hash all relevant worktree paths, types, modes, and regular-file bytes."""
-
-    return _sha256_bytes(_canonical_bytes([entry.model_dump(mode="json") for entry in inventory]))
 
 
 def _runtime_environment(
@@ -299,7 +192,6 @@ def _component_state(
     tool_paths: dict[str, Path] = {}
     for source in manifest.components:
         component = _confined(root, root / "components" / source.component_id, "component")
-        expected_hydration_receipt = component_receipt_bytes(manifest_hash, source)
         internal = _confined(
             component, component / ".nova-hydration-receipt.json", "internal receipt"
         )
@@ -307,6 +199,10 @@ def _component_state(
             root, root / "receipts" / f"{source.component_id}.json", "component receipt"
         )
         try:
+            inventory = component_inventory(
+                component, exclude_git_metadata=source.source_kind == "GIT"
+            )
+            expected_hydration_receipt = component_receipt_bytes(manifest_hash, source, inventory)
             if (
                 internal.read_bytes() != expected_hydration_receipt
                 or external.read_bytes() != expected_hydration_receipt
@@ -314,11 +210,10 @@ def _component_state(
                 raise ToolchainVerificationError(
                     f"component hydration receipt mismatch: {source.component_id}"
                 )
-        except OSError as error:
+        except (HydrationError, OSError) as error:
             raise ToolchainVerificationError(
-                f"component hydration receipt missing: {source.component_id}"
+                f"component hydration receipt cannot be verified: {source.component_id}: {error}"
             ) from error
-        inventory = component_inventory(component)
         for executable in source.executables:
             path = _confined(
                 component,

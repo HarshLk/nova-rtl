@@ -392,6 +392,23 @@ class ComponentInventoryEntry(StrictContract):
         return self
 
 
+class HydrationComponentReceipt(StrictContract):
+    """Versioned source-to-tree provenance for one hydrated component."""
+
+    schema_version: Literal[2] = 2
+    component_id: EntityId
+    manifest_hash: HashRef
+    source: ToolSource
+    inventory: tuple[ComponentInventoryEntry, ...]
+    tree_identity: HashRef
+
+    @model_validator(mode="after")
+    def source_owns_receipt_component(self) -> Self:
+        if self.source.component_id != self.component_id:
+            raise ValueError("component receipt source does not match component_id")
+        return self
+
+
 class InstalledComponentReceipt(StrictContract):
     """Strict installed identity for one reviewed toolchain source."""
 

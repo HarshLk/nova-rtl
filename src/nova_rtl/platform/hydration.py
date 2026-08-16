@@ -11,6 +11,7 @@ import lzma
 import os
 import platform
 import shutil
+import stat
 import subprocess
 import tarfile
 import tempfile
@@ -28,7 +29,13 @@ import yaml
 import zstandard as zstd
 
 from nova_rtl.contracts.base import HashRef, canonical_json_bytes
-from nova_rtl.contracts.platform import ArchiveMetadata, ToolchainSourceManifest, ToolSource
+from nova_rtl.contracts.platform import (
+    ArchiveMetadata,
+    ComponentInventoryEntry,
+    HydrationComponentReceipt,
+    ToolchainSourceManifest,
+    ToolSource,
+)
 
 HTTP_TIMEOUT_SECONDS = 30
 GIT_TIMEOUT_SECONDS = 300
@@ -282,11 +289,101 @@ def _safe_link_target(link_path: PurePosixPath, target: str) -> None:
             resolved.append(part)
 
 
+def _inventory_file_hash(path: Path) -> HashRef:
+    digest = hashlib.sha256()
+    try:
+        with path.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    except OSError as error:
+        raise HydrationError(f"component file cannot be read: {path}: {error}") from error
+    return f"sha256:{digest.hexdigest()}"
+
+
+def component_inventory(
+    component: Path, *, exclude_git_metadata: bool = False
+) -> tuple[ComponentInventoryEntry, ...]:
+    """Return a complete stable inventory, excluding only internal provenance metadata."""
+
+    if component.is_symlink() or not component.is_dir():
+        raise HydrationError(f"component is missing or unsafe: {component}")
+    entries: list[ComponentInventoryEntry] = []
+
+    def visit(directory: Path, prefix: PurePosixPath) -> None:
+        try:
+            children = sorted(directory.iterdir(), key=lambda item: item.name)
+        except OSError as error:
+            raise HydrationError(
+                f"component directory cannot be read: {directory}: {error}"
+            ) from error
+        for child in children:
+            relative = prefix / child.name
+            if relative == PurePosixPath(".nova-hydration-receipt.json") or (
+                exclude_git_metadata and relative.parts[0] == ".git"
+            ):
+                continue
+            try:
+                observed = child.lstat()
+            except OSError as error:
+                raise HydrationError(
+                    f"component path cannot be inspected: {child}: {error}"
+                ) from error
+            mode = stat.S_IMODE(observed.st_mode)
+            if stat.S_ISDIR(observed.st_mode):
+                entries.append(
+                    ComponentInventoryEntry(path=relative.as_posix(), type="directory", mode=mode)
+                )
+                visit(child, relative)
+            elif stat.S_ISREG(observed.st_mode):
+                entries.append(
+                    ComponentInventoryEntry(
+                        path=relative.as_posix(),
+                        type="file",
+                        mode=mode,
+                        sha256=_inventory_file_hash(child),
+                    )
+                )
+            elif stat.S_ISLNK(observed.st_mode):
+                try:
+                    target = os.readlink(child)
+                except OSError as error:
+                    raise HydrationError(f"symlink cannot be read: {child}: {error}") from error
+                _safe_link_target(relative, target)
+                entries.append(
+                    ComponentInventoryEntry(
+                        path=relative.as_posix(), type="symlink", mode=mode, target=target
+                    )
+                )
+            else:
+                raise HydrationError(f"unsupported component file type: {child}")
+
+    visit(component, PurePosixPath("."))
+    return tuple(entries)
+
+
+def component_tree_identity(inventory: tuple[ComponentInventoryEntry, ...]) -> HashRef:
+    """Hash all relevant worktree paths, types, modes, and regular-file bytes."""
+
+    return f"sha256:{hashlib.sha256(_inventory_canonical_json_bytes(inventory)).hexdigest()}"
+
+
+def _inventory_canonical_json_bytes(inventory: tuple[ComponentInventoryEntry, ...]) -> bytes:
+    """Serialize inventory entries without relaxing strict contract serialization."""
+
+    return json.dumps(
+        [entry.model_dump(mode="json") for entry in inventory],
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+
+
 def _extract_tar(archive: tarfile.TarFile, destination: Path, metadata: ArchiveMetadata) -> None:
     entries: list[tuple[tarfile.TarInfo, PurePosixPath | None]] = []
     regular_file_bytes = 0
     member_count = 0
-    for member in archive.getmembers():
+    for member in archive:
         member_count += 1
         if member_count > metadata.max_entries:
             raise HydrationError("archive entry-count budget exceeded")
@@ -349,15 +446,19 @@ def _deb_data_tar(archive_path: Path, temporary_directory: Path) -> Path:
                     dir=temporary_directory, prefix=".data-", suffix=suffix
                 )
                 temporary = Path(temporary_name)
-                with os.fdopen(descriptor, "wb") as output:
-                    remaining = size
-                    while remaining:
-                        chunk = stream.read(min(1024 * 1024, remaining))
-                        if not chunk:
-                            raise HydrationError("truncated Debian archive member")
-                        output.write(chunk)
-                        remaining -= len(chunk)
-                return temporary
+                try:
+                    with os.fdopen(descriptor, "wb") as output:
+                        remaining = size
+                        while remaining:
+                            chunk = stream.read(min(1024 * 1024, remaining))
+                            if not chunk:
+                                raise HydrationError("truncated Debian archive member")
+                            output.write(chunk)
+                            remaining -= len(chunk)
+                    return temporary
+                except Exception:
+                    temporary.unlink(missing_ok=True)
+                    raise
             stream.seek(size + (size % 2), io.SEEK_CUR)
     raise HydrationError("Debian archive has no data.tar member")
 
@@ -393,7 +494,7 @@ def _decompress_to_tar(
                     "archive decompressed byte budget exceeded",
                 )
         return temporary
-    except (HydrationError, OSError, lzma.LZMAError, zstd.ZstdError):
+    except (EOFError, HydrationError, OSError, lzma.LZMAError, zstd.ZstdError):
         temporary.unlink(missing_ok=True)
         raise
 
@@ -507,21 +608,21 @@ def checkout_git_source(
         )
 
 
-def component_receipt_bytes(manifest_hash: HashRef, source: ToolSource) -> bytes:
-    """Serialize the stable receipt shared by hydration and offline activation."""
+def component_receipt_bytes(
+    manifest_hash: HashRef,
+    source: ToolSource,
+    inventory: tuple[ComponentInventoryEntry, ...],
+) -> bytes:
+    """Serialize strict versioned provenance from a reviewed source to its complete tree."""
 
-    payload = {
-        "archive_sha256": source.archive_sha256,
-        "archive_size_bytes": source.archive.byte_size if source.archive else None,
-        "component_id": source.component_id,
-        "git_commit": source.git_commit,
-        "manifest_hash": manifest_hash,
-        "schema_version": 1,
-        "source_kind": source.source_kind,
-        "source_url": source.source_url,
-        "version": source.version,
-    }
-    return json.dumps(payload, separators=(",", ":"), sort_keys=True).encode("utf-8") + b"\n"
+    receipt = HydrationComponentReceipt(
+        component_id=source.component_id,
+        manifest_hash=manifest_hash,
+        source=source,
+        inventory=inventory,
+        tree_identity=component_tree_identity(inventory),
+    )
+    return canonical_json_bytes(receipt) + b"\n"
 
 
 def _atomic_write(path: Path, data: bytes) -> None:
@@ -632,22 +733,37 @@ def hydrate_toolchain(
             receipt_path = _confined_path(
                 receipts_directory / f"{source.component_id}.json", root, "receipt"
             )
-            internal_receipt = destination / ".nova-hydration-receipt.json"
-            receipt = component_receipt_bytes(loaded.content_identity_hash, source)
+            internal_receipt = _confined_path(
+                destination / ".nova-hydration-receipt.json", root, "internal receipt"
+            )
             if destination.is_symlink():
                 raise HydrationError(f"component destination must not be a symlink: {destination}")
-            if (
-                destination.is_dir()
-                and internal_receipt.is_file()
-                and internal_receipt.read_bytes() == receipt
-            ):
-                if not receipt_path.is_file() or receipt_path.read_bytes() != receipt:
-                    receipt_path = _confined_path(receipt_path, root, "receipt")
-                    _atomic_write(receipt_path, receipt)
-                results.append(
-                    HydratedComponent(source.component_id, destination, receipt_path, reused=True)
+            if destination.is_dir():
+                inventory = component_inventory(
+                    destination, exclude_git_metadata=source.source_kind == "GIT"
                 )
-                continue
+                receipt = component_receipt_bytes(loaded.content_identity_hash, source, inventory)
+                try:
+                    receipt_matches = (
+                        internal_receipt.is_file()
+                        and receipt_path.is_file()
+                        and internal_receipt.read_bytes() == receipt
+                        and receipt_path.read_bytes() == receipt
+                    )
+                except OSError as error:
+                    raise HydrationError(
+                        f"component receipt cannot be read: {source.component_id}: {error}"
+                    ) from error
+                if receipt_matches:
+                    results.append(
+                        HydratedComponent(
+                            source.component_id, destination, receipt_path, reused=True
+                        )
+                    )
+                    continue
+                raise HydrationError(
+                    f"component receipt or tree identity mismatch: {source.component_id}"
+                )
             if destination.exists():
                 raise HydrationError(
                     f"unreceipted component exists and will not be activated: {destination}"
@@ -667,6 +783,10 @@ def hydrate_toolchain(
                     checkout_git_source(
                         source, staged_component, run=git_run, timeout_seconds=git_timeout_seconds
                     )
+                inventory = component_inventory(
+                    staged_component, exclude_git_metadata=source.source_kind == "GIT"
+                )
+                receipt = component_receipt_bytes(loaded.content_identity_hash, source, inventory)
                 _atomic_write(staged_component / ".nova-hydration-receipt.json", receipt)
                 components_directory = _confined_path(
                     components_directory, root, "components directory"
@@ -691,7 +811,9 @@ __all__ = [
     "HydrationResult",
     "LoadedToolchainSourceManifest",
     "checkout_git_source",
+    "component_inventory",
     "component_receipt_bytes",
+    "component_tree_identity",
     "download_archive",
     "hydrate_toolchain",
     "load_toolchain_source_manifest",
