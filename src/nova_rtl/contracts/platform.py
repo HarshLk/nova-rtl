@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from pathlib import Path, PurePosixPath
 from typing import Literal, Self
+from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 
@@ -87,6 +88,39 @@ class ToolExecutableSource(StrictContract):
         return self
 
 
+class ArchiveMetadata(StrictContract):
+    """Exact archive identity and layout required for safe acquisition."""
+
+    byte_size: int = Field(gt=0)
+    archive_format: Literal["TAR_GZ", "TAR_XZ", "DEB"]
+    strip_components: int = Field(ge=0, le=32)
+
+
+class RuntimeEnvironmentEntry(StrictContract):
+    """A relative runtime path later activation may add to one environment variable."""
+
+    name: str = Field(pattern=r"^[A-Z_][A-Z0-9_]{0,127}$")
+    relative_path: str
+
+    @field_validator("relative_path")
+    @classmethod
+    def runtime_path_is_safe(cls, value: str) -> str:
+        return _validate_relative_path(value)
+
+
+def _validate_https_url(value: str) -> str:
+    parsed = urlsplit(value)
+    if (
+        parsed.scheme.lower() != "https"
+        or not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or parsed.fragment
+    ):
+        raise ValueError("source_url must be an absolute HTTPS URL without credentials or fragment")
+    return value
+
+
 class ToolSource(StrictContract):
     """Immutable acquisition source for one portable toolchain component."""
 
@@ -98,6 +132,13 @@ class ToolSource(StrictContract):
     git_commit: GitCommit | None
     license: str = Field(min_length=1)
     executables: tuple[ToolExecutableSource, ...]
+    archive: ArchiveMetadata | None = None
+    runtime_environment: tuple[RuntimeEnvironmentEntry, ...] = ()
+
+    @field_validator("source_url")
+    @classmethod
+    def source_url_is_safe_https(cls, value: str) -> str:
+        return _validate_https_url(value)
 
     @model_validator(mode="after")
     def source_is_immutable(self) -> Self:
@@ -105,15 +146,22 @@ class ToolSource(StrictContract):
         if "/latest/" in normalized_url or normalized_url.endswith("/latest"):
             raise ValueError("moving latest URL is not permitted")
         if self.source_kind == "ARCHIVE":
-            if self.archive_sha256 is None or self.git_commit is not None:
-                raise ValueError("ARCHIVE source requires archive_sha256 and no git_commit")
-        elif self.archive_sha256 is not None or not re.fullmatch(
+            if self.archive_sha256 is None or self.git_commit is not None or self.archive is None:
+                raise ValueError(
+                    "ARCHIVE source requires archive_sha256, archive metadata, and no git_commit"
+                )
+        elif self.archive_sha256 is not None or self.archive is not None or not re.fullmatch(
             r"[0-9a-f]{40}", self.git_commit or ""
         ):
-            raise ValueError("GIT source requires a full 40-character Git commit")
+            raise ValueError(
+                "GIT source requires a full 40-character Git commit and no archive metadata"
+            )
         tool_ids = [item.tool_id for item in self.executables]
         if len(tool_ids) != len(set(tool_ids)):
             raise ValueError("duplicate tool_id within component")
+        runtime_names = [item.name for item in self.runtime_environment]
+        if len(runtime_names) != len(set(runtime_names)):
+            raise ValueError("duplicate runtime environment variable within component")
         return self
 
 

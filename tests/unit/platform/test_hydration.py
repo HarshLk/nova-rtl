@@ -1,0 +1,286 @@
+from __future__ import annotations
+
+import hashlib
+import io
+import json
+import tarfile
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+import yaml
+
+from nova_rtl.contracts.platform import (
+    ArchiveMetadata,
+    HostPlatform,
+    ToolchainSourceManifest,
+    ToolExecutableSource,
+    ToolSource,
+)
+from nova_rtl.platform.hydration import (
+    HydrationError,
+    checkout_git_source,
+    download_archive,
+    hydrate_toolchain,
+    load_toolchain_source_manifest,
+    safe_extract_archive,
+)
+
+
+def hash_ref(data: bytes) -> str:
+    return f"sha256:{hashlib.sha256(data).hexdigest()}"
+
+
+def source(data: bytes, *, component_id: str = "suite", size: int | None = None) -> ToolSource:
+    return ToolSource(
+        component_id=component_id,
+        source_kind="ARCHIVE",
+        version="1.0",
+        source_url="https://downloads.example.test/releases/suite.tar.gz",
+        archive_sha256=hash_ref(data),
+        git_commit=None,
+        license="ISC",
+        executables=(
+            ToolExecutableSource(
+                tool_id="yosys", relative_path="bin/yosys", version_args=("-V",)
+            ),
+        ),
+        archive=ArchiveMetadata(
+            byte_size=len(data) if size is None else size,
+            archive_format="TAR_GZ",
+            strip_components=1,
+        ),
+        runtime_environment=(),
+    )
+
+
+def manifest(data: bytes, **kwargs: object) -> ToolchainSourceManifest:
+    return ToolchainSourceManifest(
+        host=HostPlatform(os="linux", architecture="x86_64"),
+        tool_root_name=".nova_tools",
+        components=(source(data, **kwargs),),
+    )
+
+
+def tar_bytes(entries: dict[str, bytes], *, link: tuple[str, str] | None = None) -> bytes:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+        for name, data in entries.items():
+            member = tarfile.TarInfo(name)
+            member.size = len(data)
+            archive.addfile(member, io.BytesIO(data))
+        if link is not None:
+            member = tarfile.TarInfo(link[0])
+            member.type = tarfile.SYMTYPE
+            member.linkname = link[1]
+            archive.addfile(member)
+    return stream.getvalue()
+
+
+def deb_bytes(data_tar: bytes) -> bytes:
+    def member(name: str, data: bytes) -> bytes:
+        header = f"{name + '/':<16}{0:<12}{0:<6}{0:<6}{0o100644:<8}{len(data):<10}`\n"
+        return header.encode("ascii") + data + (b"\n" if len(data) % 2 else b"")
+
+    return b"!<arch>\n" + member("debian-binary", b"2.0\n") + member("data.tar.gz", data_tar)
+
+
+class Response(io.BytesIO):
+    def __init__(self, data: bytes, url: str, status: int = 200) -> None:
+        super().__init__(data)
+        self._url = url
+        self.status = status
+
+    def geturl(self) -> str:
+        return self._url
+
+    def __enter__(self) -> Response:
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        self.close()
+
+
+def opener_for(data: bytes, *, final_url: str | None = None):
+    calls: list[object] = []
+
+    def opener(request: object) -> Response:
+        calls.append(request)
+        return Response(data, final_url or "https://downloads.example.test/releases/suite.tar.gz")
+
+    return opener, calls
+
+
+def test_hydration_rejects_archive_size_mismatch_before_extraction(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    opener, _ = opener_for(data)
+
+    with pytest.raises(HydrationError, match="archive size mismatch"):
+        hydrate_toolchain(
+            manifest(data, size=len(data) + 1), tmp_path / ".nova_tools", opener=opener
+        )
+
+    assert not (tmp_path / ".nova_tools" / "components" / "suite").exists()
+
+
+def test_hydration_rejects_archive_hash_mismatch_before_extraction(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    opener, _ = opener_for(data)
+    bad_source = source(data).model_copy(update={"archive_sha256": hash_ref(b"other")})
+    source_manifest = manifest(data).model_copy(
+        update={"components": (bad_source,)}
+    )
+
+    with pytest.raises(HydrationError, match="SHA-256 mismatch"):
+        hydrate_toolchain(source_manifest, tmp_path / ".nova_tools", opener=opener)
+
+    assert not (tmp_path / ".nova_tools" / "components" / "suite").exists()
+
+
+def test_safe_extraction_rejects_parent_traversal(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/../../outside": b"unsafe"})
+    archive = tmp_path / "unsafe.tar.gz"
+    archive.write_bytes(data)
+
+    with pytest.raises(HydrationError, match="unsafe archive path"):
+        safe_extract_archive(archive, tmp_path / "destination", source(data).archive)
+
+    assert not (tmp_path / "outside").exists()
+
+
+def test_safe_extraction_rejects_escaping_symbolic_link(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"}, link=("suite/bin/escape", "../../outside"))
+    archive = tmp_path / "unsafe.tar.gz"
+    archive.write_bytes(data)
+
+    with pytest.raises(HydrationError, match="unsafe archive link"):
+        safe_extract_archive(archive, tmp_path / "destination", source(data).archive)
+
+
+def test_safe_extraction_rejects_special_file(tmp_path: Path) -> None:
+    stream = io.BytesIO()
+    with tarfile.open(fileobj=stream, mode="w:gz") as archive:
+        member = tarfile.TarInfo("suite/device")
+        member.type = tarfile.CHRTYPE
+        archive.addfile(member)
+    archive = tmp_path / "unsafe.tar.gz"
+    archive.write_bytes(stream.getvalue())
+
+    with pytest.raises(HydrationError, match="unsupported archive entry"):
+        safe_extract_archive(archive, tmp_path / "destination", source(stream.getvalue()).archive)
+
+
+def test_safe_debian_extraction_uses_the_data_archive_only(tmp_path: Path) -> None:
+    package = deb_bytes(tar_bytes({"usr/bin/openroad": b"tool"}))
+    archive = tmp_path / "openroad.deb"
+    archive.write_bytes(package)
+    metadata = ArchiveMetadata(byte_size=len(package), archive_format="DEB", strip_components=0)
+
+    safe_extract_archive(archive, tmp_path / "destination", metadata)
+
+    assert (tmp_path / "destination" / "usr" / "bin" / "openroad").read_bytes() == b"tool"
+
+
+def test_hydration_rejects_redirect_to_another_host(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    opener, _ = opener_for(data, final_url="https://untrusted.example.test/suite.tar.gz")
+
+    with pytest.raises(HydrationError, match="final URL"):
+        hydrate_toolchain(manifest(data), tmp_path / ".nova_tools", opener=opener)
+
+
+def test_download_resumes_a_partial_archive_only_when_server_confirms_range(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    archive_source = source(data)
+    cache = tmp_path / "cache"
+    cache.mkdir()
+    partial = cache / f".{archive_source.archive_sha256.removeprefix('sha256:')}.part"
+    offset = len(data) // 2
+    partial.write_bytes(data[:offset])
+    observed_ranges: list[str | None] = []
+
+    def opener(request: object) -> Response:
+        observed_ranges.append(request.get_header("Range"))  # type: ignore[attr-defined]
+        return Response(data[offset:], archive_source.source_url, status=206)
+
+    downloaded = download_archive(archive_source, cache, opener=opener)
+
+    assert observed_ranges == [f"bytes={offset}-"]
+    assert downloaded.read_bytes() == data
+
+
+def test_hydration_never_publishes_a_partial_component(tmp_path: Path) -> None:
+    bad_data = tar_bytes({"suite/../../outside": b"unsafe"})
+    opener, _ = opener_for(bad_data)
+    root = tmp_path / ".nova_tools"
+
+    with pytest.raises(HydrationError):
+        hydrate_toolchain(manifest(bad_data), root, opener=opener)
+
+    assert not (root / "components" / "suite").exists()
+    assert not (root / "receipts" / "suite.json").exists()
+
+
+def test_git_checkout_rejects_a_different_resolved_commit(tmp_path: Path) -> None:
+    git_source = ToolSource(
+        component_id="orfs",
+        source_kind="GIT",
+        version="pinned",
+        source_url="https://github.com/example/orfs.git",
+        archive_sha256=None,
+        git_commit="a" * 40,
+        license="BSD-3-Clause",
+        executables=(),
+        archive=None,
+        runtime_environment=(),
+    )
+
+    def run(command: tuple[str, ...], **_: object) -> SimpleNamespace:
+        if command[-2:] == ("rev-parse", "HEAD"):
+            return SimpleNamespace(returncode=0, stdout=("b" * 40 + "\n"), stderr="")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    with pytest.raises(HydrationError, match="Git commit mismatch"):
+        checkout_git_source(git_source, tmp_path / "checkout", run=run)
+
+
+def test_hydration_rejects_an_unsupported_host(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    opener, _ = opener_for(data)
+
+    with pytest.raises(HydrationError, match="unsupported host"):
+        hydrate_toolchain(
+            manifest(data),
+            tmp_path / ".nova_tools",
+            opener=opener,
+            host_system=("darwin", "x86_64"),
+        )
+
+
+def test_repeated_hydration_uses_the_existing_receipt_without_network(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    opener, calls = opener_for(data)
+    root = tmp_path / ".nova_tools"
+
+    first = hydrate_toolchain(manifest(data), root, opener=opener)
+    second = hydrate_toolchain(manifest(data), root, opener=opener)
+
+    assert first.components[0].reused is False
+    assert second.components[0].reused is True
+    assert len(calls) == 1
+    assert (root / "receipts" / "suite.json").is_file()
+
+
+def test_manifest_content_identity_is_independent_of_json_or_yaml_spelling(tmp_path: Path) -> None:
+    data = tar_bytes({"suite/bin/yosys": b"tool"})
+    source_manifest = manifest(data)
+    json_path = tmp_path / "sources.json"
+    yaml_path = tmp_path / "sources.yaml"
+    json_path.write_text(json.dumps(source_manifest.model_dump(mode="json")), encoding="utf-8")
+    yaml_path.write_text(yaml.safe_dump(source_manifest.model_dump(mode="json")), encoding="utf-8")
+
+    from_json = load_toolchain_source_manifest(json_path)
+    from_yaml = load_toolchain_source_manifest(yaml_path)
+
+    assert from_json.manifest == from_yaml.manifest
+    assert from_json.content_identity_hash == from_yaml.content_identity_hash

@@ -7,6 +7,7 @@ import pytest
 from pydantic import ValidationError
 
 from nova_rtl.contracts.platform import (
+    ArchiveMetadata,
     DoctorCheck,
     DoctorIssue,
     DoctorReport,
@@ -23,6 +24,10 @@ from nova_rtl.contracts.platform import (
 
 def hash_ref(digit: str) -> str:
     return f"sha256:{digit * 64}"
+
+
+def archive_metadata() -> ArchiveMetadata:
+    return ArchiveMetadata(byte_size=1, archive_format="TAR_GZ", strip_components=1)
 
 
 def artifact(
@@ -157,6 +162,7 @@ def test_archive_source_rejects_moving_latest_url() -> None:
                     version_args=("-V",),
                 ),
             ),
+            archive=archive_metadata(),
         )
 
 
@@ -171,6 +177,7 @@ def test_git_source_requires_full_commit_and_no_archive_hash() -> None:
             git_commit="main",
             license="BSD-3-Clause",
             executables=(),
+            archive=None,
         )
 
 
@@ -189,6 +196,7 @@ def test_manifest_rejects_duplicate_executable_ownership() -> None:
         git_commit=None,
         license="ISC",
         executables=(executable,),
+        archive=archive_metadata(),
     )
     second = ToolSource(
         component_id="second_suite",
@@ -199,6 +207,7 @@ def test_manifest_rejects_duplicate_executable_ownership() -> None:
         git_commit=None,
         license="ISC",
         executables=(executable,),
+        archive=archive_metadata(),
     )
 
     with pytest.raises(ValidationError, match="owned by more than one component"):
