@@ -788,3 +788,170 @@ class PlatformLock(StrictContract):
         if len(resolved_paths) != len(set(resolved_paths)):
             raise ValueError("platform artifacts must resolve to distinct files")
         return self
+
+
+class GeneratedClockInterpretation(StrictContract):
+    """Versioned interpretation of the organizer's generated-clock requirement."""
+
+    effective_value: Literal["21_PER_MASTER"]
+    masters: int = Field(gt=0)
+    total_generated_clocks: int = Field(gt=0)
+    source: Literal["CONSERVATIVE_INTERNAL_DEFAULT", "ORGANIZER_RESPONSE"]
+
+    @model_validator(mode="after")
+    def total_matches_effective_value(self) -> Self:
+        if self.masters * 21 != self.total_generated_clocks:
+            raise ValueError("total_generated_clocks must equal masters multiplied by 21")
+        return self
+
+
+class PsmInterpretation(StrictContract):
+    """Versioned interpretation of the challenge's PSM terminology."""
+
+    effective_value: Literal["FSM_STATE_MACHINE_OPTIMIZATION"]
+    source: Literal["CONSERVATIVE_INTERNAL_DEFAULT", "ORGANIZER_RESPONSE"]
+
+
+class OrganizerResponse(StrictContract):
+    """Optional immutable reference to a later organizer clarification."""
+
+    status: Literal["NOT_RECEIVED", "RECEIVED"]
+    evidence_artifact_id: EntityId | None
+
+    @model_validator(mode="after")
+    def evidence_matches_status(self) -> Self:
+        if (self.status == "RECEIVED") != (self.evidence_artifact_id is not None):
+            raise ValueError("organizer response evidence must match response status")
+        return self
+
+
+class OrganizerDecisions(StrictContract):
+    """Strict M0 record of conservative defaults and organizer clarifications."""
+
+    schema_version: Literal[1] = 1
+    generated_clock_interpretation: GeneratedClockInterpretation
+    psm_interpretation: PsmInterpretation
+    organizer_response: OrganizerResponse
+    override_rule: Literal["CONFIG_ONLY_WITH_NEW_RUN_ID"]
+
+
+class SignoffEvidenceFile(StrictContract):
+    """One immutable file included in a milestone sign-off packet."""
+
+    relative_path: str
+    sha256: HashRef
+    size_bytes: int = Field(gt=0)
+
+    @field_validator("relative_path")
+    @classmethod
+    def relative_path_is_safe(cls, value: str) -> str:
+        validated = _validate_relative_path(value)
+        if validated == ".":
+            raise ValueError("evidence path must name a file")
+        return validated
+
+
+class SmokeTimingView(StrictContract):
+    """One constrained register-to-register timing result from the smoke design."""
+
+    check: Literal["SETUP", "HOLD"]
+    corner_id: EntityId
+    path_type: Literal["max", "min"]
+    path_group: Literal["smoke_clock"]
+    register_count: Literal[2]
+    path_count: int = Field(ge=1)
+    slack_ps: float = Field(ge=0, allow_inf_nan=False)
+    report: SignoffEvidenceFile
+
+    @model_validator(mode="after")
+    def path_type_matches_check(self) -> Self:
+        expected = "max" if self.check == "SETUP" else "min"
+        if self.path_type != expected:
+            raise ValueError(f"{self.check} smoke view requires {expected} path type")
+        return self
+
+
+class PlatformSmokeReport(StrictContract):
+    """Durable evidence index for the locked two-view physical smoke flow."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    platform_id: EntityId
+    platform_lock_hash: HashRef
+    toolchain_receipt_hash: HashRef
+    source_manifest_hash: HashRef
+    selection_policy_hash: HashRef
+    make_executable: str = Field(min_length=1)
+    make_executable_sha256: HashRef
+    make_version: str = Field(min_length=1)
+    rtl: SignoffEvidenceFile
+    constraints: SignoffEvidenceFile
+    smoke_config: SignoffEvidenceFile
+    openroad_log: SignoffEvidenceFile
+    mapped_netlist: SignoffEvidenceFile
+    synthesis_database: SignoffEvidenceFile
+    cts_database: SignoffEvidenceFile
+    setup_view: SmokeTimingView
+    hold_view: SmokeTimingView
+    generated_at: AwareDatetime
+
+    @model_validator(mode="after")
+    def views_and_artifacts_are_coherent(self) -> Self:
+        if self.setup_view.check != "SETUP" or self.hold_view.check != "HOLD":
+            raise ValueError("smoke report requires ordered setup and hold views")
+        if self.setup_view.corner_id == self.hold_view.corner_id:
+            raise ValueError("smoke setup and hold corners must be distinct")
+        evidence = (
+            self.rtl,
+            self.constraints,
+            self.smoke_config,
+            self.openroad_log,
+            self.mapped_netlist,
+            self.synthesis_database,
+            self.cts_database,
+            self.setup_view.report,
+            self.hold_view.report,
+        )
+        paths = [item.relative_path for item in evidence]
+        if len(paths) != len(set(paths)):
+            raise ValueError("smoke evidence paths must be unique")
+        return self
+
+
+class M0SignoffReport(StrictContract):
+    """Complete machine-readable evidence index for the M0 exit gate."""
+
+    schema_version: Literal[1] = 1
+    milestone: Literal["M0"]
+    status: Literal["PASS"]
+    generated_at: AwareDatetime
+    exit_code: Literal[0]
+    doctor_report: SignoffEvidenceFile
+    toolchain_receipt: SignoffEvidenceFile
+    platform_lock: SignoffEvidenceFile
+    selection_policy: SignoffEvidenceFile
+    analysis_views: SignoffEvidenceFile
+    organizer_decisions: SignoffEvidenceFile
+    default_policy: SignoffEvidenceFile
+    cdc_patterns: SignoffEvidenceFile
+    reset_assumptions: SignoffEvidenceFile
+    smoke_report: SignoffEvidenceFile
+
+    @model_validator(mode="after")
+    def evidence_paths_are_unique(self) -> Self:
+        evidence = (
+            self.doctor_report,
+            self.toolchain_receipt,
+            self.platform_lock,
+            self.selection_policy,
+            self.analysis_views,
+            self.organizer_decisions,
+            self.default_policy,
+            self.cdc_patterns,
+            self.reset_assumptions,
+            self.smoke_report,
+        )
+        paths = [item.relative_path for item in evidence]
+        if len(paths) != len(set(paths)):
+            raise ValueError("sign-off evidence paths must be unique")
+        return self

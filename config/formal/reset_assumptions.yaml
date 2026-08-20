@@ -1,0 +1,9 @@
+schema_version: 1
+manifest_id: reset_assumptions_v1
+master_clock_model: INDEPENDENT_SHARED_GOLD_GATE_EVENTS
+generated_clock_model: DERIVED_FROM_PROTECTED_DIVIDER_STATE
+initial_reset_state: ASSERTED
+reset_assertion: ASYNCHRONOUS_ALLOWED
+reset_release: SYNCHRONOUS_PER_DOMAIN
+minimum_asserted_master_events: 2
+unknown_initial_state_policy: FAIL_CLOSED

@@ -31,6 +31,8 @@ from nova_rtl.platform.lock import (
     publish_platform_outputs,
     verify_platform_lock,
 )
+from nova_rtl.platform.signoff import M0SignoffRequest, SignoffError, run_m0_signoff
+from nova_rtl.platform.smoke import SmokeError
 
 app = typer.Typer(
     name="nova",
@@ -50,6 +52,12 @@ platform_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(platform_app, name="platform")
+m0_app = typer.Typer(
+    name="m0",
+    help="Execute and publish the reproducible M0 sign-off gate.",
+    no_args_is_help=True,
+)
+app.add_typer(m0_app, name="m0")
 
 
 def _tool_root(
@@ -83,6 +91,20 @@ def _platform_failure(error: Exception, json_output: bool) -> None:
     raise typer.Exit(2)
 
 
+def _signoff_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M0", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M0 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
 @toolchain_app.command("hydrate")
 def toolchain_hydrate(
     manifest: Annotated[
@@ -102,6 +124,98 @@ def toolchain_hydrate(
     payload = {"status": "PASS", "receipt": str(receipt)}
     typer.echo(
         json.dumps(payload, separators=(",", ":"), sort_keys=True) if json_output else str(receipt)
+    )
+
+
+@m0_app.command("signoff")
+def m0_signoff(
+    toolchain_manifest: Annotated[
+        Path,
+        typer.Option("--toolchain-manifest", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/platform/toolchain-sources.json"),
+    selection_policy: Annotated[
+        Path,
+        typer.Option("--selection-policy", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/platform/platform-selection-policy.yaml"),
+    platform_lock: Annotated[
+        Path,
+        typer.Option("--platform-lock", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/platform/platform.lock.yaml"),
+    analysis_views: Annotated[
+        Path,
+        typer.Option("--analysis-views", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/analysis/views.yaml"),
+    organizer_decisions: Annotated[
+        Path,
+        typer.Option("--organizer-decisions", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/challenge/organizer_decisions.yaml"),
+    default_policy: Annotated[
+        Path,
+        typer.Option("--default-policy", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/policy/default.yaml"),
+    cdc_patterns: Annotated[
+        Path,
+        typer.Option("--cdc-patterns", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/policy/cdc_patterns.yaml"),
+    reset_assumptions: Annotated[
+        Path,
+        typer.Option("--reset-assumptions", exists=True, dir_okay=False, readable=True),
+    ] = Path("config/formal/reset_assumptions.yaml"),
+    smoke_rtl: Annotated[
+        Path,
+        typer.Option("--smoke-rtl", exists=True, dir_okay=False, readable=True),
+    ] = Path("tests/integration/tiny/rtl/two_flop_smoke.sv"),
+    smoke_constraints: Annotated[
+        Path,
+        typer.Option("--smoke-constraints", exists=True, dir_okay=False, readable=True),
+    ] = Path("tests/integration/tiny/constraints/two_flop_smoke.sdc"),
+    output: Annotated[
+        Path,
+        typer.Option("--output", help="New immutable M0 evidence directory."),
+    ] = Path("runs/m0-signoff"),
+    project_root: Annotated[
+        Path | None,
+        typer.Option("--project-root", file_okay=False),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Run all M0 gates and atomically publish their evidence packet."""
+
+    try:
+        report_path, report = run_m0_signoff(
+            M0SignoffRequest(
+                project_root=project_root or Path.cwd(),
+                toolchain_manifest=toolchain_manifest,
+                selection_policy=selection_policy,
+                platform_lock=platform_lock,
+                analysis_views=analysis_views,
+                organizer_decisions=organizer_decisions,
+                default_policy=default_policy,
+                cdc_patterns=cdc_patterns,
+                reset_assumptions=reset_assumptions,
+                smoke_rtl=smoke_rtl,
+                smoke_constraints=smoke_constraints,
+                output_directory=output,
+            )
+        )
+    except (
+        HydrationError,
+        OSError,
+        SignoffError,
+        SmokeError,
+        ToolchainVerificationError,
+        ValueError,
+    ) as error:
+        _signoff_failure(error, json_output)
+    payload = {
+        "status": report.status,
+        "milestone": report.milestone,
+        "report": str(report_path.resolve()),
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M0 sign-off: PASS: {report_path.resolve()}"
     )
 
 
