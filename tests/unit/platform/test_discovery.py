@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import gzip
 import hashlib
+import os
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,6 +22,8 @@ from nova_rtl.platform.lock import (
     dump_analysis_views,
     load_platform_selection_policy,
     platform_content_identity_hash,
+    publish_platform_outputs,
+    verify_platform_lock,
 )
 
 
@@ -38,6 +42,7 @@ def write_liberty(
   time_unit : "1ps";
   nom_voltage : {voltage};
   nom_temperature : {temperature};
+  default_operating_conditions : {operating_condition};
   operating_conditions ({operating_condition}) {{
     voltage : {voltage};
     temperature : {temperature};
@@ -127,6 +132,7 @@ def selection_policy() -> PlatformSelectionPolicy:
 
 def fingerprint(tmp_path: Path) -> ToolFingerprint:
     executable = tmp_path / "yosys"
+    executable.parent.mkdir(parents=True, exist_ok=True)
     executable.write_bytes(b"yosys executable")
     return ToolFingerprint(
         tool_id="yosys",
@@ -182,6 +188,29 @@ def test_create_platform_lock_rejects_missing_hold_liberty(tmp_path: Path) -> No
         create_platform_lock(request(tmp_path, root))
 
 
+def test_create_platform_lock_selects_declared_default_liberty_condition(
+    tmp_path: Path,
+) -> None:
+    root = fixture_orfs_root(tmp_path)
+    hold = root / "flow/platforms/asap7/lib/hold.lib"
+    hold.write_text(
+        '''library (fixture) {
+  time_unit : "1ps";
+  nom_voltage : 0.77;
+  nom_temperature : 0;
+  operating_conditions (FIRST) { voltage : 0.77; temperature : 0; }
+  default_operating_conditions : ACTUAL_DEFAULT;
+  operating_conditions (ACTUAL_DEFAULT) { voltage : 0.77; temperature : 0; }
+}
+''',
+        encoding="utf-8",
+    )
+
+    lock = create_platform_lock(request(tmp_path, root))
+
+    assert lock.hold_corner.operating_conditions[0] == "ACTUAL_DEFAULT"
+
+
 def test_create_platform_lock_rejects_artifact_symlink_outside_orfs_root(
     tmp_path: Path,
 ) -> None:
@@ -192,7 +221,7 @@ def test_create_platform_lock_rejects_artifact_symlink_outside_orfs_root(
     tech_lef.unlink()
     tech_lef.symlink_to(outside)
 
-    with pytest.raises(PlatformLockError, match="escapes the ORFS root"):
+    with pytest.raises(PlatformLockError, match="unsafe archive link|escapes the ORFS root"):
         create_platform_lock(request(tmp_path, root))
 
 
@@ -207,6 +236,32 @@ def test_load_platform_selection_policy_rejects_unknown_or_unsafe_paths(
 
     with pytest.raises(PlatformLockError, match="invalid platform selection policy"):
         load_platform_selection_policy(path)
+
+
+def test_platform_selection_policy_rejects_reused_corner_id() -> None:
+    payload = policy_payload()
+    assert isinstance(payload["hold_corner"], dict)
+    payload["hold_corner"]["corner_id"] = "asap7_wc"
+
+    with pytest.raises(ValueError, match="corner IDs must be distinct"):
+        PlatformSelectionPolicy.model_validate(payload)
+
+
+def test_create_platform_lock_rejects_two_paths_aliasing_one_liberty(tmp_path: Path) -> None:
+    root = fixture_orfs_root(tmp_path)
+    alias = root / "flow/platforms/asap7/lib/hold_alias.lib"
+    alias.symlink_to("hold.lib")
+    payload = policy_payload()
+    assert isinstance(payload["hold_corner"], dict)
+    payload["hold_corner"]["liberty_files"] = [
+        "flow/platforms/asap7/lib/hold.lib",
+        "flow/platforms/asap7/lib/hold_alias.lib",
+    ]
+    selected = PlatformSelectionPolicy.model_validate(payload)
+    lock_request = request(tmp_path, root).model_copy(update={"policy": selected})
+
+    with pytest.raises(PlatformLockError, match="resolve to distinct files"):
+        create_platform_lock(lock_request)
 
 
 def test_dump_analysis_views_binds_both_views_to_exact_lock_hashes(tmp_path: Path) -> None:
@@ -227,3 +282,89 @@ def test_dump_analysis_views_binds_both_views_to_exact_lock_hashes(tmp_path: Pat
     assert payload["views"][1]["liberty_corner_id"] == "asap7_bc"
     assert payload["views"][0]["rc_artifact_hash"] == lock.rc_rules.sha256
     assert payload["views"][1]["rc_artifact_hash"] == lock.rc_rules.sha256
+
+
+def test_publish_platform_outputs_rejects_one_destination_for_both_files(
+    tmp_path: Path,
+) -> None:
+    root = fixture_orfs_root(tmp_path)
+    lock = create_platform_lock(request(tmp_path, root))
+    destination = tmp_path / "same.yaml"
+
+    with pytest.raises(PlatformLockError, match="distinct destinations"):
+        publish_platform_outputs(lock, destination, destination)
+
+    assert not destination.exists()
+
+
+def test_publish_platform_outputs_restores_prior_pair_when_second_publish_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = fixture_orfs_root(tmp_path)
+    lock = create_platform_lock(request(tmp_path, root))
+    lock_path = tmp_path / "platform.lock.yaml"
+    views_path = tmp_path / "views.yaml"
+    lock_path.write_bytes(b"old lock\n")
+    views_path.write_bytes(b"old views\n")
+    real_replace = os.replace
+
+    def fail_views_replace(source: str | Path, destination: str | Path) -> None:
+        if Path(destination) == views_path:
+            raise OSError("injected second publish failure")
+        real_replace(source, destination)
+
+    monkeypatch.setattr("nova_rtl.platform.lock.os.replace", fail_views_replace)
+
+    with pytest.raises(PlatformLockError, match="could not be published atomically"):
+        publish_platform_outputs(lock, lock_path, views_path)
+
+    assert lock_path.read_bytes() == b"old lock\n"
+    assert views_path.read_bytes() == b"old views\n"
+
+
+def test_platform_content_identity_is_independent_of_local_realization_paths(
+    tmp_path: Path,
+) -> None:
+    first_root = fixture_orfs_root(tmp_path / "first")
+    second_root = tmp_path / "second/orfs"
+    second_root.parent.mkdir(parents=True)
+    shutil.copytree(first_root, second_root, symlinks=True)
+
+    first = create_platform_lock(request(tmp_path / "first_tools", first_root))
+    second = create_platform_lock(request(tmp_path / "second_tools", second_root))
+
+    assert first.content_identity_hash == second.content_identity_hash
+
+
+def test_platform_lock_rebinds_to_identical_verified_realization(tmp_path: Path) -> None:
+    first_root = fixture_orfs_root(tmp_path / "first")
+    second_root = tmp_path / "second/orfs"
+    second_root.parent.mkdir(parents=True)
+    shutil.copytree(first_root, second_root, symlinks=True)
+    first_tools = tmp_path / "first_tools"
+    second_tools = tmp_path / "second_tools"
+    lock = create_platform_lock(request(first_tools, first_root))
+    second_fingerprint = fingerprint(second_tools)
+
+    result = verify_platform_lock(
+        lock,
+        artifact_root=second_root.resolve(),
+        tool_paths={"yosys": Path(second_fingerprint.executable)},
+    )
+
+    assert result.status == "PASS"
+
+
+def test_platform_lock_detects_change_anywhere_in_orfs_component_tree(tmp_path: Path) -> None:
+    root = fixture_orfs_root(tmp_path)
+    transitive_input = root / "flow/platforms/asap7/openRoad/tapcell.tcl"
+    transitive_input.parent.mkdir(parents=True)
+    transitive_input.write_text("tapcell v1\n", encoding="utf-8")
+    lock = create_platform_lock(request(tmp_path, root))
+    transitive_input.write_text("tapcell v2\n", encoding="utf-8")
+
+    result = verify_platform_lock(lock)
+
+    assert result.status == "FAIL"
+    assert result.issues[0].code == "ORFS_TREE_IDENTITY_MISMATCH"

@@ -71,7 +71,11 @@ def _probe_tool(
     )
 
 
-def _check_platform_lock(platform_lock: Path) -> tuple[DoctorCheck, PlatformLock | None]:
+def _check_platform_lock(
+    platform_lock: Path,
+    artifact_root: Path | None = None,
+    tool_paths: Mapping[str, Path] | None = None,
+) -> tuple[DoctorCheck, PlatformLock | None]:
     try:
         resolved = platform_lock.resolve()
     except (OSError, RuntimeError) as error:
@@ -112,7 +116,11 @@ def _check_platform_lock(platform_lock: Path) -> tuple[DoctorCheck, PlatformLock
             None,
         )
 
-    verification = verify_platform_lock(resolved)
+    verification = verify_platform_lock(
+        resolved,
+        artifact_root=artifact_root,
+        tool_paths=tool_paths,
+    )
     artifact_hash = verification.lock_hash
     if verification.status == "FAIL":
         details = "; ".join(
@@ -173,7 +181,13 @@ def _correlate_live_tools(
                     "message": issue.message,
                 }
             )
-        elif check.status == "PASS" and actual != expected:
+        elif (
+            check.status == "PASS"
+            and actual is not None
+            and expected is not None
+            and actual.model_dump(exclude={"executable"})
+            != expected.model_dump(exclude={"executable"})
+        ):
             issue = DoctorIssue(
                 code="TOOL_LOCK_MISMATCH",
                 subject=check.name,
@@ -196,6 +210,7 @@ def run_doctor(
     which: Callable[[str], str | None] = shutil.which,
     hydrated_tools: Mapping[str, Path] | None = None,
     probe_environment: Mapping[str, str] | None = None,
+    platform_artifact_root: Path | None = None,
 ) -> DoctorReport:
     """Check dependencies, optionally using only a verified hydrated tool mapping."""
 
@@ -210,7 +225,11 @@ def run_doctor(
         for tool in required_tools
     )
     if platform_lock is not None:
-        lock_check, verified_lock = _check_platform_lock(platform_lock)
+        lock_check, verified_lock = _check_platform_lock(
+            platform_lock,
+            artifact_root=platform_artifact_root,
+            tool_paths=hydrated_tools,
+        )
         if verified_lock is not None:
             checks = _correlate_live_tools(checks, verified_lock)
         checks += (lock_check,)

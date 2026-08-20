@@ -5,7 +5,7 @@ cell_lefs:
   resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef
   sha256: sha256:4eb73f825720d95eba4da455c7b2e7a28e444e88e9d8595d13492cf5eecfc0d1
   size_bytes: 391403
-content_identity_hash: sha256:6434c2c0addfbfd5851a5ecef1a72c32a9a3b9cc4f85802d27ed1735b1461ba5
+content_identity_hash: sha256:7c59c9a45405cd0255e23fe300c7af3d7e3ac8a46bec34353cda9339702367b4
 deterministic_seed: 0
 flow_config:
   artifact_id: asap7_flow_config
@@ -14,7 +14,7 @@ flow_config:
   resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/config.mk
   sha256: sha256:816a8c8d1bd2e71c5b01d5908a93483e0083ff1abbce34697e55d0b08d3a7fd9
   size_bytes: 10105
-generated_at: '2026-08-20T08:21:27.127208Z'
+generated_at: '2026-08-20T08:41:51.336583Z'
 hold_corner:
   corner_id: asap7_bc
   liberty_files:
@@ -76,6 +76,7 @@ license_notes:
   collateral.
 - NOVA-RTL may use the collateral locally, but redistribution requires separate review.
 orfs_commit: 4c06bcb2466996a90d31101d85d705ad015950bc
+orfs_tree_identity: sha256:d2b53d7a11a1f1375e6a157506ddaad56813059459213b86bbadfab01826e958
 platform_id: asap7
 rc_rules:
   artifact_id: asap7_rc_config

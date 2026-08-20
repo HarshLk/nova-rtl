@@ -27,9 +27,8 @@ from nova_rtl.platform.hydration import (
 from nova_rtl.platform.lock import (
     PlatformLockError,
     create_platform_lock,
-    dump_analysis_views,
-    dump_platform_lock,
     load_platform_selection_policy,
+    publish_platform_outputs,
     verify_platform_lock,
 )
 
@@ -255,8 +254,7 @@ def platform_lock(
         if verification.status != "PASS":
             details = ", ".join(f"{issue.code}:{issue.subject}" for issue in verification.issues)
             raise PlatformLockError(f"new platform lock failed verification: {details}")
-        dump_platform_lock(lock, output)
-        dump_analysis_views(lock, output.resolve(), views_output)
+        publish_platform_outputs(lock, output, views_output)
     except (
         HydrationError,
         OSError,
@@ -329,6 +327,9 @@ def doctor(
         platform_lock=platform_lock,
         hydrated_tools=verified.tool_paths if verified is not None else None,
         probe_environment=verified.execution_environment() if verified is not None else None,
+        platform_artifact_root=(
+            verified.root / "components" / "orfs" if verified is not None else None
+        ),
     )
     if json_output:
         typer.echo(report.model_dump_json(indent=2))

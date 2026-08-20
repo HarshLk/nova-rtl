@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from nova_rtl.contracts.platform import (
     ToolFingerprint,
 )
 from nova_rtl.platform.doctor import run_doctor
+from nova_rtl.platform.hydration import component_inventory, component_tree_identity
 from nova_rtl.platform.lock import (
     dump_platform_lock,
     load_platform_lock,
@@ -53,6 +55,7 @@ def write_artifact(
 
 
 def materialized_lock(tmp_path: Path) -> PlatformLock:
+    artifact_root = tmp_path / "orfs"
     executable = tmp_path / "tools" / "yosys"
     executable.parent.mkdir(parents=True)
     executable_bytes = b"#!/bin/sh\nprintf 'Yosys 1.0\\n'\n"
@@ -60,14 +63,14 @@ def materialized_lock(tmp_path: Path) -> PlatformLock:
     executable.chmod(0o755)
 
     setup_lib = write_artifact(
-        tmp_path,
+        artifact_root,
         "asap7_setup_lib",
         "LIBERTY",
         "platform/lib/setup.lib",
         b"setup liberty",
     )
     hold_lib = write_artifact(
-        tmp_path,
+        artifact_root,
         "asap7_hold_lib",
         "LIBERTY",
         "platform/lib/hold.lib",
@@ -79,6 +82,7 @@ def materialized_lock(tmp_path: Path) -> PlatformLock:
         source_manifest_hash=sha256_bytes(b"manifest"),
         selection_policy_hash=sha256_bytes(b"selection policy"),
         orfs_commit="a" * 40,
+        orfs_tree_identity=sha256_bytes(b"placeholder tree identity"),
         host=HostPlatform(os="linux", architecture="x86_64"),
         tool_fingerprints=(
             ToolFingerprint(
@@ -116,7 +120,7 @@ def materialized_lock(tmp_path: Path) -> PlatformLock:
         ),
         reference_corner=None,
         tech_lef=write_artifact(
-            tmp_path,
+            artifact_root,
             "asap7_tech_lef",
             "TECH_LEF",
             "platform/lef/tech.lef",
@@ -124,7 +128,7 @@ def materialized_lock(tmp_path: Path) -> PlatformLock:
         ),
         cell_lefs=(
             write_artifact(
-                tmp_path,
+                artifact_root,
                 "asap7_cell_lef",
                 "CELL_LEF",
                 "platform/lef/cells.lef",
@@ -132,14 +136,14 @@ def materialized_lock(tmp_path: Path) -> PlatformLock:
             ),
         ),
         rc_rules=write_artifact(
-            tmp_path,
+            artifact_root,
             "asap7_rc_rules",
             "RC_RULES",
             "platform/rcx.rules",
             b"rc rules",
         ),
         flow_config=write_artifact(
-            tmp_path,
+            artifact_root,
             "asap7_flow_config",
             "FLOW_CONFIG",
             "platform/config.mk",
@@ -147,7 +151,7 @@ def materialized_lock(tmp_path: Path) -> PlatformLock:
         ),
         license_artifacts=(
             write_artifact(
-                tmp_path,
+                artifact_root,
                 "asap7_license",
                 "LICENSE",
                 "platform/LICENSE",
@@ -160,9 +164,14 @@ def materialized_lock(tmp_path: Path) -> PlatformLock:
         content_identity_hash=sha256_bytes(b"content identity"),
         generated_at=datetime(2026, 8, 15, tzinfo=UTC),
     )
-    return lock.model_copy(
-        update={"content_identity_hash": platform_content_identity_hash(lock)}
+    lock = lock.model_copy(
+        update={
+            "orfs_tree_identity": component_tree_identity(
+                component_inventory(artifact_root, exclude_git_metadata=True)
+            )
+        }
     )
+    return lock.model_copy(update={"content_identity_hash": platform_content_identity_hash(lock)})
 
 
 def test_platform_lock_round_trip_is_byte_deterministic(tmp_path: Path) -> None:
@@ -207,6 +216,7 @@ def test_platform_lock_detects_tampered_platform_artifact(tmp_path: Path) -> Non
 
     assert result.status == "FAIL"
     assert [(issue.code, issue.subject) for issue in result.issues] == [
+        ("ORFS_TREE_IDENTITY_MISMATCH", "asap7"),
         ("ARTIFACT_SIZE_MISMATCH", "asap7_setup_lib"),
         ("ARTIFACT_HASH_MISMATCH", "asap7_setup_lib"),
     ]
@@ -318,6 +328,27 @@ def test_doctor_correlates_live_probe_with_locked_fingerprint(tmp_path: Path) ->
     assert report.status == "PASS"
 
 
+def test_doctor_rebinds_lock_to_identical_hydrated_realization(tmp_path: Path) -> None:
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    lock = materialized_lock(first)
+    shutil.copytree(first / "orfs", second / "orfs", symlinks=True)
+    second_executable = second / "tools" / "yosys"
+    second_executable.parent.mkdir(parents=True)
+    shutil.copy2(Path(lock.tool_fingerprints[0].executable), second_executable)
+    lock_path = tmp_path / "platform.lock.json"
+    dump_platform_lock(lock, lock_path)
+
+    report = run_doctor(
+        required_tools=("yosys",),
+        platform_lock=lock_path,
+        hydrated_tools={"yosys": second_executable.resolve()},
+        platform_artifact_root=(second / "orfs").resolve(),
+    )
+
+    assert report.status == "PASS"
+
+
 def test_doctor_rejects_live_probe_that_disagrees_with_lock(tmp_path: Path) -> None:
     lock = materialized_lock(tmp_path)
     false_fingerprint = lock.tool_fingerprints[0].model_copy(
@@ -372,6 +403,7 @@ def test_doctor_fails_when_referenced_platform_bytes_are_tampered(tmp_path: Path
     assert report.checks[0].name == "platform_lock"
     assert "ARTIFACT_HASH_MISMATCH:asap7_setup_lib" in report.checks[0].message
     assert [issue.code for issue in report.checks[0].issues] == [
+        "ORFS_TREE_IDENTITY_MISMATCH",
         "ARTIFACT_SIZE_MISMATCH",
         "ARTIFACT_HASH_MISMATCH",
     ]

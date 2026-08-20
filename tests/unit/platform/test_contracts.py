@@ -12,6 +12,8 @@ from nova_rtl.contracts.platform import (
     DoctorIssue,
     DoctorReport,
     HostPlatform,
+    PlatformAnalysisView,
+    PlatformAnalysisViews,
     PlatformArtifact,
     PlatformLock,
     RuntimeEnvironmentEntry,
@@ -89,6 +91,7 @@ def valid_lock(tmp_path: Path) -> PlatformLock:
         source_manifest_hash=hash_ref("3"),
         selection_policy_hash=hash_ref("b"),
         orfs_commit="a" * 40,
+        orfs_tree_identity=hash_ref("c"),
         host=HostPlatform(os="linux", architecture="x86_64"),
         tool_fingerprints=(fingerprint("yosys", tmp_path / "yosys", "4"),),
         setup_corner=TimingCorner(
@@ -441,6 +444,57 @@ def test_platform_lock_rejects_duplicate_tool_ids(tmp_path: Path) -> None:
                     lock.tool_fingerprints[0],
                 ),
             }
+        )
+
+
+def test_platform_lock_rejects_reused_corner_id(tmp_path: Path) -> None:
+    lock = valid_lock(tmp_path)
+
+    with pytest.raises(ValidationError, match="corner IDs must be distinct"):
+        PlatformLock.model_validate(
+            {
+                **lock.model_dump(),
+                "hold_corner": lock.hold_corner.model_copy(
+                    update={"corner_id": lock.setup_corner.corner_id}
+                ),
+            }
+        )
+
+
+def test_analysis_view_requires_one_condition_per_liberty_hash() -> None:
+    with pytest.raises(ValidationError, match="one operating condition"):
+        PlatformAnalysisView(
+            analysis_view_id="asap7_setup",
+            check="SETUP",
+            liberty_corner_id="asap7_wc",
+            liberty_artifact_hashes=(hash_ref("1"), hash_ref("2")),
+            rc_corner_id="asap7_rc",
+            rc_artifact_hash=hash_ref("3"),
+            operating_condition_mode="PER_LIBRARY_NOMINAL",
+            operating_conditions=("PVT_0P63V_100C",),
+            required_stages=("OPENSTA_FULL", "OPENROAD_PHYSICAL"),
+        )
+
+
+def test_analysis_views_require_distinct_view_and_corner_ids() -> None:
+    setup = PlatformAnalysisView(
+        analysis_view_id="asap7_view",
+        check="SETUP",
+        liberty_corner_id="asap7_corner",
+        liberty_artifact_hashes=(hash_ref("1"),),
+        rc_corner_id="asap7_rc",
+        rc_artifact_hash=hash_ref("2"),
+        operating_condition_mode="PER_LIBRARY_NOMINAL",
+        operating_conditions=("PVT_0P63V_100C",),
+        required_stages=("OPENSTA_FULL", "OPENROAD_PHYSICAL"),
+    )
+    hold = setup.model_copy(update={"check": "HOLD"})
+
+    with pytest.raises(ValidationError, match="view and Liberty corner IDs must be distinct"):
+        PlatformAnalysisViews(
+            platform_id="asap7",
+            platform_lock_hash=hash_ref("3"),
+            views=(setup, hold),
         )
 
 

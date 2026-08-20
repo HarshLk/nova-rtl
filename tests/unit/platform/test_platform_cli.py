@@ -31,6 +31,7 @@ def write_platform(root: Path) -> None:
   time_unit : "1ps";
   nom_voltage : {voltage};
   nom_temperature : {temperature};
+  default_operating_conditions : {condition};
   operating_conditions ({condition}) {{ voltage : {voltage}; }}
 }}
 '''

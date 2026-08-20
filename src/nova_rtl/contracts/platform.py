@@ -30,6 +30,8 @@ DoctorIssueCode = Literal[
     "ARTIFACT_SIZE_MISMATCH",
     "CONTENT_IDENTITY_MISMATCH",
     "INVALID_PLATFORM_LOCK",
+    "ORFS_TREE_IDENTITY_MISMATCH",
+    "ORFS_TREE_IO_ERROR",
     "PLATFORM_LOCK_IO_ERROR",
     "PLATFORM_LOCK_MISSING",
     "TOOL_EXECUTABLE_HASH_MISMATCH",
@@ -395,6 +397,13 @@ class PlatformSelectionPolicy(StrictContract):
             raise ValueError("hold_corner selection must have role HOLD")
         if self.reference_corner is not None and self.reference_corner.role != "REFERENCE":
             raise ValueError("reference_corner selection must have role REFERENCE")
+        corner_ids = (
+            self.setup_corner.corner_id,
+            self.hold_corner.corner_id,
+            *((self.reference_corner.corner_id,) if self.reference_corner else ()),
+        )
+        if len(corner_ids) != len(set(corner_ids)):
+            raise ValueError("corner IDs must be distinct")
         platform_prefix = PurePosixPath(self.platform_root)
         platform_paths = (
             *self.setup_corner.liberty_files,
@@ -448,6 +457,14 @@ class PlatformAnalysisView(StrictContract):
         min_length=1
     )
 
+    @model_validator(mode="after")
+    def parallel_fields_are_coherent(self) -> Self:
+        if len(self.liberty_artifact_hashes) != len(self.operating_conditions):
+            raise ValueError("each Liberty hash requires one operating condition")
+        if len(self.required_stages) != len(set(self.required_stages)):
+            raise ValueError("required stages must be unique")
+        return self
+
 
 class PlatformAnalysisViews(StrictContract):
     """Two required platform views bound to exact platform-lock bytes."""
@@ -461,6 +478,10 @@ class PlatformAnalysisViews(StrictContract):
     def contains_one_setup_and_one_hold_view(self) -> Self:
         if tuple(view.check for view in self.views) != ("SETUP", "HOLD"):
             raise ValueError("platform views must contain ordered SETUP and HOLD checks")
+        view_ids = tuple(view.analysis_view_id for view in self.views)
+        corner_ids = tuple(view.liberty_corner_id for view in self.views)
+        if len(set(view_ids)) != 2 or len(set(corner_ids)) != 2:
+            raise ValueError("view and Liberty corner IDs must be distinct")
         return self
 
 
@@ -696,6 +717,7 @@ class PlatformLock(StrictContract):
     source_manifest_hash: HashRef
     selection_policy_hash: HashRef
     orfs_commit: GitCommit
+    orfs_tree_identity: HashRef
     host: HostPlatform
     tool_fingerprints: tuple[ToolFingerprint, ...] = Field(min_length=1)
     setup_corner: TimingCorner
@@ -722,6 +744,13 @@ class PlatformLock(StrictContract):
             raise ValueError("hold_corner must have role HOLD")
         if self.reference_corner is not None and self.reference_corner.role != "REFERENCE":
             raise ValueError("reference_corner must have role REFERENCE")
+        corner_ids = (
+            self.setup_corner.corner_id,
+            self.hold_corner.corner_id,
+            *((self.reference_corner.corner_id,) if self.reference_corner else ()),
+        )
+        if len(corner_ids) != len(set(corner_ids)):
+            raise ValueError("corner IDs must be distinct")
         setup_hashes = {item.sha256 for item in self.setup_corner.liberty_files}
         hold_hashes = {item.sha256 for item in self.hold_corner.liberty_files}
         if setup_hashes & hold_hashes:

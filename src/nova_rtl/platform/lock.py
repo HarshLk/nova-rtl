@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import fcntl
 import gzip
 import hashlib
 import json
 import os
 import re
 import tempfile
+from collections.abc import Mapping
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -25,6 +28,11 @@ from nova_rtl.contracts.platform import (
     PlatformSelectionPolicy,
     TimingCorner,
     TimingCornerSelection,
+)
+from nova_rtl.platform.hydration import (
+    HydrationError,
+    component_inventory,
+    component_tree_identity,
 )
 
 MAX_LIBERTY_HEADER_BYTES = 4 * 1024 * 1024
@@ -152,13 +160,21 @@ def _required_match(pattern: str, text: str, label: str, path: Path) -> str:
 
 
 def _liberty_metadata(path: Path) -> tuple[str, float, float, Literal["PS", "NS"]]:
-    text = _liberty_header(path)
+    text = re.sub(r"/\*.*?\*/", "", _liberty_header(path), flags=re.DOTALL)
+    text = re.sub(r"//[^\r\n]*", "", text)
     condition = _required_match(
-        r"\boperating_conditions\s*\(\s*([A-Za-z0-9_.-]+)\s*\)",
+        r"\bdefault_operating_conditions\s*:\s*([A-Za-z0-9_.-]+)\s*;",
         text,
-        "operating condition",
+        "default operating condition",
         path,
     )
+    declared_conditions = re.findall(
+        r"\boperating_conditions\s*\(\s*([A-Za-z0-9_.-]+)\s*\)", text
+    )
+    if declared_conditions.count(condition) != 1:
+        raise PlatformLockError(
+            f"Liberty default operating condition does not name exactly one group: {path}"
+        )
     voltage = float(
         _required_match(r"\bnom_voltage\s*:\s*([-+0-9.eE]+)\s*;", text, "voltage", path)
     )
@@ -196,6 +212,11 @@ def _timing_corner(
         )
         for index, path in enumerate(selection.liberty_files, start=1)
     )
+    resolved_paths = tuple(item.resolved_path for item in artifacts)
+    if len(resolved_paths) != len(set(resolved_paths)):
+        raise PlatformLockError(
+            f"selected {selection.role} Liberty paths must resolve to distinct files"
+        )
     metadata = tuple(_liberty_metadata(item.resolved_path) for item in artifacts)
     physical_metadata = tuple((item[1], item[2], item[3]) for item in metadata)
     if len(set(physical_metadata)) != 1:
@@ -224,6 +245,12 @@ def create_platform_lock(request: PlatformLockRequest) -> PlatformLock:
     platform_directory = root.joinpath(*policy.platform_root.split("/"))
     if not platform_directory.is_dir():
         raise PlatformLockError(f"selected platform root is missing: {policy.platform_root}")
+    try:
+        orfs_tree_identity = component_tree_identity(
+            component_inventory(root, exclude_git_metadata=True)
+        )
+    except HydrationError as error:
+        raise PlatformLockError(f"ORFS component tree cannot be inventoried: {error}") from error
     setup_corner = _timing_corner(root, policy.setup_corner, policy.library_model)
     hold_corner = _timing_corner(root, policy.hold_corner, policy.library_model)
     reference_corner = (
@@ -238,6 +265,7 @@ def create_platform_lock(request: PlatformLockRequest) -> PlatformLock:
         source_manifest_hash=request.source_manifest_hash,
         selection_policy_hash=selection_policy_content_identity_hash(policy),
         orfs_commit=policy.orfs_commit,
+        orfs_tree_identity=orfs_tree_identity,
         host=request.host,
         tool_fingerprints=request.tool_fingerprints,
         setup_corner=setup_corner,
@@ -300,6 +328,19 @@ def platform_content_identity_hash(lock: PlatformLock) -> HashRef:
         mode="json",
         exclude={"content_identity_hash", "generated_at"},
     )
+
+    def strip_realization_paths(value: object) -> object:
+        if isinstance(value, dict):
+            return {
+                key: strip_realization_paths(item)
+                for key, item in value.items()
+                if key not in {"resolved_path", "executable"}
+            }
+        if isinstance(value, list):
+            return [strip_realization_paths(item) for item in value]
+        return value
+
+    payload = strip_realization_paths(payload)
     data = json.dumps(
         payload,
         allow_nan=False,
@@ -360,7 +401,14 @@ def dump_analysis_views(lock: PlatformLock, lock_path: Path, views_path: Path) -
         lock_hash = hash_file(lock_path)
     except OSError as error:
         raise PlatformLockError(f"platform lock cannot be hashed for views: {error}") from error
-    views = PlatformAnalysisViews(
+    views = _analysis_views(lock, lock_hash)
+    destination = views_path.resolve()
+    data = _serialized_analysis_views_bytes(views)
+    _atomic_write_bytes(destination, data)
+
+
+def _analysis_views(lock: PlatformLock, lock_hash: HashRef) -> PlatformAnalysisViews:
+    return PlatformAnalysisViews(
         schema_version=1,
         platform_id=lock.platform_id,
         platform_lock_hash=lock_hash,
@@ -393,28 +441,138 @@ def dump_analysis_views(lock: PlatformLock, lock_path: Path, views_path: Path) -
             ),
         ),
     )
-    destination = views_path.resolve()
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    data = yaml.safe_dump(
+
+
+def _serialized_analysis_views_bytes(views: PlatformAnalysisViews) -> bytes:
+    return yaml.safe_dump(
         views.model_dump(mode="json"),
         allow_unicode=True,
         default_flow_style=False,
         sort_keys=True,
     ).encode("utf-8")
-    descriptor, temporary_name = tempfile.mkstemp(
-        dir=destination.parent,
-        prefix=f".{destination.name}.",
-        suffix=".tmp",
-    )
-    temporary_path = Path(temporary_name)
+
+
+def _atomic_write_bytes(destination: Path, data: bytes) -> None:
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    temporary_path = _stage_bytes(destination, data)
     try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(data)
-            stream.flush()
-            os.fsync(stream.fileno())
         os.replace(temporary_path, destination)
     finally:
         temporary_path.unlink(missing_ok=True)
+
+
+def _stage_bytes(destination: Path, data: bytes, *, suffix: str = ".tmp") -> Path:
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=destination.parent,
+        prefix=f".{destination.name}.",
+        suffix=suffix,
+    )
+    temporary_path = Path(temporary_name)
+    try:
+        stream = os.fdopen(descriptor, "wb")
+        descriptor = -1
+        with stream:
+            stream.write(data)
+            stream.flush()
+            os.fsync(stream.fileno())
+    except BaseException:
+        if descriptor >= 0:
+            os.close(descriptor)
+        temporary_path.unlink(missing_ok=True)
+        raise
+    return temporary_path
+
+
+@contextmanager
+def _publication_lock(directory: Path):
+    descriptor = os.open(directory, os.O_RDONLY)
+    try:
+        fcntl.flock(descriptor, fcntl.LOCK_EX)
+        yield
+    finally:
+        fcntl.flock(descriptor, fcntl.LOCK_UN)
+        os.close(descriptor)
+
+
+def _restore_output(path: Path, prior: bytes | None) -> None:
+    if prior is None:
+        path.unlink(missing_ok=True)
+    else:
+        _atomic_write_bytes(path, prior)
+
+
+def publish_platform_outputs(lock: PlatformLock, lock_path: Path, views_path: Path) -> None:
+    """Publish a validated lock/view pair with serialization and rollback."""
+
+    lock_destination = lock_path.resolve()
+    views_destination = views_path.resolve()
+    if lock_destination == views_destination:
+        raise PlatformLockError("platform lock and views require distinct destinations")
+    lock_destination.parent.mkdir(parents=True, exist_ok=True)
+    views_destination.parent.mkdir(parents=True, exist_ok=True)
+    lock_data = _serialized_lock_bytes(lock, lock_destination.suffix)
+    lock_hash = _hash_bytes(lock_data)
+    views = _analysis_views(lock, lock_hash)
+    views_data = _serialized_analysis_views_bytes(views)
+
+    with _publication_lock(lock_destination.parent):
+        prior_lock = lock_destination.read_bytes() if lock_destination.exists() else None
+        prior_views = views_destination.read_bytes() if views_destination.exists() else None
+        lock_published = False
+        views_published = False
+        lock_temporary: Path | None = None
+        views_temporary: Path | None = None
+        try:
+            lock_temporary = _stage_bytes(
+                lock_destination,
+                lock_data,
+                suffix=lock_destination.suffix,
+            )
+            views_temporary = _stage_bytes(
+                views_destination,
+                views_data,
+                suffix=views_destination.suffix,
+            )
+            staged_lock = verify_platform_lock(lock_temporary)
+            staged_views = PlatformAnalysisViews.model_validate(
+                yaml.safe_load(views_temporary.read_text(encoding="utf-8"))
+            )
+            if staged_lock.status != "PASS" or staged_views.platform_lock_hash != lock_hash:
+                raise PlatformLockError("staged platform lock/view pair failed validation")
+            os.replace(lock_temporary, lock_destination)
+            lock_published = True
+            os.replace(views_temporary, views_destination)
+            views_published = True
+            final_views = PlatformAnalysisViews.model_validate(
+                yaml.safe_load(views_destination.read_text(encoding="utf-8"))
+            )
+            if hash_file(lock_destination) != final_views.platform_lock_hash:
+                raise PlatformLockError("published views do not bind the published platform lock")
+        except (
+            OSError,
+            PlatformLockError,
+            TypeError,
+            ValueError,
+            ValidationError,
+            yaml.YAMLError,
+        ) as error:
+            try:
+                if lock_published:
+                    _restore_output(lock_destination, prior_lock)
+                if views_published:
+                    _restore_output(views_destination, prior_views)
+            except OSError as restore_error:
+                raise PlatformLockError(
+                    f"platform outputs failed and rollback also failed: {restore_error}"
+                ) from error
+            raise PlatformLockError(
+                f"platform outputs could not be published atomically: {error}"
+            ) from error
+        finally:
+            if lock_temporary is not None:
+                lock_temporary.unlink(missing_ok=True)
+            if views_temporary is not None:
+                views_temporary.unlink(missing_ok=True)
 
 
 def load_platform_lock(path: Path) -> PlatformLock:
@@ -446,8 +604,35 @@ def _platform_artifacts(lock: PlatformLock) -> tuple[PlatformArtifact, ...]:
     )
 
 
-def _verify_artifact(artifact: PlatformArtifact) -> tuple[VerificationIssue, ...]:
-    path = artifact.resolved_path
+def _verify_artifact(
+    artifact: PlatformArtifact,
+    artifact_root: Path | None = None,
+) -> tuple[VerificationIssue, ...]:
+    try:
+        path = (
+            artifact_root.joinpath(*artifact.logical_path.split("/")).resolve()
+            if artifact_root is not None
+            else artifact.resolved_path
+        )
+    except (OSError, RuntimeError) as error:
+        return (
+            VerificationIssue(
+                code="ARTIFACT_IO_ERROR",
+                subject=artifact.artifact_id,
+                message=f"platform artifact path could not be resolved: {error}",
+            ),
+        )
+    if artifact_root is not None:
+        try:
+            path.relative_to(artifact_root)
+        except ValueError:
+            return (
+                VerificationIssue(
+                    code="ARTIFACT_IO_ERROR",
+                    subject=artifact.artifact_id,
+                    message=f"rebound platform artifact escapes ORFS root: {path}",
+                ),
+            )
     if not path.is_file():
         return (
             VerificationIssue(
@@ -497,7 +682,19 @@ def _verify_artifact(artifact: PlatformArtifact) -> tuple[VerificationIssue, ...
     return tuple(issues)
 
 
-def verify_platform_lock(lock_or_path: PlatformLock | Path) -> PlatformLockVerification:
+def _recorded_artifact_root(lock: PlatformLock) -> Path:
+    root = lock.tech_lef.resolved_path
+    for _ in lock.tech_lef.logical_path.split("/"):
+        root = root.parent
+    return root
+
+
+def verify_platform_lock(
+    lock_or_path: PlatformLock | Path,
+    *,
+    artifact_root: Path | None = None,
+    tool_paths: Mapping[str, Path] | None = None,
+) -> PlatformLockVerification:
     """Verify strict lock structure plus every referenced artifact and executable."""
 
     lock_hash: HashRef | None = None
@@ -547,11 +744,50 @@ def verify_platform_lock(lock_or_path: PlatformLock | Path) -> PlatformLockVerif
                 message="platform lock identity-bearing fields changed",
             )
         )
-    for artifact in _platform_artifacts(lock):
-        issues.extend(_verify_artifact(artifact))
+    try:
+        checked_artifact_root = (
+            artifact_root.resolve() if artifact_root is not None else _recorded_artifact_root(lock)
+        )
+        observed_tree_identity = component_tree_identity(
+            component_inventory(checked_artifact_root, exclude_git_metadata=True)
+        )
+    except (HydrationError, OSError, RuntimeError) as error:
+        checked_artifact_root = None
+        issues.append(
+            VerificationIssue(
+                code="ORFS_TREE_IO_ERROR",
+                subject=lock.platform_id,
+                message=f"ORFS component tree cannot be verified: {error}",
+            )
+        )
+    else:
+        if observed_tree_identity != lock.orfs_tree_identity:
+            issues.append(
+                VerificationIssue(
+                    code="ORFS_TREE_IDENTITY_MISMATCH",
+                    subject=lock.platform_id,
+                    message="ORFS component tree identity changed",
+                )
+            )
+    if checked_artifact_root is not None:
+        for artifact in _platform_artifacts(lock):
+            issues.extend(_verify_artifact(artifact, checked_artifact_root))
 
     for fingerprint in lock.tool_fingerprints:
-        executable = Path(fingerprint.executable)
+        executable = (
+            tool_paths.get(fingerprint.tool_id)
+            if tool_paths is not None
+            else Path(fingerprint.executable)
+        )
+        if executable is None:
+            issues.append(
+                VerificationIssue(
+                    code="TOOL_MISSING",
+                    subject=fingerprint.tool_id,
+                    message="locked executable has no rebound verified tool path",
+                )
+            )
+            continue
         if not executable.is_file():
             issues.append(
                 VerificationIssue(
@@ -600,6 +836,7 @@ __all__ = [
     "load_platform_lock",
     "load_platform_selection_policy",
     "platform_content_identity_hash",
+    "publish_platform_outputs",
     "selection_policy_content_identity_hash",
     "verify_platform_lock",
 ]
