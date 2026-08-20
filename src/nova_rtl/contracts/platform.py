@@ -429,6 +429,7 @@ class PlatformLockRequest(StrictContract):
     orfs_root: Path
     policy: PlatformSelectionPolicy
     source_manifest_hash: HashRef
+    verified_orfs_tree_identity: HashRef
     host: HostPlatform
     tool_fingerprints: tuple[ToolFingerprint, ...] = Field(min_length=1)
     generated_at: AwareDatetime
@@ -783,4 +784,7 @@ class PlatformLock(StrictContract):
         artifact_ids = [item.artifact_id for item in all_artifacts]
         if len(artifact_ids) != len(set(artifact_ids)):
             raise ValueError("duplicate platform artifact_id")
+        resolved_paths = [item.resolved_path for item in all_artifacts]
+        if len(resolved_paths) != len(set(resolved_paths)):
+            raise ValueError("platform artifacts must resolve to distinct files")
         return self

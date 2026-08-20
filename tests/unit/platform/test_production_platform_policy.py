@@ -10,6 +10,7 @@ from nova_rtl.platform.lock import (
     hash_file,
     load_platform_lock,
     load_platform_selection_policy,
+    platform_content_identity_hash,
     selection_policy_content_identity_hash,
 )
 
@@ -48,6 +49,7 @@ def test_committed_lock_and_views_are_bound_to_reviewed_provenance() -> None:
     assert lock.selection_policy_hash == selection_policy_content_identity_hash(policy)
     assert lock.source_manifest_hash == manifest.content_identity_hash
     assert lock.orfs_commit == policy.orfs_commit
+    assert lock.content_identity_hash == platform_content_identity_hash(lock)
     assert views.platform_id == lock.platform_id
     assert views.platform_lock_hash == hash_file(LOCK_PATH)
     assert views.views[0].liberty_corner_id == lock.setup_corner.corner_id

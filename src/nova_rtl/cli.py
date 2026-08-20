@@ -240,11 +240,17 @@ def platform_lock(
             raise PlatformLockError(
                 "selection policy ORFS commit does not match toolchain manifest"
             )
+        verified_orfs_tree_identity = verified.component_tree_identities.get(
+            selected_policy.orfs_component_id
+        )
+        if verified_orfs_tree_identity is None:
+            raise PlatformLockError("verified toolchain has no ORFS tree identity")
         lock = create_platform_lock(
             PlatformLockRequest(
                 orfs_root=supplied_root,
                 policy=selected_policy,
                 source_manifest_hash=loaded.content_identity_hash,
+                verified_orfs_tree_identity=verified_orfs_tree_identity,
                 host=loaded.manifest.host,
                 tool_fingerprints=tuple(verified.tool_fingerprints.values()),
                 generated_at=datetime.now(UTC),

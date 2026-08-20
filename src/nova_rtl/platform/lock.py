@@ -251,6 +251,8 @@ def create_platform_lock(request: PlatformLockRequest) -> PlatformLock:
         )
     except HydrationError as error:
         raise PlatformLockError(f"ORFS component tree cannot be inventoried: {error}") from error
+    if orfs_tree_identity != request.verified_orfs_tree_identity:
+        raise PlatformLockError("ORFS component tree changed after toolchain verification")
     setup_corner = _timing_corner(root, policy.setup_corner, policy.library_model)
     hold_corner = _timing_corner(root, policy.hold_corner, policy.library_model)
     reference_corner = (

@@ -10,6 +10,7 @@ from typer.testing import CliRunner
 from nova_rtl.cli import app
 from nova_rtl.contracts.platform import ToolFingerprint
 from nova_rtl.platform.activation import VerifiedToolchain
+from nova_rtl.platform.hydration import component_inventory, component_tree_identity
 from nova_rtl.platform.lock import load_platform_lock, verify_platform_lock
 
 
@@ -97,6 +98,11 @@ def test_platform_lock_cli_uses_only_verified_orfs_and_writes_both_outputs(
     verified = VerifiedToolchain(
         root=tool_root.resolve(),
         receipt_path=(tool_root / "toolchain-receipt.json").resolve(),
+        component_tree_identities={
+            "orfs": component_tree_identity(
+                component_inventory(orfs_root, exclude_git_metadata=True)
+            )
+        },
         tool_paths={"yosys": executable.resolve()},
         canonical_environment={},
         environment_operations={},
@@ -153,6 +159,7 @@ def test_platform_lock_cli_rejects_unverified_orfs_root(tmp_path: Path, monkeypa
     verified = VerifiedToolchain(
         root=verified_root.resolve(),
         receipt_path=(verified_root / "toolchain-receipt.json").resolve(),
+        component_tree_identities={"orfs": hash_bytes(b"verified ORFS tree")},
         tool_paths={},
         canonical_environment={},
         environment_operations={},
@@ -188,3 +195,75 @@ def test_platform_lock_cli_rejects_unverified_orfs_root(tmp_path: Path, monkeypa
         "error": "--root must be the verified hydrated ORFS component",
         "status": "FAIL",
     }
+
+
+def test_platform_lock_cli_rejects_orfs_mutated_after_toolchain_verification(
+    tmp_path: Path,
+    monkeypatch,
+) -> None:
+    project_root = tmp_path / "project"
+    tool_root = project_root / ".nova-tools"
+    orfs_root = tool_root / "components/orfs"
+    write_platform(orfs_root)
+    executable = tmp_path / "yosys"
+    executable.write_bytes(b"yosys executable")
+    fingerprint = ToolFingerprint(
+        tool_id="yosys",
+        executable=str(executable.resolve()),
+        version="Yosys 1.0",
+        version_args=("-V",),
+        executable_sha256=hash_bytes(executable.read_bytes()),
+        build_hash=hash_bytes(b"build"),
+        adapter_version="bootstrap-doctor-v1",
+        container_digest=None,
+    )
+    verified = VerifiedToolchain(
+        root=tool_root.resolve(),
+        receipt_path=(tool_root / "toolchain-receipt.json").resolve(),
+        component_tree_identities={
+            "orfs": component_tree_identity(
+                component_inventory(orfs_root, exclude_git_metadata=True)
+            )
+        },
+        tool_paths={"yosys": executable.resolve()},
+        canonical_environment={},
+        environment_operations={},
+        literal_environment={},
+        tool_fingerprints={"yosys": fingerprint},
+    )
+
+    def verify_then_mutate(manifest, root):
+        (orfs_root / "concurrent-change.tcl").write_text("changed\n", encoding="utf-8")
+        return verified
+
+    monkeypatch.setattr("nova_rtl.cli.verify_toolchain", verify_then_mutate)
+    policy = tmp_path / "policy.yaml"
+    write_policy(policy)
+    lock_path = tmp_path / "platform.lock.yaml"
+    views_path = tmp_path / "views.yaml"
+    manifest = Path(__file__).resolve().parents[3] / "config/platform/toolchain-sources.json"
+
+    result = CliRunner().invoke(
+        app,
+        [
+            "platform",
+            "lock",
+            "--root",
+            str(orfs_root),
+            "--policy",
+            str(policy),
+            "--toolchain-manifest",
+            str(manifest),
+            "--project-root",
+            str(project_root),
+            "--output",
+            str(lock_path),
+            "--views-output",
+            str(views_path),
+        ],
+    )
+
+    assert result.exit_code == 2
+    assert "changed after toolchain verification" in result.output
+    assert not lock_path.exists()
+    assert not views_path.exists()

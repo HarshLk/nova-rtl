@@ -13,7 +13,7 @@ from pathlib import Path, PurePosixPath
 
 from pydantic import ValidationError
 
-from nova_rtl.contracts.base import canonical_json_bytes
+from nova_rtl.contracts.base import HashRef, canonical_json_bytes
 from nova_rtl.contracts.platform import (
     CanonicalEnvironmentEntry,
     InstalledComponentReceipt,
@@ -45,6 +45,7 @@ class VerifiedToolchain:
 
     root: Path
     receipt_path: Path
+    component_tree_identities: Mapping[str, HashRef]
     tool_paths: Mapping[str, Path]
     canonical_environment: Mapping[str, tuple[str, ...]]
     environment_operations: Mapping[str, str]
@@ -435,6 +436,7 @@ def verify_toolchain(manifest: ToolchainSourceManifest, root: Path) -> VerifiedT
     return VerifiedToolchain(
         checked_root,
         receipt_path,
+        {component.component_id: component.tree_identity for component in components},
         tool_paths,
         canonical_environment,
         operations,

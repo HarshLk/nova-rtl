@@ -147,10 +147,15 @@ def fingerprint(tmp_path: Path) -> ToolFingerprint:
 
 
 def request(tmp_path: Path, root: Path) -> PlatformLockRequest:
+    from nova_rtl.platform.hydration import component_inventory, component_tree_identity
+
     return PlatformLockRequest(
         orfs_root=root.resolve(),
         policy=selection_policy(),
         source_manifest_hash=sha256_bytes(b"toolchain manifest"),
+        verified_orfs_tree_identity=component_tree_identity(
+            component_inventory(root, exclude_git_metadata=True)
+        ),
         host=HostPlatform(os="linux", architecture="x86_64"),
         tool_fingerprints=(fingerprint(tmp_path),),
         generated_at=datetime(2026, 8, 20, tzinfo=UTC),
@@ -188,6 +193,18 @@ def test_create_platform_lock_rejects_missing_hold_liberty(tmp_path: Path) -> No
         create_platform_lock(request(tmp_path, root))
 
 
+def test_create_platform_lock_rejects_tree_changed_after_toolchain_verification(
+    tmp_path: Path,
+) -> None:
+    root = fixture_orfs_root(tmp_path)
+    lock_request = request(tmp_path, root).model_copy(
+        update={"verified_orfs_tree_identity": sha256_bytes(b"prior verified tree")}
+    )
+
+    with pytest.raises(PlatformLockError, match="changed after toolchain verification"):
+        create_platform_lock(lock_request)
+
+
 def test_create_platform_lock_selects_declared_default_liberty_condition(
     tmp_path: Path,
 ) -> None:
@@ -215,6 +232,7 @@ def test_create_platform_lock_rejects_artifact_symlink_outside_orfs_root(
     tmp_path: Path,
 ) -> None:
     root = fixture_orfs_root(tmp_path)
+    lock_request = request(tmp_path, root)
     outside = tmp_path / "outside.lef"
     outside.write_text("VERSION 5.8 ;\n", encoding="utf-8")
     tech_lef = root / "flow/platforms/asap7/lef/tech.lef"
@@ -222,7 +240,7 @@ def test_create_platform_lock_rejects_artifact_symlink_outside_orfs_root(
     tech_lef.symlink_to(outside)
 
     with pytest.raises(PlatformLockError, match="unsafe archive link|escapes the ORFS root"):
-        create_platform_lock(request(tmp_path, root))
+        create_platform_lock(lock_request)
 
 
 def test_load_platform_selection_policy_rejects_unknown_or_unsafe_paths(

@@ -447,6 +447,20 @@ def test_platform_lock_rejects_duplicate_tool_ids(tmp_path: Path) -> None:
         )
 
 
+def test_platform_lock_rejects_resolved_alias_across_artifact_categories(
+    tmp_path: Path,
+) -> None:
+    lock = valid_lock(tmp_path)
+    aliased_cell_lef = lock.cell_lefs[0].model_copy(
+        update={"resolved_path": lock.tech_lef.resolved_path}
+    )
+
+    with pytest.raises(ValidationError, match="resolve to distinct files"):
+        PlatformLock.model_validate(
+            {**lock.model_dump(), "cell_lefs": (aliased_cell_lef,)}
+        )
+
+
 def test_platform_lock_rejects_reused_corner_id(tmp_path: Path) -> None:
     lock = valid_lock(tmp_path)
 
