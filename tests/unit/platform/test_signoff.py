@@ -11,9 +11,11 @@ import yaml
 from pydantic import ValidationError
 from typer.testing import CliRunner
 
+import nova_rtl.platform.signoff as signoff_module
 from nova_rtl.cli import app
 from nova_rtl.contracts.base import canonical_json_bytes
 from nova_rtl.contracts.platform import (
+    ComponentInventoryEntry,
     DoctorCheck,
     DoctorReport,
     InstalledComponentReceipt,
@@ -25,11 +27,12 @@ from nova_rtl.contracts.platform import (
     SmokeTimingView,
     ToolchainReceipt,
 )
-from nova_rtl.platform.hydration import load_toolchain_source_manifest
+from nova_rtl.platform.hydration import component_tree_identity, load_toolchain_source_manifest
 from nova_rtl.platform.lock import (
     hash_file,
     load_platform_lock,
     load_platform_selection_policy,
+    platform_content_identity_hash,
     selection_policy_content_identity_hash,
 )
 from nova_rtl.platform.signoff import (
@@ -100,6 +103,14 @@ def build_synthetic_signoff_packet(tmp_path: Path) -> Path:
         shutil.copyfile(original, source / relative_path)
 
     lock = load_platform_lock(source / "platform.lock.yaml")
+    empty_tree_identity = component_tree_identity(())
+    lock = lock.model_copy(update={"orfs_tree_identity": empty_tree_identity})
+    lock = lock.model_copy(update={"content_identity_hash": platform_content_identity_hash(lock)})
+    write_contract(source / "platform.lock.yaml", lock)
+    views = PlatformAnalysisViews.model_validate(
+        yaml.safe_load((source / "analysis-views.yaml").read_text(encoding="utf-8"))
+    ).model_copy(update={"platform_lock_hash": hash_file(source / "platform.lock.yaml")})
+    write_contract(source / "analysis-views.yaml", views)
     loaded_manifest = load_toolchain_source_manifest(MANIFEST_PATH)
     receipt = ToolchainReceipt(
         schema_version=1,
@@ -110,7 +121,7 @@ def build_synthetic_signoff_packet(tmp_path: Path) -> Path:
                 component_id=item.component_id,
                 source=item,
                 inventory=(),
-                tree_identity=hash_ref("a"),
+                tree_identity=empty_tree_identity,
             )
             for item in loaded_manifest.manifest.components
         ),
@@ -343,6 +354,24 @@ def resign_packet_indexes(packet: Path) -> None:
     write_contract(packet / "m0-signoff.json", M0SignoffReport.model_validate(report_payload))
 
 
+def rebind_packet_to_lock_bytes(packet: Path) -> None:
+    lock_hash = hash_file(packet / "platform.lock.yaml")
+    views_path = packet / "analysis-views.yaml"
+    views_payload = yaml.safe_load(views_path.read_text(encoding="utf-8"))
+    views_payload["platform_lock_hash"] = lock_hash
+    write_contract(views_path, PlatformAnalysisViews.model_validate(views_payload))
+    doctor_path = packet / "doctor-report.json"
+    doctor_payload = json.loads(doctor_path.read_text(encoding="utf-8"))
+    doctor_payload["platform_lock_hash"] = lock_hash
+    doctor_payload["checks"][-1]["artifact_hash"] = lock_hash
+    write_contract(doctor_path, DoctorReport.model_validate(doctor_payload))
+    smoke_path = packet / "smoke/smoke-report.json"
+    smoke_payload = json.loads(smoke_path.read_text(encoding="utf-8"))
+    smoke_payload["platform_lock_hash"] = lock_hash
+    write_contract(smoke_path, PlatformSmokeReport.model_validate(smoke_payload))
+    resign_packet_indexes(packet)
+
+
 def valid_report() -> M0SignoffReport:
     return M0SignoffReport(
         status="PASS",
@@ -550,6 +579,42 @@ def test_publish_signoff_packet_rejects_missing_report_evidence(tmp_path: Path) 
     assert not destination.exists()
 
 
+def test_packet_publication_is_anchored_against_parent_symlink_swap(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_packet = build_synthetic_signoff_packet(tmp_path / "source")
+    report = verify_m0_signoff_packet(source_packet)
+    source_files = {
+        path.relative_to(source_packet).as_posix(): path
+        for path in source_packet.rglob("*")
+        if path.is_file() and path.name != "m0-signoff.json"
+    }
+    safe_parent = tmp_path / "safe-parent"
+    moved_parent = tmp_path / "moved-parent"
+    protected_root = tmp_path / ".nova-tools"
+    safe_parent.mkdir()
+    protected_root.mkdir()
+    real_mkdtemp = signoff_module.tempfile.mkdtemp
+
+    def swap_parent_before_staging(*, prefix: str, dir: Path) -> str:
+        safe_parent.rename(moved_parent)
+        safe_parent.symlink_to(protected_root, target_is_directory=True)
+        return real_mkdtemp(prefix=prefix, dir=dir)
+
+    monkeypatch.setattr(signoff_module.tempfile, "mkdtemp", swap_parent_before_staging)
+
+    published = publish_signoff_packet(
+        destination=safe_parent / "m0-race",
+        report=report,
+        source_files=source_files,
+        protected_roots=(protected_root,),
+    )
+
+    assert published.parent == (moved_parent / "m0-race").resolve()
+    assert not (protected_root / "m0-race").exists()
+
+
 def test_packet_verifier_accepts_a_complete_self_contained_packet(tmp_path: Path) -> None:
     packet = build_synthetic_signoff_packet(tmp_path)
 
@@ -575,6 +640,14 @@ def test_packet_verifier_rejects_symlinked_evidence_even_when_bytes_match(
 def test_packet_verifier_rejects_an_unindexed_extra_file(tmp_path: Path) -> None:
     packet = build_synthetic_signoff_packet(tmp_path)
     (packet / "unindexed.txt").write_text("not evidence\n", encoding="utf-8")
+
+    with pytest.raises(SignoffError, match="unexpected packet entries"):
+        verify_m0_signoff_packet(packet)
+
+
+def test_packet_verifier_rejects_an_unindexed_empty_directory(tmp_path: Path) -> None:
+    packet = build_synthetic_signoff_packet(tmp_path)
+    (packet / "unindexed-empty").mkdir()
 
     with pytest.raises(SignoffError, match="unexpected packet entries"):
         verify_m0_signoff_packet(packet)
@@ -627,4 +700,57 @@ def test_packet_verifier_reparses_resigned_raw_timing_report(tmp_path: Path) -> 
     resign_packet_indexes(packet)
 
     with pytest.raises(SignoffError, match="timing summary disagrees"):
+        verify_m0_signoff_packet(packet)
+
+
+def test_packet_verifier_recomputes_platform_lock_content_identity(tmp_path: Path) -> None:
+    packet = build_synthetic_signoff_packet(tmp_path)
+    lock_path = packet / "platform.lock.yaml"
+    lock = load_platform_lock(lock_path)
+    changed = lock.model_copy(update={"deterministic_seed": lock.deterministic_seed + 1})
+    write_contract(lock_path, changed)
+    rebind_packet_to_lock_bytes(packet)
+
+    with pytest.raises(SignoffError, match="platform lock content identity"):
+        verify_m0_signoff_packet(packet)
+
+
+def test_packet_verifier_binds_receipted_orfs_tree_to_platform_lock(tmp_path: Path) -> None:
+    packet = build_synthetic_signoff_packet(tmp_path)
+    receipt_path = packet / "toolchain-receipt.json"
+    payload = json.loads(receipt_path.read_text(encoding="utf-8"))
+    inventory = (
+        ComponentInventoryEntry(
+            path="synthetic.txt",
+            type="file",
+            mode=0o644,
+            sha256=hash_ref("e"),
+        ),
+    )
+    for component in payload["components"]:
+        if component["component_id"] == "orfs":
+            component["inventory"] = [item.model_dump(mode="json") for item in inventory]
+            component["tree_identity"] = component_tree_identity(inventory)
+    write_contract(receipt_path, ToolchainReceipt.model_validate(payload))
+    smoke_path = packet / "smoke/smoke-report.json"
+    smoke_payload = json.loads(smoke_path.read_text(encoding="utf-8"))
+    smoke_payload["toolchain_receipt_hash"] = hash_file(receipt_path)
+    write_contract(smoke_path, PlatformSmokeReport.model_validate(smoke_payload))
+    resign_packet_indexes(packet)
+
+    with pytest.raises(SignoffError, match="ORFS tree identity"):
+        verify_m0_signoff_packet(packet)
+
+
+def test_packet_verifier_binds_orfs_commit_across_lock_policy_and_receipt(
+    tmp_path: Path,
+) -> None:
+    packet = build_synthetic_signoff_packet(tmp_path)
+    lock_path = packet / "platform.lock.yaml"
+    lock = load_platform_lock(lock_path).model_copy(update={"orfs_commit": "d" * 40})
+    lock = lock.model_copy(update={"content_identity_hash": platform_content_identity_hash(lock)})
+    write_contract(lock_path, lock)
+    rebind_packet_to_lock_bytes(packet)
+
+    with pytest.raises(SignoffError, match="ORFS commit"):
         verify_m0_signoff_packet(packet)

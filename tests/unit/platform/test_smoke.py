@@ -23,6 +23,7 @@ from nova_rtl.platform.smoke import (
     _orfs_config,
     _require_output_outside_roots,
     _run_checked,
+    _run_with_snapshot_guard,
     _smoke_environment,
     _snapshot_input,
     _sta_environment,
@@ -82,7 +83,7 @@ def test_smoke_input_snapshot_is_immutable_after_source_edit(tmp_path: Path) -> 
     snapshot = _snapshot_input(source, tmp_path / "scratch/input.sv", "smoke RTL")
     source.write_text("module after; endmodule\n", encoding="utf-8")
 
-    assert snapshot.read_text(encoding="utf-8") == "module before; endmodule\n"
+    assert snapshot.path.read_text(encoding="utf-8") == "module before; endmodule\n"
 
 
 def test_smoke_input_snapshot_rejects_source_mutation_during_copy(
@@ -102,6 +103,27 @@ def test_smoke_input_snapshot_rejects_source_mutation_during_copy(
 
     with pytest.raises(SmokeError, match="changed while snapshotting"):
         _snapshot_input(source, tmp_path / "scratch/input.sdc", "smoke constraints")
+
+
+def test_snapshot_guard_detects_mutation_by_eda_process(tmp_path: Path) -> None:
+    source = tmp_path / "source.sv"
+    source.write_text("module before; endmodule\n", encoding="utf-8")
+    snapshot = _snapshot_input(source, tmp_path / "scratch/input.sv", "smoke RTL")
+    mutator = (
+        "import os; from pathlib import Path; "
+        f"p=Path({str(snapshot.path)!r}); os.chmod(p, 0o644); "
+        "p.write_text('module changed; endmodule\\n')"
+    )
+
+    with pytest.raises(SmokeError, match="changed while EDA consumed it"):
+        _run_with_snapshot_guard(
+            [sys.executable, "-c", mutator],
+            snapshots=(snapshot,),
+            cwd=tmp_path,
+            environment=dict(os.environ),
+            log_path=tmp_path / "mutator.log",
+            timeout_seconds=10,
+        )
 
 
 def test_smoke_output_may_not_modify_a_verified_tool_root(tmp_path: Path) -> None:

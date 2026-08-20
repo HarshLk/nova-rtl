@@ -33,6 +33,7 @@ from nova_rtl.contracts.platform import (
 from nova_rtl.platform.activation import verify_toolchain
 from nova_rtl.platform.doctor import run_doctor
 from nova_rtl.platform.hydration import (
+    component_tree_identity,
     load_toolchain_source_manifest,
     manifest_content_identity_hash,
 )
@@ -40,6 +41,7 @@ from nova_rtl.platform.lock import (
     hash_file,
     load_platform_lock,
     load_platform_selection_policy,
+    platform_content_identity_hash,
     selection_policy_content_identity_hash,
 )
 from nova_rtl.platform.smoke import (
@@ -365,6 +367,7 @@ def _packet_file(root: Path, relative_path: str) -> Path:
 
 def _require_exact_packet_entries(root: Path, expected_files: set[str]) -> None:
     actual_files: set[str] = set()
+    actual_directories: set[str] = set()
     for directory, directory_names, file_names in os.walk(root, followlinks=False):
         directory_path = Path(directory)
         for name in directory_names:
@@ -372,17 +375,29 @@ def _require_exact_packet_entries(root: Path, expected_files: set[str]) -> None:
             if candidate.is_symlink():
                 relative = candidate.relative_to(root).as_posix()
                 raise SignoffError(f"published sign-off packet contains symlink: {relative}")
+            actual_directories.add(candidate.relative_to(root).as_posix())
         for name in file_names:
             candidate = directory_path / name
             relative = candidate.relative_to(root).as_posix()
             if candidate.is_symlink():
                 raise SignoffError(f"published sign-off packet contains symlink: {relative}")
             actual_files.add(relative)
-    if actual_files != expected_files:
+    expected_directories = {
+        parent.as_posix()
+        for relative_path in expected_files
+        for parent in PurePosixPath(relative_path).parents
+        if parent.as_posix() != "."
+    }
+    if actual_files != expected_files or actual_directories != expected_directories:
         unexpected = sorted(actual_files - expected_files)
         missing = sorted(expected_files - actual_files)
+        unexpected_directories = sorted(actual_directories - expected_directories)
+        missing_directories = sorted(expected_directories - actual_directories)
         raise SignoffError(
-            f"unexpected packet entries; unexpected={unexpected}, missing={missing}"
+            "unexpected packet entries; "
+            f"unexpected={unexpected}, missing={missing}, "
+            f"unexpected_directories={unexpected_directories}, "
+            f"missing_directories={missing_directories}"
         )
 
 
@@ -410,11 +425,12 @@ def publish_signoff_packet(
     report: M0SignoffReport,
     source_files: Mapping[str, Path],
     project_root: Path | None = None,
+    protected_roots: tuple[Path, ...] = (),
 ) -> Path:
     """Copy verified evidence and atomically publish a new immutable packet."""
 
     target = destination.absolute()
-    if target.exists():
+    if target.exists() or target.is_symlink():
         raise SignoffError(f"sign-off destination already exists: {target}")
     evidence_by_path = {item.relative_path: item for item in _report_evidence(report)}
     smoke_source = source_files.get(report.smoke_report.relative_path)
@@ -432,42 +448,79 @@ def publish_signoff_packet(
     expected_paths = set(evidence_by_path) | set(nested_paths)
     if set(source_files) != expected_paths:
         raise SignoffError("sign-off source set does not match the report evidence index")
+    _require_output_outside_roots(target, protected_roots)
     target.parent.mkdir(parents=True, exist_ok=True)
-    staging = Path(tempfile.mkdtemp(prefix=".m0-signoff-", dir=target.parent))
+    parent_flags = os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC
+    if hasattr(os, "O_NOFOLLOW"):
+        parent_flags |= os.O_NOFOLLOW
     try:
-        for relative_path, source in source_files.items():
-            evidence = evidence_by_path.get(relative_path) or nested_paths.get(relative_path)
-            relative = PurePosixPath(relative_path)
-            if relative.is_absolute() or ".." in relative.parts:
-                raise SignoffError(f"unsafe sign-off evidence path: {relative_path}")
-            if source.is_symlink():
-                raise SignoffError(f"sign-off evidence may not be a symlink: {source}")
-            resolved_source = source.resolve(strict=True)
-            if not resolved_source.is_file():
-                raise SignoffError(f"sign-off evidence is not a regular file: {source}")
-            if evidence is not None and (
-                resolved_source.stat().st_size != evidence.size_bytes
-                or hash_file(resolved_source) != evidence.sha256
-            ):
-                raise SignoffError(f"sign-off evidence identity mismatch: {source}")
-            staged_file = staging.joinpath(*relative.parts)
-            staged_file.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copyfile(resolved_source, staged_file)
-            if evidence is not None and (
-                staged_file.stat().st_size != evidence.size_bytes
-                or hash_file(staged_file) != evidence.sha256
-                or hash_file(resolved_source) != evidence.sha256
-            ):
-                raise SignoffError(f"sign-off evidence changed while copying: {source}")
-        (staging / "m0-signoff.json").write_bytes(canonical_json_bytes(report) + b"\n")
-        verify_m0_signoff_packet(staging, project_root=project_root)
-        os.replace(staging, target)
-    except (OSError, RuntimeError) as error:
-        shutil.rmtree(staging, ignore_errors=True)
-        if isinstance(error, SignoffError):
-            raise
-        raise SignoffError(f"sign-off packet could not be published: {error}") from error
-    return target / "m0-signoff.json"
+        parent_fd = os.open(target.parent.resolve(strict=True), parent_flags)
+    except OSError as error:
+        raise SignoffError(f"sign-off destination parent is unsafe: {error}") from error
+    staging: Path | None = None
+    try:
+        anchored_parent_link = Path(f"/proc/self/fd/{parent_fd}")
+        anchored_parent = anchored_parent_link.resolve(strict=True)
+        anchored_target = _require_output_outside_roots(
+            anchored_parent / target.name,
+            protected_roots,
+        )
+        try:
+            os.stat(target.name, dir_fd=parent_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            pass
+        else:
+            raise SignoffError(f"sign-off destination already exists: {anchored_target}")
+        staging = Path(
+            tempfile.mkdtemp(prefix=".m0-signoff-", dir=anchored_parent_link)
+        )
+        try:
+            for relative_path, source in source_files.items():
+                evidence = evidence_by_path.get(relative_path) or nested_paths.get(relative_path)
+                relative = PurePosixPath(relative_path)
+                if relative.is_absolute() or ".." in relative.parts:
+                    raise SignoffError(f"unsafe sign-off evidence path: {relative_path}")
+                if source.is_symlink():
+                    raise SignoffError(f"sign-off evidence may not be a symlink: {source}")
+                resolved_source = source.resolve(strict=True)
+                if not resolved_source.is_file():
+                    raise SignoffError(f"sign-off evidence is not a regular file: {source}")
+                if evidence is not None and (
+                    resolved_source.stat().st_size != evidence.size_bytes
+                    or hash_file(resolved_source) != evidence.sha256
+                ):
+                    raise SignoffError(f"sign-off evidence identity mismatch: {source}")
+                staged_file = staging.joinpath(*relative.parts)
+                staged_file.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(resolved_source, staged_file)
+                if evidence is not None and (
+                    staged_file.stat().st_size != evidence.size_bytes
+                    or hash_file(staged_file) != evidence.sha256
+                    or hash_file(resolved_source) != evidence.sha256
+                ):
+                    raise SignoffError(f"sign-off evidence changed while copying: {source}")
+            (staging / "m0-signoff.json").write_bytes(canonical_json_bytes(report) + b"\n")
+            verify_m0_signoff_packet(staging, project_root=project_root)
+            os.rename(
+                staging.name,
+                target.name,
+                src_dir_fd=parent_fd,
+                dst_dir_fd=parent_fd,
+            )
+            staging = None
+            return (
+                anchored_parent_link.resolve(strict=True)
+                / target.name
+                / "m0-signoff.json"
+            )
+        except (OSError, RuntimeError) as error:
+            if staging is not None:
+                shutil.rmtree(staging, ignore_errors=True)
+            if isinstance(error, SignoffError):
+                raise
+            raise SignoffError(f"sign-off packet could not be published: {error}") from error
+    finally:
+        os.close(parent_fd)
 
 
 def verify_m0_signoff_packet(
@@ -509,6 +562,31 @@ def verify_m0_signoff_packet(
         selection_policy = load_platform_selection_policy(
             _packet_file(root, report.selection_policy.relative_path)
         )
+        if lock.content_identity_hash != platform_content_identity_hash(lock):
+            raise SignoffError("published platform lock content identity is invalid")
+        for component in receipt.components:
+            if component.tree_identity != component_tree_identity(component.inventory):
+                raise SignoffError(
+                    "published receipt component tree identity is invalid: "
+                    f"{component.component_id}"
+                )
+        orfs_component = next(
+            (
+                component
+                for component in receipt.components
+                if component.component_id == selection_policy.orfs_component_id
+            ),
+            None,
+        )
+        if orfs_component is None:
+            raise SignoffError("published receipt does not contain the selected ORFS component")
+        if orfs_component.tree_identity != lock.orfs_tree_identity:
+            raise SignoffError("published receipt ORFS tree identity disagrees with platform lock")
+        if (
+            orfs_component.source.git_commit != selection_policy.orfs_commit
+            or lock.orfs_commit != selection_policy.orfs_commit
+        ):
+            raise SignoffError("published ORFS commit disagrees across lock, policy, and receipt")
         policy_hash = selection_policy_content_identity_hash(selection_policy)
         if policy_hash != lock.selection_policy_hash:
             raise SignoffError("published selection policy does not match the platform lock")
@@ -770,6 +848,7 @@ def run_m0_signoff(
             report=report,
             source_files=source_files,
             project_root=project_root,
+            protected_roots=(verified.root,),
         )
     verified_report = verify_m0_signoff_packet(destination, project_root=project_root)
     return report_path, verified_report

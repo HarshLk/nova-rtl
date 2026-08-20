@@ -72,6 +72,16 @@ class PlatformSmokeRequest:
     output_directory: Path
 
 
+@dataclass(frozen=True)
+class InputSnapshot:
+    """Read-only pre-analysis bytes retained across every EDA consumer."""
+
+    path: Path
+    sha256: str
+    size_bytes: int
+    label: str
+
+
 def require_orfs_safe_path(path: Path, label: str) -> Path:
     """Fail clearly where ORFS cannot preserve a path through Make/Tcl lists."""
 
@@ -84,7 +94,7 @@ def require_orfs_safe_path(path: Path, label: str) -> Path:
     return absolute
 
 
-def _snapshot_input(source: Path, destination: Path, label: str) -> Path:
+def _snapshot_input(source: Path, destination: Path, label: str) -> InputSnapshot:
     """Copy one stable input once before any EDA process can consume it."""
 
     resolved = source.resolve(strict=True)
@@ -101,7 +111,40 @@ def _snapshot_input(source: Path, destination: Path, label: str) -> Path:
         or hash_file(destination) != before_hash
     ):
         raise SmokeError(f"{label} changed while snapshotting: {source}")
-    return destination.resolve(strict=True)
+    destination.chmod(0o444)
+    return InputSnapshot(
+        path=destination.resolve(strict=True),
+        sha256=before_hash,
+        size_bytes=before_size,
+        label=label,
+    )
+
+
+def _verify_snapshot(snapshot: InputSnapshot) -> None:
+    if (
+        snapshot.path.is_symlink()
+        or not snapshot.path.is_file()
+        or snapshot.path.stat().st_size != snapshot.size_bytes
+        or hash_file(snapshot.path) != snapshot.sha256
+    ):
+        raise SmokeError(f"{snapshot.label} snapshot changed while EDA consumed it")
+
+
+def _consumer_copy(snapshot: InputSnapshot, destination: Path, label: str) -> InputSnapshot:
+    """Create a guarded writable copy where an external flow propagates source mode."""
+
+    _verify_snapshot(snapshot)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(snapshot.path, destination)
+    destination.chmod(0o644)
+    consumer = InputSnapshot(
+        path=destination.resolve(strict=True),
+        sha256=snapshot.sha256,
+        size_bytes=snapshot.size_bytes,
+        label=label,
+    )
+    _verify_snapshot(consumer)
+    return consumer
 
 
 def _require_output_outside_roots(output: Path, protected_roots: tuple[Path, ...]) -> Path:
@@ -304,6 +347,32 @@ def _run_checked(
     return completed
 
 
+def _run_with_snapshot_guard(
+    command: list[str],
+    *,
+    snapshots: tuple[InputSnapshot, ...],
+    cwd: Path,
+    environment: Mapping[str, str],
+    log_path: Path,
+    timeout_seconds: float,
+) -> subprocess.CompletedProcess[str]:
+    """Verify input identities immediately before and after one EDA consumer."""
+
+    for snapshot in snapshots:
+        _verify_snapshot(snapshot)
+    try:
+        return _run_checked(
+            command,
+            cwd=cwd,
+            environment=environment,
+            log_path=log_path,
+            timeout_seconds=timeout_seconds,
+        )
+    finally:
+        for snapshot in snapshots:
+            _verify_snapshot(snapshot)
+
+
 def _discover_gnu_make(environment: Mapping[str, str], scratch_root: Path) -> tuple[Path, str]:
     located = shutil.which("make", path="/usr/local/bin:/usr/bin:/bin")
     if located is None:
@@ -461,17 +530,34 @@ def run_platform_smoke(
     with tempfile.TemporaryDirectory(prefix="nova-m0-smoke-") as scratch_name:
         scratch = Path(scratch_name)
         flow_home = require_orfs_safe_path(orfs_root / "flow", "ORFS flow root")
+        rtl_snapshot = _snapshot_input(
+            rtl,
+            scratch / "inputs/two_flop_smoke.sv",
+            "smoke RTL",
+        )
+        constraints_snapshot = _snapshot_input(
+            constraints,
+            scratch / "inputs/two_flop_smoke.sdc",
+            "smoke constraints",
+        )
+        orfs_constraints = _consumer_copy(
+            constraints_snapshot,
+            scratch / "orfs-inputs/two_flop_smoke.sdc",
+            "ORFS constraints consumer copy",
+        )
+        (scratch / "inputs").chmod(0o555)
+        (scratch / "orfs-inputs").chmod(0o555)
         rtl = require_orfs_safe_path(
-            _snapshot_input(rtl, scratch / "inputs/two_flop_smoke.sv", "smoke RTL"),
+            rtl_snapshot.path,
             "smoke RTL snapshot",
         )
         constraints = require_orfs_safe_path(
-            _snapshot_input(
-                constraints,
-                scratch / "inputs/two_flop_smoke.sdc",
-                "smoke constraints",
-            ),
+            constraints_snapshot.path,
             "smoke constraints snapshot",
+        )
+        orfs_constraints_path = require_orfs_safe_path(
+            orfs_constraints.path,
+            "ORFS constraints consumer copy",
         )
         work_home = require_orfs_safe_path(scratch / "orfs-work", "ORFS work directory")
         config_path = require_orfs_safe_path(scratch / "config.mk", "ORFS smoke config")
@@ -489,12 +575,12 @@ def run_platform_smoke(
                 "PYTHON_EXE": str(python_executable),
                 "QT_QPA_PLATFORM": "offscreen",
                 "NOVA_SMOKE_RTL": str(rtl),
-                "NOVA_SMOKE_SDC": str(constraints),
+                "NOVA_SMOKE_SDC": str(orfs_constraints_path),
                 "NOVA_SMOKE_WORK_HOME": str(work_home),
             }
         )
         openroad_log = output / "openroad-cts.log"
-        _run_checked(
+        _run_with_snapshot_guard(
             [
                 str(make_executable),
                 "--directory",
@@ -509,6 +595,7 @@ def run_platform_smoke(
                 "cts",
             ],
             cwd=project_root,
+            snapshots=(rtl_snapshot, constraints_snapshot, orfs_constraints),
             environment=environment,
             log_path=openroad_log,
             timeout_seconds=900,
@@ -534,9 +621,10 @@ def run_platform_smoke(
                     constraints=constraints,
                 ),
             }
-            completed = _run_checked(
+            completed = _run_with_snapshot_guard(
                 [str(verified.tool_paths["opensta"]), str(script_path)],
                 cwd=project_root,
+                snapshots=(rtl_snapshot, constraints_snapshot),
                 environment=sta_environment,
                 log_path=report_path,
                 timeout_seconds=180,
@@ -557,6 +645,9 @@ def run_platform_smoke(
                 report=_existing_evidence(report_path, f"{lower}.rpt"),
             )
 
+        _verify_snapshot(rtl_snapshot)
+        _verify_snapshot(constraints_snapshot)
+        _verify_snapshot(orfs_constraints)
         report = PlatformSmokeReport(
             status="PASS",
             platform_id=lock.platform_id,
@@ -577,9 +668,13 @@ def run_platform_smoke(
             python_executable=str(python_executable),
             python_executable_sha256=python_sha256,
             python_version=python_version,
-            rtl=_copy_evidence(rtl, output / "two_flop_smoke.sv", "two_flop_smoke.sv"),
+            rtl=_copy_evidence(
+                rtl_snapshot.path,
+                output / "two_flop_smoke.sv",
+                "two_flop_smoke.sv",
+            ),
             constraints=_copy_evidence(
-                constraints,
+                constraints_snapshot.path,
                 output / "two_flop_smoke.sdc",
                 "two_flop_smoke.sdc",
             ),
