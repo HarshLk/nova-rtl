@@ -881,9 +881,13 @@ class PlatformSmokeReport(StrictContract):
     toolchain_receipt_hash: HashRef
     source_manifest_hash: HashRef
     selection_policy_hash: HashRef
+    execution_environment_hash: HashRef
     make_executable: str = Field(min_length=1)
     make_executable_sha256: HashRef
     make_version: str = Field(min_length=1)
+    python_executable: str = Field(min_length=1)
+    python_executable_sha256: HashRef
+    python_version: str = Field(min_length=1)
     rtl: SignoffEvidenceFile
     constraints: SignoffEvidenceFile
     smoke_config: SignoffEvidenceFile
@@ -926,6 +930,10 @@ class M0SignoffReport(StrictContract):
     status: Literal["PASS"]
     generated_at: AwareDatetime
     exit_code: Literal[0]
+    implementation_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
+    implementation_tree_hash: str = Field(pattern=r"^[0-9a-f]{40}$")
+    signoff_invocation_hash: HashRef
+    execution_environment_hash: HashRef
     doctor_report: SignoffEvidenceFile
     toolchain_receipt: SignoffEvidenceFile
     platform_lock: SignoffEvidenceFile

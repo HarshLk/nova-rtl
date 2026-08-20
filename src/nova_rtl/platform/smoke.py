@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import shutil
@@ -22,6 +24,7 @@ from nova_rtl.contracts.platform import (
     PlatformSmokeReport,
     SignoffEvidenceFile,
     SmokeTimingView,
+    ToolchainReceipt,
     ToolFingerprint,
 )
 from nova_rtl.platform.activation import VerifiedToolchain, verify_toolchain
@@ -73,11 +76,79 @@ def require_orfs_safe_path(path: Path, label: str) -> Path:
     """Fail clearly where ORFS cannot preserve a path through Make/Tcl lists."""
 
     absolute = path.absolute()
-    if re.search(r"[\s#$%?*\[\]{}();'\"\\]", str(absolute)):
+    if re.fullmatch(r"/[A-Za-z0-9._/+\-]+", str(absolute)) is None:
         raise SmokeError(
-            f"{label} contains whitespace or Make metacharacters unsupported by ORFS: {absolute}"
+            f"{label} contains characters outside the portable path allowlist; "
+            f"whitespace or Make metacharacters are unsupported by ORFS: {absolute}"
         )
     return absolute
+
+
+def _snapshot_input(source: Path, destination: Path, label: str) -> Path:
+    """Copy one stable input once before any EDA process can consume it."""
+
+    resolved = source.resolve(strict=True)
+    if not resolved.is_file() or resolved.stat().st_size <= 0:
+        raise SmokeError(f"{label} is missing or empty: {source}")
+    before_size = resolved.stat().st_size
+    before_hash = hash_file(resolved)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(resolved, destination)
+    if (
+        resolved.stat().st_size != before_size
+        or hash_file(resolved) != before_hash
+        or destination.stat().st_size != before_size
+        or hash_file(destination) != before_hash
+    ):
+        raise SmokeError(f"{label} changed while snapshotting: {source}")
+    return destination.resolve(strict=True)
+
+
+def _require_output_outside_roots(output: Path, protected_roots: tuple[Path, ...]) -> Path:
+    """Resolve a prospective destination and keep it outside verified input trees."""
+
+    resolved_output = output.resolve(strict=False)
+    for root in protected_roots:
+        resolved_root = root.resolve(strict=True)
+        if resolved_output == resolved_root or resolved_root in resolved_output.parents:
+            raise SmokeError(
+                "output destination is inside verified tool root "
+                f"{resolved_root}: {resolved_output}"
+            )
+    return resolved_output
+
+
+def _execution_environment_identity_hash(
+    toolchain_environment: Mapping[str, object],
+    *,
+    make_sha256: str,
+    make_version: str,
+    python_sha256: str,
+    python_version: str,
+) -> str:
+    """Hash the normalized, non-secret environment and host helpers used by the smoke."""
+
+    payload = {
+        "fixed_environment": {
+            "LANG": "C.UTF-8",
+            "LC_ALL": "C.UTF-8",
+            "PYTHONHASHSEED": "0",
+            "QT_QPA_PLATFORM": "offscreen",
+            "TZ": "UTC",
+            "system_path_suffix": "/usr/local/bin:/usr/bin:/bin",
+        },
+        "make": {"sha256": make_sha256, "version": make_version},
+        "python": {"sha256": python_sha256, "version": python_version},
+        "toolchain_environment": toolchain_environment,
+    }
+    encoded = json.dumps(
+        payload,
+        allow_nan=False,
+        ensure_ascii=False,
+        separators=(",", ":"),
+        sort_keys=True,
+    ).encode("utf-8")
+    return f"sha256:{hashlib.sha256(encoded).hexdigest()}"
 
 
 def _required_match(pattern: str, report: str, check: str, label: str) -> re.Match[str]:
@@ -355,7 +426,7 @@ def run_platform_smoke(
 ) -> PlatformSmokeReport:
     """Run and persist the real locked ASAP7 synthesis, two-view STA, and CTS gate."""
 
-    output = request.output_directory.absolute()
+    output = request.output_directory.resolve(strict=False)
     if output.exists():
         raise SmokeError(f"smoke output directory already exists: {output}")
     rtl = request.rtl.resolve(strict=True)
@@ -367,6 +438,10 @@ def run_platform_smoke(
         loaded_manifest.manifest,
         project_root / loaded_manifest.manifest.tool_root_name,
     )
+    receipt = ToolchainReceipt.model_validate_json(
+        verified.receipt_path.read_text(encoding="utf-8")
+    )
+    output = _require_output_outside_roots(output, (verified.root,))
     orfs_root = verified.root / "components" / policy.orfs_component_id
     lock_verification = verify_platform_lock(
         request.platform_lock,
@@ -386,19 +461,32 @@ def run_platform_smoke(
     with tempfile.TemporaryDirectory(prefix="nova-m0-smoke-") as scratch_name:
         scratch = Path(scratch_name)
         flow_home = require_orfs_safe_path(orfs_root / "flow", "ORFS flow root")
-        rtl = require_orfs_safe_path(rtl, "smoke RTL")
-        constraints = require_orfs_safe_path(constraints, "smoke constraints")
+        rtl = require_orfs_safe_path(
+            _snapshot_input(rtl, scratch / "inputs/two_flop_smoke.sv", "smoke RTL"),
+            "smoke RTL snapshot",
+        )
+        constraints = require_orfs_safe_path(
+            _snapshot_input(
+                constraints,
+                scratch / "inputs/two_flop_smoke.sdc",
+                "smoke constraints",
+            ),
+            "smoke constraints snapshot",
+        )
         work_home = require_orfs_safe_path(scratch / "orfs-work", "ORFS work directory")
         config_path = require_orfs_safe_path(scratch / "config.mk", "ORFS smoke config")
         config_path.write_text(_orfs_config(), encoding="utf-8")
         environment = _smoke_environment(verified, scratch)
         make_executable, make_version = _discover_gnu_make(environment, scratch)
+        python_executable = Path(sys.executable).resolve(strict=True)
+        python_sha256 = hash_file(python_executable)
+        python_version = sys.version.splitlines()[0]
         environment.update(
             {
                 "OPENROAD_EXE": str(verified.tool_paths["openroad"]),
                 "OPENSTA_EXE": str(verified.tool_paths["opensta"]),
                 "YOSYS_EXE": str(verified.tool_paths["yosys"]),
-                "PYTHON_EXE": sys.executable,
+                "PYTHON_EXE": str(python_executable),
                 "QT_QPA_PLATFORM": "offscreen",
                 "NOVA_SMOKE_RTL": str(rtl),
                 "NOVA_SMOKE_SDC": str(constraints),
@@ -476,9 +564,19 @@ def run_platform_smoke(
             toolchain_receipt_hash=hash_file(verified.receipt_path),
             source_manifest_hash=loaded_manifest.content_identity_hash,
             selection_policy_hash=selection_policy_content_identity_hash(policy),
+            execution_environment_hash=_execution_environment_identity_hash(
+                receipt.model_dump(mode="json")["environment"],
+                make_sha256=hash_file(make_executable),
+                make_version=make_version,
+                python_sha256=python_sha256,
+                python_version=python_version,
+            ),
             make_executable=str(make_executable),
             make_executable_sha256=hash_file(make_executable),
             make_version=make_version,
+            python_executable=str(python_executable),
+            python_executable_sha256=python_sha256,
+            python_version=python_version,
             rtl=_copy_evidence(rtl, output / "two_flop_smoke.sv", "two_flop_smoke.sv"),
             constraints=_copy_evidence(
                 constraints,

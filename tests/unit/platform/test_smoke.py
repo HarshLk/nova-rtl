@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import nova_rtl.platform.smoke as smoke_module
 from nova_rtl.contracts.platform import SignoffEvidenceFile, SmokeTimingView
 from nova_rtl.platform.activation import VerifiedToolchain
 from nova_rtl.platform.lock import (
@@ -18,9 +19,12 @@ from nova_rtl.platform.lock import (
 )
 from nova_rtl.platform.smoke import (
     SmokeError,
+    _execution_environment_identity_hash,
     _orfs_config,
+    _require_output_outside_roots,
     _run_checked,
     _smoke_environment,
+    _snapshot_input,
     _sta_environment,
     _sta_script,
     _validated_smoke_lock,
@@ -58,6 +62,91 @@ def test_smoke_timing_view_rejects_hold_report_labeled_as_max_path() -> None:
 def test_orfs_smoke_rejects_whitespace_path_with_portability_diagnostic() -> None:
     with pytest.raises(SmokeError, match="whitespace or Make metacharacters"):
         require_orfs_safe_path(Path("/tmp/project with spaces/smoke.sv"), "smoke RTL")
+
+
+@pytest.mark.parametrize("metacharacter", ("|", "&", "`", "<", ">", ":", "="))
+def test_orfs_smoke_rejects_every_unquoted_make_recipe_metacharacter(
+    metacharacter: str,
+) -> None:
+    with pytest.raises(SmokeError, match="portable path allowlist"):
+        require_orfs_safe_path(
+            Path(f"/tmp/project{metacharacter}injected/smoke.sv"),
+            "smoke RTL",
+        )
+
+
+def test_smoke_input_snapshot_is_immutable_after_source_edit(tmp_path: Path) -> None:
+    source = tmp_path / "source.sv"
+    source.write_text("module before; endmodule\n", encoding="utf-8")
+
+    snapshot = _snapshot_input(source, tmp_path / "scratch/input.sv", "smoke RTL")
+    source.write_text("module after; endmodule\n", encoding="utf-8")
+
+    assert snapshot.read_text(encoding="utf-8") == "module before; endmodule\n"
+
+
+def test_smoke_input_snapshot_rejects_source_mutation_during_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = tmp_path / "source.sdc"
+    source.write_text("create_clock -period 1 clk\n", encoding="utf-8")
+    real_copyfile = smoke_module.shutil.copyfile
+
+    def copy_then_mutate(source_path: Path, destination_path: Path) -> Path:
+        copied = real_copyfile(source_path, destination_path)
+        Path(source_path).write_text("create_clock -period 2 clk\n", encoding="utf-8")
+        return copied
+
+    monkeypatch.setattr(smoke_module.shutil, "copyfile", copy_then_mutate)
+
+    with pytest.raises(SmokeError, match="changed while snapshotting"):
+        _snapshot_input(source, tmp_path / "scratch/input.sdc", "smoke constraints")
+
+
+def test_smoke_output_may_not_modify_a_verified_tool_root(tmp_path: Path) -> None:
+    tool_root = tmp_path / ".nova-tools"
+    tool_root.mkdir()
+
+    with pytest.raises(SmokeError, match="inside verified tool root"):
+        _require_output_outside_roots(tool_root / "components/orfs/evidence", (tool_root,))
+
+
+def test_smoke_output_confinement_resolves_symlinked_parent(tmp_path: Path) -> None:
+    tool_root = tmp_path / ".nova-tools"
+    tool_root.mkdir()
+    alias = tmp_path / "tool-alias"
+    alias.symlink_to(tool_root, target_is_directory=True)
+
+    with pytest.raises(SmokeError, match="inside verified tool root"):
+        _require_output_outside_roots(alias / "evidence", (tool_root,))
+
+
+def test_execution_environment_identity_is_order_independent_and_tool_bound() -> None:
+    first = _execution_environment_identity_hash(
+        {"PATH": {"operation": "PREPEND_PATH", "paths": ["/tools/bin"]}, "TZ": "UTC"},
+        make_sha256="sha256:" + "1" * 64,
+        make_version="GNU Make 4.4",
+        python_sha256="sha256:" + "2" * 64,
+        python_version="3.11.0",
+    )
+    reordered = _execution_environment_identity_hash(
+        {"TZ": "UTC", "PATH": {"paths": ["/tools/bin"], "operation": "PREPEND_PATH"}},
+        make_sha256="sha256:" + "1" * 64,
+        make_version="GNU Make 4.4",
+        python_sha256="sha256:" + "2" * 64,
+        python_version="3.11.0",
+    )
+    changed_python = _execution_environment_identity_hash(
+        {"PATH": {"operation": "PREPEND_PATH", "paths": ["/tools/bin"]}, "TZ": "UTC"},
+        make_sha256="sha256:" + "1" * 64,
+        make_version="GNU Make 4.4",
+        python_sha256="sha256:" + "3" * 64,
+        python_version="3.11.0",
+    )
+
+    assert first == reordered
+    assert first != changed_python
 
 
 @pytest.mark.parametrize(
