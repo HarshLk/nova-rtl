@@ -1,0 +1,38 @@
+schema_version: 1
+platform_id: asap7
+orfs_component_id: orfs
+orfs_commit: 4c06bcb2466996a90d31101d85d705ad015950bc
+platform_root: flow/platforms/asap7
+library_model: NLDM
+setup_corner:
+  corner_id: asap7_wc
+  role: SETUP
+  liberty_files:
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_SS_nldm_211120.lib.gz
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_SS_nldm_220122.lib.gz
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_SS_nldm_211120.lib.gz
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_SS_nldm_220123.lib
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_SS_nldm_211120.lib.gz
+hold_corner:
+  corner_id: asap7_bc
+  role: HOLD
+  liberty_files:
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_FF_nldm_211120.lib.gz
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_FF_nldm_220122.lib.gz
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_FF_nldm_211120.lib.gz
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_FF_nldm_220123.lib
+    - flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_FF_nldm_211120.lib.gz
+reference_corner: null
+tech_lef: flow/platforms/asap7/lef/asap7_tech_1x_201209.lef
+cell_lefs:
+  - flow/platforms/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef
+rc_config: flow/platforms/asap7/setRC.tcl
+flow_config: flow/platforms/asap7/config.mk
+license_artifacts:
+  - LICENSE_BUILD_RUN_SCRIPTS
+redistribution_status: REVIEW_REQUIRED
+license_notes:
+  - The locked BSD-3-Clause file covers ORFS build and run scripts only.
+  - The pinned ORFS checkout does not contain a separate license file for its ASAP7 collateral.
+  - NOVA-RTL may use the collateral locally, but redistribution requires separate review.
+deterministic_seed: 0

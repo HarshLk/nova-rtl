@@ -312,6 +312,8 @@ class TimingCorner(StrictContract):
     role: Literal["SETUP", "HOLD", "REFERENCE"]
     library_model: Literal["NLDM", "CCS"]
     liberty_files: tuple[PlatformArtifact, ...] = Field(min_length=1)
+    operating_condition_mode: Literal["PER_LIBRARY_NOMINAL"]
+    operating_conditions: tuple[str, ...] = Field(min_length=1)
     voltage_v: float = Field(gt=0, allow_inf_nan=False)
     temperature_c: float = Field(allow_inf_nan=False)
     native_time_unit: Literal["PS", "NS"]
@@ -323,6 +325,142 @@ class TimingCorner(StrictContract):
         artifact_ids = [item.artifact_id for item in self.liberty_files]
         if len(artifact_ids) != len(set(artifact_ids)):
             raise ValueError("duplicate Liberty artifact_id")
+        if len(self.operating_conditions) != len(self.liberty_files):
+            raise ValueError("each Liberty artifact requires one operating condition")
+        if any(not item.strip() for item in self.operating_conditions):
+            raise ValueError("operating conditions must be nonempty")
+        return self
+
+
+class TimingCornerSelection(StrictContract):
+    """Reviewed relative Liberty selection for one required timing role."""
+
+    corner_id: EntityId
+    role: Literal["SETUP", "HOLD", "REFERENCE"]
+    liberty_files: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("liberty_files")
+    @classmethod
+    def liberty_paths_are_safe_and_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("Liberty paths must be unique within a corner")
+        return tuple(_validate_relative_path(item) for item in value)
+
+
+class PlatformSelectionPolicy(StrictContract):
+    """Human-reviewed ASAP7 file selection independent of a local checkout path."""
+
+    schema_version: Literal[1] = 1
+    platform_id: Literal["asap7"]
+    orfs_component_id: Literal["orfs"]
+    orfs_commit: GitCommit
+    platform_root: str
+    library_model: Literal["NLDM"]
+    setup_corner: TimingCornerSelection
+    hold_corner: TimingCornerSelection
+    reference_corner: TimingCornerSelection | None
+    tech_lef: str
+    cell_lefs: tuple[str, ...] = Field(min_length=1)
+    rc_config: str
+    flow_config: str
+    license_artifacts: tuple[str, ...] = Field(min_length=1)
+    redistribution_status: Literal["PERMITTED", "REVIEW_REQUIRED", "RESTRICTED"]
+    license_notes: tuple[str, ...] = Field(min_length=1)
+    deterministic_seed: int = Field(ge=0, le=2**31 - 1)
+
+    @field_validator(
+        "platform_root",
+        "tech_lef",
+        "rc_config",
+        "flow_config",
+    )
+    @classmethod
+    def selected_path_is_safe(cls, value: str) -> str:
+        return _validate_relative_path(value)
+
+    @field_validator("cell_lefs", "license_artifacts")
+    @classmethod
+    def selected_paths_are_safe_and_unique(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("selected paths must be unique")
+        return tuple(_validate_relative_path(item) for item in value)
+
+    @model_validator(mode="after")
+    def selection_is_coherent(self) -> Self:
+        if not re.fullmatch(r"[0-9a-f]{40}", self.orfs_commit):
+            raise ValueError("orfs_commit must be a full 40-character Git commit")
+        if self.setup_corner.role != "SETUP":
+            raise ValueError("setup_corner selection must have role SETUP")
+        if self.hold_corner.role != "HOLD":
+            raise ValueError("hold_corner selection must have role HOLD")
+        if self.reference_corner is not None and self.reference_corner.role != "REFERENCE":
+            raise ValueError("reference_corner selection must have role REFERENCE")
+        platform_prefix = PurePosixPath(self.platform_root)
+        platform_paths = (
+            *self.setup_corner.liberty_files,
+            *self.hold_corner.liberty_files,
+            *((self.reference_corner.liberty_files) if self.reference_corner else ()),
+            self.tech_lef,
+            *self.cell_lefs,
+            self.rc_config,
+            self.flow_config,
+        )
+        if any(platform_prefix not in PurePosixPath(item).parents for item in platform_paths):
+            raise ValueError("platform artifact path must be below platform_root")
+        if len(platform_paths) != len(set(platform_paths)):
+            raise ValueError("platform artifact paths must be unique")
+        if any(not note.strip() for note in self.license_notes):
+            raise ValueError("license notes must be nonempty")
+        return self
+
+
+class PlatformLockRequest(StrictContract):
+    """One verified local realization requested from a reviewed selection policy."""
+
+    orfs_root: Path
+    policy: PlatformSelectionPolicy
+    source_manifest_hash: HashRef
+    host: HostPlatform
+    tool_fingerprints: tuple[ToolFingerprint, ...] = Field(min_length=1)
+    generated_at: AwareDatetime
+
+    @field_validator("orfs_root")
+    @classmethod
+    def orfs_root_is_normalized_absolute(cls, value: Path) -> Path:
+        if not value.is_absolute() or value != value.resolve():
+            raise ValueError("orfs_root must be absolute, normalized, and symlink-resolved")
+        return value
+
+
+class PlatformAnalysisView(StrictContract):
+    """Platform-only portion of one required M0 timing-analysis view."""
+
+    analysis_view_id: EntityId
+    check: Literal["SETUP", "HOLD"]
+    required: Literal[True] = True
+    liberty_corner_id: EntityId
+    liberty_artifact_hashes: tuple[HashRef, ...] = Field(min_length=1)
+    rc_corner_id: EntityId
+    rc_artifact_hash: HashRef
+    operating_condition_mode: Literal["PER_LIBRARY_NOMINAL"]
+    operating_conditions: tuple[str, ...] = Field(min_length=1)
+    required_stages: tuple[Literal["OPENSTA_FULL", "OPENROAD_PHYSICAL"], ...] = Field(
+        min_length=1
+    )
+
+
+class PlatformAnalysisViews(StrictContract):
+    """Two required platform views bound to exact platform-lock bytes."""
+
+    schema_version: Literal[1] = 1
+    platform_id: EntityId
+    platform_lock_hash: HashRef
+    views: tuple[PlatformAnalysisView, PlatformAnalysisView]
+
+    @model_validator(mode="after")
+    def contains_one_setup_and_one_hold_view(self) -> Self:
+        if tuple(view.check for view in self.views) != ("SETUP", "HOLD"):
+            raise ValueError("platform views must contain ordered SETUP and HOLD checks")
         return self
 
 
@@ -556,6 +694,7 @@ class PlatformLock(StrictContract):
     schema_version: Literal[1] = 1
     platform_id: EntityId
     source_manifest_hash: HashRef
+    selection_policy_hash: HashRef
     orfs_commit: GitCommit
     host: HostPlatform
     tool_fingerprints: tuple[ToolFingerprint, ...] = Field(min_length=1)
@@ -567,6 +706,9 @@ class PlatformLock(StrictContract):
     rc_rules: PlatformArtifact
     flow_config: PlatformArtifact
     license_artifacts: tuple[PlatformArtifact, ...] = Field(min_length=1)
+    redistribution_status: Literal["PERMITTED", "REVIEW_REQUIRED", "RESTRICTED"]
+    license_notes: tuple[str, ...] = Field(min_length=1)
+    deterministic_seed: int = Field(ge=0, le=2**31 - 1)
     content_identity_hash: HashRef
     generated_at: AwareDatetime
 
@@ -597,6 +739,8 @@ class PlatformLock(StrictContract):
             raise ValueError("flow_config must have kind FLOW_CONFIG")
         if any(item.kind != "LICENSE" for item in self.license_artifacts):
             raise ValueError("license_artifacts may contain only LICENSE artifacts")
+        if any(not note.strip() for note in self.license_notes):
+            raise ValueError("license notes must be nonempty")
         all_artifacts = (
             *self.setup_corner.liberty_files,
             *self.hold_corner.liberty_files,
