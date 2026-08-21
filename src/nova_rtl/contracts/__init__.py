@@ -1,6 +1,13 @@
 """Canonical NOVA-RTL data contracts."""
 
-from nova_rtl.contracts.analysis import AnalysisViewContract, PowerActivityContract
+from nova_rtl.contracts.analysis import (
+    AnalysisViewContract,
+    CDCInventory,
+    ClockInventory,
+    CriticalPathRecord,
+    EvidenceGraphSnapshot,
+    PowerActivityContract,
+)
 from nova_rtl.contracts.base import (
     ArtifactRef,
     Diagnostic,
@@ -8,6 +15,7 @@ from nova_rtl.contracts.base import (
     MetricSet,
     StageInputHashes,
 )
+from nova_rtl.contracts.execution import PreparedCommand, RawToolResult, StageResult, ToolJob
 from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
 from nova_rtl.contracts.platform import (
     ArchiveMetadata,
@@ -39,19 +47,30 @@ from nova_rtl.contracts.platform import (
     ToolFingerprint,
     ToolSource,
 )
+from nova_rtl.contracts.verification import (
+    ConstraintBindingManifest,
+    FormalModelContract,
+    ProofResult,
+)
 
 __all__ = [
     "AnalysisViewContract",
     "ArchiveMetadata",
     "ArtifactRef",
+    "CDCInventory",
     "CanonicalEnvironmentEntry",
     "ComponentInventoryEntry",
+    "ClockInventory",
+    "ConstraintBindingManifest",
+    "CriticalPathRecord",
     "DoctorCheck",
     "DesignContract",
     "Diagnostic",
     "DoctorIssue",
     "DoctorReport",
     "EvidenceRef",
+    "EvidenceGraphSnapshot",
+    "FormalModelContract",
     "HostPlatform",
     "HydrationComponentReceipt",
     "InstalledComponentReceipt",
@@ -65,16 +84,21 @@ __all__ = [
     "PlatformLockRequest",
     "PlatformSelectionPolicy",
     "PlatformSmokeReport",
+    "PreparedCommand",
+    "ProofResult",
     "PowerActivityContract",
     "ProjectManifest",
+    "RawToolResult",
     "RuntimeEnvironmentEntry",
     "SignoffEvidenceFile",
     "SmokeTimingView",
     "StageInputHashes",
+    "StageResult",
     "TimingCorner",
     "TimingCornerSelection",
     "ToolExecutableSource",
     "ToolFingerprint",
+    "ToolJob",
     "ToolSource",
     "ToolchainReceipt",
     "ToolchainSourceManifest",

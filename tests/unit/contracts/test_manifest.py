@@ -171,6 +171,17 @@ def test_project_manifest_accepts_the_locked_five_clock_strict_contract() -> Non
     )
 
 
+def test_project_manifest_accepts_the_m0_locked_openroad_physical_stage() -> None:
+    payload = valid_manifest_payload()
+    views = payload["analysis_views"]
+    assert isinstance(views, list)
+    for view in views:
+        view["required_stages"] = ["OPENSTA_FULL", "OPENROAD_PHYSICAL"]
+
+    manifest = ProjectManifest.model_validate(payload)
+    assert manifest.analysis_views[0].required_stages[-1] == "OPENROAD_PHYSICAL"
+
+
 @pytest.mark.parametrize(
     ("path", "value", "message"),
     [

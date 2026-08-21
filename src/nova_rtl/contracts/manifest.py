@@ -29,7 +29,12 @@ Define = Annotated[
     str,
     StringConstraints(pattern=r"^[A-Za-z_][A-Za-z0-9_$]*(?:=.*)?$"),
 ]
-StageName = Literal["OPENSTA_FULL", "OPENROAD_PLACED_CTS", "OPENROAD_ROUTED"]
+StageName = Literal[
+    "OPENSTA_FULL",
+    "OPENROAD_PHYSICAL",
+    "OPENROAD_PLACED_CTS",
+    "OPENROAD_ROUTED",
+]
 CorrectnessContract = Literal["STRICT_SEQ_EQUIV", "RETIMING_EQUIV", "LATENCY_AWARE"]
 JsonScalar = str | int | float | bool | None
 

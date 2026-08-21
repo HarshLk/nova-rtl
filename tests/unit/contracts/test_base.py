@@ -31,27 +31,39 @@ def test_canonical_json_bytes_sorts_nested_mapping_keys() -> None:
     assert canonical_json_bytes(first) == b'{"metadata":{"a":2,"z":1},"name":"example"}'
 
 
-def test_canonical_m0_contracts_are_exported_from_contract_package() -> None:
+def test_canonical_contracts_are_exported_from_contract_package() -> None:
     from nova_rtl import contracts
 
     expected_names = {
         "AnalysisViewContract",
         "ArtifactRef",
+        "CDCInventory",
+        "ClockInventory",
+        "ConstraintBindingManifest",
+        "CriticalPathRecord",
         "DesignContract",
         "Diagnostic",
         "DoctorCheck",
         "DoctorIssue",
         "DoctorReport",
+        "EvidenceGraphSnapshot",
+        "EvidenceRef",
+        "FormalModelContract",
         "HostPlatform",
         "MetricSet",
         "PlatformArtifact",
         "PlatformLock",
+        "PreparedCommand",
+        "ProofResult",
         "PowerActivityContract",
         "ProjectManifest",
+        "RawToolResult",
         "StageInputHashes",
+        "StageResult",
         "TimingCorner",
         "ToolExecutableSource",
         "ToolFingerprint",
+        "ToolJob",
         "ToolSource",
         "ToolchainSourceManifest",
     }
