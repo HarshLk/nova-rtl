@@ -1,0 +1,23 @@
+schema_version: 1
+registry_id: cdc_patterns_v1
+claim_scope: STRUCTURAL_CDC_INVARIANT_AUDIT
+unsupported_crossing_policy: FAIL_CLOSED
+patterns:
+  - pattern_id: two_flop_level_sync
+    kind: TWO_FLOP_LEVEL
+    protected: true
+  - pattern_id: toggle_pulse_sync
+    kind: TOGGLE_PULSE
+    protected: true
+  - pattern_id: request_acknowledge_sync
+    kind: REQUEST_ACKNOWLEDGE
+    protected: true
+  - pattern_id: async_fifo_gray_sync
+    kind: ASYNC_FIFO_GRAY
+    protected: true
+  - pattern_id: gray_pointer_sync
+    kind: GRAY_POINTER
+    protected: true
+  - pattern_id: reset_synchronizer
+    kind: RESET_SYNCHRONIZER
+    protected: true

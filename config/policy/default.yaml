@@ -1,0 +1,8 @@
+schema_version: 1
+policy_id: nova_default
+primary_correctness: STRICT_SEQ_EQUIV
+missing_evidence_policy: FAIL_CLOSED
+allow_sdc_edits: false
+allow_latency_change: false
+allow_protected_structure_edits: false
+deterministic_seed: 0
