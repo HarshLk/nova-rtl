@@ -119,6 +119,36 @@ class PowerActivityContract(StrictContract):
         return self
 
 
+class FrequencySweepContract(StrictContract):
+    """Deterministic period-sweep identity kept separate from optimizer edits."""
+
+    schema_version: Literal[1] = 1
+    frequency_sweep_contract_id: EntityId
+    baseline_analysis_view_hash: HashRef
+    target_master_clock_id: EntityId
+    target_domain_id: EntityId
+    ordered_trial_periods_ns: tuple[PositiveFloat, ...] = Field(min_length=1)
+    fixed_non_target_clock_definitions_hash: HashRef
+    setup_pass_limit_ns: FiniteFloat
+    hold_pass_limit_ns: FiniteFloat
+    constraint_overlay_generator_hash: HashRef
+    search_method: Literal["BOUNDED_BINARY"]
+    maximum_trials: int = Field(strict=True, gt=0)
+    result_label_policy: Literal["ACHIEVED_BY_SWEEP_ONLY_ON_SETUP_HOLD_PASS"]
+    contract_hash: HashRef
+
+    @model_validator(mode="after")
+    def sweep_is_bounded_unique_and_self_hashed(self) -> Self:
+        if len(self.ordered_trial_periods_ns) != len(set(self.ordered_trial_periods_ns)):
+            raise ValueError("trial periods must be unique")
+        if len(self.ordered_trial_periods_ns) > self.maximum_trials:
+            raise ValueError("trial periods cannot exceed maximum_trials")
+        expected_hash = canonical_sha256(self, exclude=frozenset({"contract_hash"}))
+        if self.contract_hash != expected_hash:
+            raise ValueError("contract_hash does not match canonical frequency sweep")
+        return self
+
+
 class CriticalPathRecord(StrictContract):
     """View-keyed normalized timing path with parser arithmetic checks."""
 
@@ -354,5 +384,6 @@ __all__ = [
     "ClockInventory",
     "CriticalPathRecord",
     "EvidenceGraphSnapshot",
+    "FrequencySweepContract",
     "PowerActivityContract",
 ]
