@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
@@ -533,6 +533,32 @@ def test_doctor_report_rejects_naive_generated_timestamp() -> None:
         )
 
 
+def test_doctor_report_rejects_non_utc_generated_timestamp() -> None:
+    failed_check = DoctorCheck(
+        name="yosys",
+        status="FAIL",
+        resolved_path=None,
+        tool_fingerprint=None,
+        artifact_hash=None,
+        issues=(DoctorIssue(code="TOOL_MISSING", subject="yosys", message="missing"),),
+        message="missing",
+    )
+
+    with pytest.raises(ValidationError, match="UTC"):
+        DoctorReport(
+            status="FAIL",
+            checks=(failed_check,),
+            platform_lock_hash=None,
+            generated_at=datetime(
+                2026,
+                8,
+                15,
+                tzinfo=timezone(timedelta(hours=5, minutes=30)),
+            ),
+            exit_code=2,
+        )
+
+
 @pytest.mark.parametrize(
     ("field", "value"),
     (("voltage_v", float("inf")), ("temperature_c", float("nan"))),
@@ -548,7 +574,22 @@ def test_timing_corner_rejects_non_finite_values(
         TimingCorner.model_validate({**lock.setup_corner.model_dump(), field: value})
 
 
-def test_tool_fingerprint_rejects_unknown_probe_adapter(tmp_path: Path) -> None:
+def test_tool_fingerprint_accepts_a_stable_nonbootstrap_adapter_version(tmp_path: Path) -> None:
+    fingerprint = ToolFingerprint(
+        tool_id="opensta",
+        executable=str((tmp_path / "sta").resolve()),
+        version="OpenSTA 2.6.0",
+        version_args=("-version",),
+        executable_sha256=hash_ref("1"),
+        build_hash=hash_ref("2"),
+        adapter_version="opensta-adapter-v1",
+        container_digest=None,
+    )
+
+    assert fingerprint.adapter_version == "opensta-adapter-v1"
+
+
+def test_tool_fingerprint_rejects_unversioned_adapter_identity(tmp_path: Path) -> None:
     with pytest.raises(ValidationError):
         ToolFingerprint(
             tool_id="yosys",

@@ -35,12 +35,20 @@ def test_canonical_m0_contracts_are_exported_from_contract_package() -> None:
     from nova_rtl import contracts
 
     expected_names = {
+        "AnalysisViewContract",
+        "ArtifactRef",
+        "DesignContract",
+        "Diagnostic",
         "DoctorCheck",
         "DoctorIssue",
         "DoctorReport",
         "HostPlatform",
+        "MetricSet",
         "PlatformArtifact",
         "PlatformLock",
+        "PowerActivityContract",
+        "ProjectManifest",
+        "StageInputHashes",
         "TimingCorner",
         "ToolExecutableSource",
         "ToolFingerprint",

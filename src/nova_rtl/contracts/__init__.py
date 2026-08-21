@@ -1,5 +1,14 @@
 """Canonical NOVA-RTL data contracts."""
 
+from nova_rtl.contracts.analysis import AnalysisViewContract, PowerActivityContract
+from nova_rtl.contracts.base import (
+    ArtifactRef,
+    Diagnostic,
+    EvidenceRef,
+    MetricSet,
+    StageInputHashes,
+)
+from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
 from nova_rtl.contracts.platform import (
     ArchiveMetadata,
     CanonicalEnvironmentEntry,
@@ -32,16 +41,22 @@ from nova_rtl.contracts.platform import (
 )
 
 __all__ = [
+    "AnalysisViewContract",
     "ArchiveMetadata",
+    "ArtifactRef",
     "CanonicalEnvironmentEntry",
     "ComponentInventoryEntry",
     "DoctorCheck",
+    "DesignContract",
+    "Diagnostic",
     "DoctorIssue",
     "DoctorReport",
+    "EvidenceRef",
     "HostPlatform",
     "HydrationComponentReceipt",
     "InstalledComponentReceipt",
     "M0SignoffReport",
+    "MetricSet",
     "OrganizerDecisions",
     "PlatformAnalysisView",
     "PlatformAnalysisViews",
@@ -50,9 +65,12 @@ __all__ = [
     "PlatformLockRequest",
     "PlatformSelectionPolicy",
     "PlatformSmokeReport",
+    "PowerActivityContract",
+    "ProjectManifest",
     "RuntimeEnvironmentEntry",
     "SignoffEvidenceFile",
     "SmokeTimingView",
+    "StageInputHashes",
     "TimingCorner",
     "TimingCornerSelection",
     "ToolExecutableSource",
