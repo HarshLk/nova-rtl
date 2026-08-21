@@ -19,8 +19,9 @@ dist/
 
 # NOVA-RTL generated data
 .nova-tools/
-runs/
-artifacts/
+/runs/
+/artifacts/
+.locks/
 benchmark/build/
 *.vcd
 *.fst
