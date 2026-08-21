@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 import subprocess
 from datetime import UTC, datetime
@@ -59,6 +60,7 @@ RESET_ASSUMPTIONS_PATH = PROJECT_ROOT / "config/formal/reset_assumptions.yaml"
 MANIFEST_PATH = PROJECT_ROOT / "config/platform/toolchain-sources.json"
 SELECTION_POLICY_PATH = PROJECT_ROOT / "config/platform/platform-selection-policy.yaml"
 runner = CliRunner()
+ANSI_ESCAPE_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 
 
 def hash_ref(digit: str) -> str:
@@ -463,10 +465,18 @@ def test_analysis_view_loader_normalizes_malformed_yaml_to_signoff_error(
 
 def test_cli_exposes_m0_signoff_command() -> None:
     result = runner.invoke(app, ["m0", "signoff", "--help"])
+    help_output = result.output
+    # Local runners usually strip styling, so inject the CI failure shape deterministically.
+    if "\x1b[" not in help_output:
+        help_output = help_output.replace(
+            "--organizer-decisions",
+            "\x1b[1m--organizer\x1b[0m-decisions",
+        )
+    plain_help = ANSI_ESCAPE_PATTERN.sub("", help_output)
 
     assert result.exit_code == 0, result.output
-    assert "--organizer-decisions" in result.output
-    assert "--output" in result.output
+    assert "--organizer-decisions" in plain_help
+    assert "--output" in plain_help
 
 
 def test_git_checkpoint_requires_a_clean_committed_tree(tmp_path: Path) -> None:
