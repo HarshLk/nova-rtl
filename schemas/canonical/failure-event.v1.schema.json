@@ -1,0 +1,360 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Authoritative deterministic bridge from evaluation to recovery.",
+  "properties": {
+    "analysis_view_hash_verified": {
+      "title": "Analysis View Hash Verified",
+      "type": "boolean"
+    },
+    "analysis_view_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Analysis View Id"
+    },
+    "candidate_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Candidate Id"
+    },
+    "classifier_version": {
+      "minLength": 1,
+      "title": "Classifier Version",
+      "type": "string"
+    },
+    "constraint_binding_status": {
+      "enum": [
+        "EQUIVALENT",
+        "APPROVED_SEMANTIC_REMAP",
+        "FORBIDDEN_DELTA",
+        "NOT_CHECKED"
+      ],
+      "title": "Constraint Binding Status",
+      "type": "string"
+    },
+    "constraint_hash_verified": {
+      "title": "Constraint Hash Verified",
+      "type": "boolean"
+    },
+    "failed_stage": {
+      "anyOf": [
+        {
+          "enum": [
+            "RTL_PARSE",
+            "YOSYS_SYNTH",
+            "CONSTRAINT_BINDING",
+            "CLOCK_INVENTORY",
+            "CDC_INVARIANT",
+            "FORMAL_MODEL_PREFLIGHT",
+            "EQY_SMOKE",
+            "FAST_SYNTH",
+            "OPENSTA_FULL",
+            "OPENROAD_PHYSICAL",
+            "OPENROAD_PLACED_CTS",
+            "OPENROAD_ROUTED",
+            "FORMAL_EQUIVALENCE",
+            "SIMULATION",
+            "POWER_ANALYSIS"
+          ],
+          "type": "string"
+        },
+        {
+          "const": "PLANNER_PROVIDER",
+          "type": "string"
+        }
+      ],
+      "title": "Failed Stage"
+    },
+    "failure_event_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Failure Event Id",
+      "type": "string"
+    },
+    "failure_family": {
+      "enum": [
+        "BASELINE_INPUT_ERROR",
+        "ANALYSIS_VIEW_OR_ACTIVITY_MISMATCH",
+        "INFRASTRUCTURE_TRANSIENT",
+        "ADAPTER_OR_PARSER_ERROR",
+        "CONSTRAINT_BINDING_DELTA",
+        "CDC_INVARIANT_DELTA",
+        "FORMAL_MODEL_MISMATCH",
+        "INVALID_PROPOSAL_SCHEMA",
+        "UNKNOWN_OR_INAPPLICABLE_TRANSFORM",
+        "PROTECTED_STRUCTURE_VIOLATION",
+        "RTL_PARSE_OR_ELAB_FAILURE",
+        "FAST_SYNTH_STRUCTURAL_FAILURE",
+        "FORMAL_SEMANTIC_FAILURE",
+        "FORMAL_INCONCLUSIVE",
+        "TIMING_NO_GAIN",
+        "TIMING_REGRESSION",
+        "CRITICAL_PATH_MIGRATION",
+        "HOLD_REGRESSION",
+        "AREA_POLICY_VIOLATION",
+        "POWER_POLICY_VIOLATION",
+        "PHYSICAL_CORRELATION_MISS",
+        "CONGESTION_OR_ROUTABILITY_RISK",
+        "REPEATED_NON_PROGRESS",
+        "VALID_BUT_DOMINATED"
+      ],
+      "title": "Failure Family",
+      "type": "string"
+    },
+    "failure_scope": {
+      "enum": [
+        "RUN",
+        "BASELINE",
+        "PLANNER",
+        "PROPOSAL",
+        "CANDIDATE",
+        "OPPORTUNITY",
+        "INFRASTRUCTURE"
+      ],
+      "title": "Failure Scope",
+      "type": "string"
+    },
+    "metric_delta": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "type": "number"
+        }
+      },
+      "title": "Metric Delta",
+      "type": "object"
+    },
+    "opportunity_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Opportunity Id"
+    },
+    "parent_candidate_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Parent Candidate Id"
+    },
+    "primary_evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "minItems": 1,
+      "title": "Primary Evidence Refs",
+      "type": "array"
+    },
+    "proposal_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Proposal Id"
+    },
+    "protected_structure_status": {
+      "enum": [
+        "UNCHANGED",
+        "CHANGED",
+        "UNKNOWN"
+      ],
+      "title": "Protected Structure Status",
+      "type": "string"
+    },
+    "provider_result_ref": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Provider Result Ref"
+    },
+    "raw_stage_result_ref": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Raw Stage Result Ref"
+    },
+    "repairability": {
+      "enum": [
+        "NO_RETRY",
+        "DETERMINISTIC_RETRY",
+        "LOCAL_REVISION",
+        "FAMILY_SWITCH",
+        "OPPORTUNITY_REANALYSIS",
+        "PARENT_BRANCH",
+        "HUMAN_REVIEW"
+      ],
+      "title": "Repairability",
+      "type": "string"
+    },
+    "retryable": {
+      "title": "Retryable",
+      "type": "boolean"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "severity": {
+      "enum": [
+        "LOW",
+        "MEDIUM",
+        "HIGH",
+        "CRITICAL"
+      ],
+      "title": "Severity",
+      "type": "string"
+    },
+    "subject_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Subject Id",
+      "type": "string"
+    },
+    "subject_type": {
+      "enum": [
+        "RUN",
+        "BASELINE",
+        "PLANNER",
+        "PROPOSAL",
+        "CANDIDATE",
+        "OPPORTUNITY",
+        "INFRASTRUCTURE"
+      ],
+      "title": "Subject Type",
+      "type": "string"
+    }
+  },
+  "required": [
+    "failure_event_id",
+    "run_id",
+    "subject_type",
+    "subject_id",
+    "candidate_id",
+    "proposal_id",
+    "parent_candidate_id",
+    "opportunity_id",
+    "failed_stage",
+    "analysis_view_id",
+    "failure_family",
+    "failure_scope",
+    "repairability",
+    "severity",
+    "retryable",
+    "constraint_hash_verified",
+    "analysis_view_hash_verified",
+    "constraint_binding_status",
+    "protected_structure_status",
+    "metric_delta",
+    "primary_evidence_refs",
+    "raw_stage_result_ref",
+    "classifier_version"
+  ],
+  "title": "FailureEvent",
+  "type": "object"
+}

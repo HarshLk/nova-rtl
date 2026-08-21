@@ -1,0 +1,259 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ProofPartition": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_refs": {
+          "items": {
+            "$ref": "#/$defs/ArtifactRef"
+          },
+          "minItems": 1,
+          "title": "Artifact Refs",
+          "type": "array"
+        },
+        "partition_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Partition Id",
+          "type": "string"
+        },
+        "runtime_ms": {
+          "minimum": 0,
+          "title": "Runtime Ms",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INCONCLUSIVE",
+            "INFRASTRUCTURE_ERROR"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "strategy": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,95}$",
+          "title": "Strategy",
+          "type": "string"
+        }
+      },
+      "required": [
+        "partition_id",
+        "status",
+        "runtime_ms",
+        "strategy",
+        "artifact_refs"
+      ],
+      "title": "ProofPartition",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Formal outcome, scope, partition evidence, and exact proved identities.",
+  "properties": {
+    "assumption_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Assumption Hashes",
+      "type": "array"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "composition_manifest_artifact_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Composition Manifest Artifact Id"
+    },
+    "contract": {
+      "enum": [
+        "STRICT_SEQ_EQUIV",
+        "RETIMING_EQUIV",
+        "LATENCY_AWARE"
+      ],
+      "title": "Contract",
+      "type": "string"
+    },
+    "counterexample_artifact_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Counterexample Artifact Id"
+    },
+    "formal_model_contract_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Formal Model Contract Id",
+      "type": "string"
+    },
+    "gate_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Gate Hash",
+      "type": "string"
+    },
+    "gold_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Gold Hash",
+      "type": "string"
+    },
+    "outcome": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "INCONCLUSIVE",
+        "INFRASTRUCTURE_ERROR"
+      ],
+      "title": "Outcome",
+      "type": "string"
+    },
+    "partitions": {
+      "items": {
+        "$ref": "#/$defs/ProofPartition"
+      },
+      "minItems": 1,
+      "title": "Partitions",
+      "type": "array"
+    },
+    "proof_result_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Proof Result Id",
+      "type": "string"
+    },
+    "proof_scope": {
+      "enum": [
+        "WHOLE_DESIGN",
+        "COMPOSITIONALLY_CLOSED"
+      ],
+      "title": "Proof Scope",
+      "type": "string"
+    },
+    "raw_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Raw Artifacts",
+      "type": "array"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "runtime_ms": {
+      "minimum": 0,
+      "title": "Runtime Ms",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "proof_result_id",
+    "run_id",
+    "candidate_id",
+    "contract",
+    "outcome",
+    "formal_model_contract_id",
+    "gold_hash",
+    "gate_hash",
+    "proof_scope",
+    "partitions",
+    "composition_manifest_artifact_id",
+    "assumption_hashes",
+    "counterexample_artifact_id",
+    "raw_artifacts",
+    "runtime_ms"
+  ],
+  "title": "ProofResult",
+  "type": "object"
+}

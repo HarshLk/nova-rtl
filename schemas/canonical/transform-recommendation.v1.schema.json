@@ -1,0 +1,175 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "abort_conditions": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Abort Conditions",
+      "type": "array"
+    },
+    "contract": {
+      "enum": [
+        "STRICT_SEQ_EQUIV",
+        "RETIMING_EQUIV",
+        "LATENCY_AWARE"
+      ],
+      "title": "Contract",
+      "type": "string"
+    },
+    "diagnosis_report_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Diagnosis Report Id",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "minItems": 1,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "expected_structural_direction": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Expected Structural Direction",
+      "type": "string"
+    },
+    "family": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Family",
+      "type": "string"
+    },
+    "operation": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Operation",
+      "type": "string"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "minProperties": 1,
+      "title": "Parameters",
+      "type": "object"
+    },
+    "preconditions": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Preconditions",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_source_span_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Target Source Span Id",
+      "type": "string"
+    },
+    "transform_recommendation_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Transform Recommendation Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "transform_recommendation_id",
+    "diagnosis_report_id",
+    "family",
+    "operation",
+    "target_source_span_id",
+    "parameters",
+    "preconditions",
+    "contract",
+    "abort_conditions",
+    "evidence_refs",
+    "expected_structural_direction"
+  ],
+  "title": "TransformRecommendation",
+  "type": "object"
+}

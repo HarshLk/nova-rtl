@@ -1,0 +1,58 @@
+{
+  "additionalProperties": false,
+  "description": "Stable semantic evidence address within an immutable snapshot.",
+  "properties": {
+    "artifact_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Artifact Id",
+      "type": "string"
+    },
+    "evidence_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "json_pointer": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Json Pointer"
+    },
+    "kind": {
+      "enum": [
+        "PATH",
+        "ARC",
+        "CONE",
+        "SOURCE_SPAN",
+        "CLOCK",
+        "CDC",
+        "BINDING",
+        "PHYSICAL",
+        "FORMAL",
+        "METRIC",
+        "HISTORY"
+      ],
+      "title": "Kind",
+      "type": "string"
+    },
+    "snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "kind",
+    "artifact_id",
+    "json_pointer",
+    "snapshot_hash"
+  ],
+  "title": "EvidenceRef",
+  "type": "object"
+}

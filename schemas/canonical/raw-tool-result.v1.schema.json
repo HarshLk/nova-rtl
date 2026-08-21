@@ -1,0 +1,262 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ResourceUsage": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_time_ms": {
+          "minimum": 0,
+          "title": "Cpu Time Ms",
+          "type": "integer"
+        },
+        "peak_rss_bytes": {
+          "minimum": 0,
+          "title": "Peak Rss Bytes",
+          "type": "integer"
+        },
+        "wall_time_ms": {
+          "minimum": 0,
+          "title": "Wall Time Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cpu_time_ms",
+        "wall_time_ms",
+        "peak_rss_bytes"
+      ],
+      "title": "ResourceUsage",
+      "type": "object"
+    },
+    "ToolFingerprint": {
+      "additionalProperties": false,
+      "description": "Identity of the executable inspected by the doctor.",
+      "properties": {
+        "adapter_version": {
+          "pattern": "^[a-z][a-z0-9_-]{2,63}-v[1-9][0-9]*$",
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "build_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Build Hash",
+          "type": "string"
+        },
+        "container_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Container Digest"
+        },
+        "executable": {
+          "minLength": 1,
+          "title": "Executable",
+          "type": "string"
+        },
+        "executable_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Executable Sha256",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "version_args": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Version Args",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tool_id",
+        "executable",
+        "version",
+        "version_args",
+        "executable_sha256",
+        "build_hash",
+        "adapter_version"
+      ],
+      "title": "ToolFingerprint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Process outcome and raw evidence, intentionally without analysis status.",
+  "properties": {
+    "ended_at": {
+      "format": "date-time",
+      "title": "Ended At",
+      "type": "string"
+    },
+    "exit_code": {
+      "title": "Exit Code",
+      "type": "integer"
+    },
+    "prepared_command_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "prepared_command_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Prepared Command Hash",
+      "type": "string"
+    },
+    "raw_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Raw Artifacts",
+      "type": "array"
+    },
+    "resource_usage": {
+      "$ref": "#/$defs/ResourceUsage"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "signal": {
+      "anyOf": [
+        {
+          "minimum": 1,
+          "type": "integer"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Signal"
+    },
+    "stage_result_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Stage Result Id",
+      "type": "string"
+    },
+    "started_at": {
+      "format": "date-time",
+      "title": "Started At",
+      "type": "string"
+    },
+    "timed_out": {
+      "title": "Timed Out",
+      "type": "boolean"
+    },
+    "tool_fingerprint": {
+      "$ref": "#/$defs/ToolFingerprint"
+    },
+    "tool_job_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Tool Job Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool_job_id",
+    "stage_result_id",
+    "tool_fingerprint",
+    "prepared_command_artifact",
+    "prepared_command_hash",
+    "exit_code",
+    "timed_out",
+    "started_at",
+    "ended_at",
+    "resource_usage",
+    "raw_artifacts"
+  ],
+  "title": "RawToolResult",
+  "type": "object"
+}

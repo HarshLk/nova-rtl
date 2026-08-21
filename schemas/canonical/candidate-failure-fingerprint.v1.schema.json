@@ -1,0 +1,123 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ancestor_lineage": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Ancestor Lineage",
+      "type": "array"
+    },
+    "ast_diff_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Ast Diff Fingerprint",
+      "type": "string"
+    },
+    "candidate_failure_fingerprint_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Failure Fingerprint Id",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "failure_family": {
+      "enum": [
+        "BASELINE_INPUT_ERROR",
+        "ANALYSIS_VIEW_OR_ACTIVITY_MISMATCH",
+        "INFRASTRUCTURE_TRANSIENT",
+        "ADAPTER_OR_PARSER_ERROR",
+        "CONSTRAINT_BINDING_DELTA",
+        "CDC_INVARIANT_DELTA",
+        "FORMAL_MODEL_MISMATCH",
+        "INVALID_PROPOSAL_SCHEMA",
+        "UNKNOWN_OR_INAPPLICABLE_TRANSFORM",
+        "PROTECTED_STRUCTURE_VIOLATION",
+        "RTL_PARSE_OR_ELAB_FAILURE",
+        "FAST_SYNTH_STRUCTURAL_FAILURE",
+        "FORMAL_SEMANTIC_FAILURE",
+        "FORMAL_INCONCLUSIVE",
+        "TIMING_NO_GAIN",
+        "TIMING_REGRESSION",
+        "CRITICAL_PATH_MIGRATION",
+        "HOLD_REGRESSION",
+        "AREA_POLICY_VIOLATION",
+        "POWER_POLICY_VIOLATION",
+        "PHYSICAL_CORRELATION_MISS",
+        "CONGESTION_OR_ROUTABILITY_RISK",
+        "REPEATED_NON_PROGRESS",
+        "VALID_BUT_DOMINATED"
+      ],
+      "title": "Failure Family",
+      "type": "string"
+    },
+    "formal_counterexample_fingerprint": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Formal Counterexample Fingerprint"
+    },
+    "mapped_delta_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Mapped Delta Fingerprint",
+      "type": "string"
+    },
+    "metric_response_class": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Metric Response Class",
+      "type": "string"
+    },
+    "operation": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Operation",
+      "type": "string"
+    },
+    "operation_family": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Operation Family",
+      "type": "string"
+    },
+    "parameter_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Parameter Fingerprint",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target_cone_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Target Cone Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_failure_fingerprint_id",
+    "candidate_id",
+    "target_cone_fingerprint",
+    "operation_family",
+    "operation",
+    "parameter_fingerprint",
+    "ast_diff_fingerprint",
+    "mapped_delta_fingerprint",
+    "ancestor_lineage",
+    "failure_family",
+    "formal_counterexample_fingerprint",
+    "metric_response_class"
+  ],
+  "title": "CandidateFailureFingerprint",
+  "type": "object"
+}

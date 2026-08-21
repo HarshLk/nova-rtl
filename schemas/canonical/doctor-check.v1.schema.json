@@ -1,0 +1,198 @@
+{
+  "$defs": {
+    "DoctorIssue": {
+      "additionalProperties": false,
+      "description": "Stable machine-readable reason for one failed doctor check.",
+      "properties": {
+        "code": {
+          "enum": [
+            "ARTIFACT_CHANGED_DURING_VERIFY",
+            "ARTIFACT_HASH_MISMATCH",
+            "ARTIFACT_IO_ERROR",
+            "ARTIFACT_MISSING",
+            "ARTIFACT_SIZE_MISMATCH",
+            "CONTENT_IDENTITY_MISMATCH",
+            "INVALID_PLATFORM_LOCK",
+            "ORFS_TREE_IDENTITY_MISMATCH",
+            "ORFS_TREE_IO_ERROR",
+            "PLATFORM_LOCK_IO_ERROR",
+            "PLATFORM_LOCK_MISSING",
+            "TOOL_EXECUTABLE_HASH_MISMATCH",
+            "TOOL_HASH_MISMATCH",
+            "TOOL_IO_ERROR",
+            "TOOL_LOCK_MISMATCH",
+            "TOOL_MISSING",
+            "TOOL_PROBE_FAILED",
+            "TOOL_VERSION_MISMATCH"
+          ],
+          "title": "Code",
+          "type": "string"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "subject": {
+          "minLength": 1,
+          "title": "Subject",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "subject",
+        "message"
+      ],
+      "title": "DoctorIssue",
+      "type": "object"
+    },
+    "ToolFingerprint": {
+      "additionalProperties": false,
+      "description": "Identity of the executable inspected by the doctor.",
+      "properties": {
+        "adapter_version": {
+          "pattern": "^[a-z][a-z0-9_-]{2,63}-v[1-9][0-9]*$",
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "build_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Build Hash",
+          "type": "string"
+        },
+        "container_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Container Digest"
+        },
+        "executable": {
+          "minLength": 1,
+          "title": "Executable",
+          "type": "string"
+        },
+        "executable_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Executable Sha256",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "version_args": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Version Args",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tool_id",
+        "executable",
+        "version",
+        "version_args",
+        "executable_sha256",
+        "build_hash",
+        "adapter_version"
+      ],
+      "title": "ToolFingerprint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One executable or platform-file readiness check.",
+  "properties": {
+    "artifact_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Artifact Hash"
+    },
+    "issues": {
+      "items": {
+        "$ref": "#/$defs/DoctorIssue"
+      },
+      "title": "Issues",
+      "type": "array"
+    },
+    "message": {
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "name": {
+      "minLength": 1,
+      "title": "Name",
+      "type": "string"
+    },
+    "resolved_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Resolved Path"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "tool_fingerprint": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ToolFingerprint"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "name",
+    "status",
+    "resolved_path",
+    "tool_fingerprint",
+    "artifact_hash",
+    "issues",
+    "message"
+  ],
+  "title": "DoctorCheck",
+  "type": "object"
+}

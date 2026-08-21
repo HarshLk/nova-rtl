@@ -1,0 +1,292 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "ProposalCorrectness": {
+      "additionalProperties": false,
+      "properties": {
+        "contract": {
+          "enum": [
+            "STRICT_SEQ_EQUIV",
+            "RETIMING_EQUIV",
+            "LATENCY_AWARE"
+          ],
+          "title": "Contract",
+          "type": "string"
+        },
+        "proof_scope": {
+          "minLength": 1,
+          "title": "Proof Scope",
+          "type": "string"
+        },
+        "reset_model": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Reset Model",
+          "type": "string"
+        }
+      },
+      "required": [
+        "contract",
+        "proof_scope",
+        "reset_model"
+      ],
+      "title": "ProposalCorrectness",
+      "type": "object"
+    },
+    "ProposalPrediction": {
+      "additionalProperties": false,
+      "properties": {
+        "area_direction": {
+          "enum": [
+            "DECREASE",
+            "NEUTRAL",
+            "SMALL_INCREASE",
+            "INCREASE",
+            "UNKNOWN"
+          ],
+          "title": "Area Direction",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "timing_direction": {
+          "enum": [
+            "IMPROVE",
+            "NEUTRAL",
+            "REGRESS",
+            "UNKNOWN"
+          ],
+          "title": "Timing Direction",
+          "type": "string"
+        }
+      },
+      "required": [
+        "timing_direction",
+        "area_direction",
+        "confidence"
+      ],
+      "title": "ProposalPrediction",
+      "type": "object"
+    },
+    "ProposalTarget": {
+      "additionalProperties": false,
+      "properties": {
+        "cone_fingerprint": {
+          "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+          "title": "Cone Fingerprint",
+          "type": "string"
+        },
+        "hierarchy": {
+          "minLength": 1,
+          "title": "Hierarchy",
+          "type": "string"
+        },
+        "source_span_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Source Span Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "hierarchy",
+        "source_span_id",
+        "cone_fingerprint"
+      ],
+      "title": "ProposalTarget",
+      "type": "object"
+    },
+    "Transformation": {
+      "additionalProperties": false,
+      "properties": {
+        "family": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Family",
+          "type": "string"
+        },
+        "operation": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Operation",
+          "type": "string"
+        },
+        "parameters": {
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "minProperties": 1,
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "operation",
+        "family",
+        "parameters"
+      ],
+      "title": "Transformation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Typed advisory transformation proposal with no authoritative metrics.",
+  "properties": {
+    "abort_conditions": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Abort Conditions",
+      "type": "array"
+    },
+    "correctness": {
+      "$ref": "#/$defs/ProposalCorrectness"
+    },
+    "diagnosis_refs": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Diagnosis Refs",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "minItems": 1,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "parent_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Parent Candidate Id",
+      "type": "string"
+    },
+    "preconditions": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Preconditions",
+      "type": "array"
+    },
+    "prediction": {
+      "$ref": "#/$defs/ProposalPrediction"
+    },
+    "proposal_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "target": {
+      "$ref": "#/$defs/ProposalTarget"
+    },
+    "transformation": {
+      "$ref": "#/$defs/Transformation"
+    }
+  },
+  "required": [
+    "proposal_id",
+    "parent_candidate_id",
+    "opportunity_id",
+    "diagnosis_refs",
+    "target",
+    "transformation",
+    "preconditions",
+    "correctness",
+    "prediction",
+    "evidence_refs",
+    "abort_conditions"
+  ],
+  "title": "OptimizationProposal",
+  "type": "object"
+}

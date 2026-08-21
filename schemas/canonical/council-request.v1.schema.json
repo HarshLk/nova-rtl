@@ -1,0 +1,107 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "aggregate_latency_budget_ms": {
+      "exclusiveMinimum": 0,
+      "title": "Aggregate Latency Budget Ms",
+      "type": "integer"
+    },
+    "aggregate_token_budget": {
+      "exclusiveMinimum": 0,
+      "title": "Aggregate Token Budget",
+      "type": "integer"
+    },
+    "blinded_proposer_roles": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 2,
+      "title": "Blinded Proposer Roles",
+      "type": "array"
+    },
+    "chair_role": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Chair Role",
+      "type": "string"
+    },
+    "context_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Context Policy Hash",
+      "type": "string"
+    },
+    "council_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Council Request Id",
+      "type": "string"
+    },
+    "council_route_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Council Route Hash",
+      "type": "string"
+    },
+    "council_route_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Council Route Id",
+      "type": "string"
+    },
+    "critic_roles": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Critic Roles",
+      "type": "array"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "event_stream_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Event Stream Id",
+      "type": "string"
+    },
+    "fan_in_limit": {
+      "exclusiveMinimum": 0,
+      "title": "Fan In Limit",
+      "type": "integer"
+    },
+    "fan_out_limit": {
+      "exclusiveMinimum": 0,
+      "title": "Fan Out Limit",
+      "type": "integer"
+    },
+    "planner_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Planner Request Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "council_request_id",
+    "planner_request_id",
+    "council_route_id",
+    "council_route_hash",
+    "blinded_proposer_roles",
+    "critic_roles",
+    "chair_role",
+    "context_policy_hash",
+    "fan_out_limit",
+    "fan_in_limit",
+    "aggregate_token_budget",
+    "aggregate_latency_budget_ms",
+    "deadline",
+    "event_stream_id"
+  ],
+  "title": "CouncilRequest",
+  "type": "object"
+}

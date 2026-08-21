@@ -1,0 +1,632 @@
+{
+  "$defs": {
+    "HumanReviewRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "decision_at": {
+          "format": "date-time",
+          "title": "Decision At",
+          "type": "string"
+        },
+        "note_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Note Hash",
+          "type": "string"
+        },
+        "reviewer_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Reviewer Id",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "APPROVED",
+            "REJECTED"
+          ],
+          "title": "Status",
+          "type": "string"
+        }
+      },
+      "required": [
+        "status",
+        "reviewer_id",
+        "decision_at",
+        "note_hash"
+      ],
+      "title": "HumanReviewRecord",
+      "type": "object"
+    },
+    "MetricSet": {
+      "additionalProperties": false,
+      "description": "Complete, unit-explicit measured metrics for a stage or comparison.",
+      "properties": {
+        "analysis_view_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Analysis View Id"
+        },
+        "buffer_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Buffer Count"
+        },
+        "cell_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cell Count"
+        },
+        "congestion_overflow": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Congestion Overflow"
+        },
+        "critical_path_delay_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Critical Path Delay Ns"
+        },
+        "estimated_fmax_mhz": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Fmax Mhz"
+        },
+        "failing_endpoints": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failing Endpoints"
+        },
+        "hold_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Tns Ns"
+        },
+        "hold_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Wns Ns"
+        },
+        "mapped_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mapped Area Um2"
+        },
+        "missing_metric_reasons": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Missing Metric Reasons",
+          "type": "object"
+        },
+        "physical_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physical Area Um2"
+        },
+        "power_total_uw": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Power Total Uw"
+        },
+        "register_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Register Count"
+        },
+        "runtime_ms": {
+          "minimum": 0,
+          "title": "Runtime Ms",
+          "type": "integer"
+        },
+        "setup_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Tns Ns"
+        },
+        "setup_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Wns Ns"
+        },
+        "wirelength_um": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Wirelength Um"
+        }
+      },
+      "required": [
+        "analysis_view_id",
+        "setup_wns_ns",
+        "setup_tns_ns",
+        "hold_wns_ns",
+        "hold_tns_ns",
+        "failing_endpoints",
+        "critical_path_delay_ns",
+        "estimated_fmax_mhz",
+        "mapped_area_um2",
+        "physical_area_um2",
+        "cell_count",
+        "register_count",
+        "buffer_count",
+        "power_total_uw",
+        "wirelength_um",
+        "congestion_overflow",
+        "runtime_ms",
+        "missing_metric_reasons"
+      ],
+      "title": "MetricSet",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Append-only search ledger unit for one evaluated candidate.",
+  "properties": {
+    "after_metrics": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "$ref": "#/$defs/MetricSet"
+        }
+      },
+      "title": "After Metrics",
+      "type": "object"
+    },
+    "before_metrics": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "$ref": "#/$defs/MetricSet"
+        }
+      },
+      "title": "Before Metrics",
+      "type": "object"
+    },
+    "candidate_failure_fingerprint_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Candidate Failure Fingerprint Id"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "comparison_identity_hashes": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Comparison Identity Hashes",
+      "type": "object"
+    },
+    "cone_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Cone Fingerprint",
+      "type": "string"
+    },
+    "context_pack_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Context Pack Hashes",
+      "type": "array"
+    },
+    "council_result_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Council Result Id"
+    },
+    "counterexample_artifact_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Counterexample Artifact Id"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "descendant_outcome": {
+      "anyOf": [
+        {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Descendant Outcome"
+    },
+    "eda_runtime_ms": {
+      "minimum": 0,
+      "title": "Eda Runtime Ms",
+      "type": "integer"
+    },
+    "experiment_record_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Experiment Record Id",
+      "type": "string"
+    },
+    "failure_event_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Failure Event Id"
+    },
+    "human_review": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/HumanReviewRecord"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "input_tokens": {
+      "minimum": 0,
+      "title": "Input Tokens",
+      "type": "integer"
+    },
+    "model_configuration_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Model Configuration Hashes",
+      "type": "array"
+    },
+    "operation": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Operation",
+      "type": "string"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "output_tokens": {
+      "minimum": 0,
+      "title": "Output Tokens",
+      "type": "integer"
+    },
+    "parameters": {
+      "additionalProperties": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "integer"
+          },
+          {
+            "type": "number"
+          },
+          {
+            "type": "boolean"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      },
+      "title": "Parameters",
+      "type": "object"
+    },
+    "parent_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Parent Candidate Id",
+      "type": "string"
+    },
+    "patch_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Patch Hash",
+      "type": "string"
+    },
+    "planner_latency_ms": {
+      "minimum": 0,
+      "title": "Planner Latency Ms",
+      "type": "integer"
+    },
+    "planner_result_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Planner Result Id"
+    },
+    "prompt_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Prompt Hashes",
+      "type": "array"
+    },
+    "proof_outcome": {
+      "anyOf": [
+        {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INCONCLUSIVE",
+            "INFRASTRUCTURE_ERROR"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Proof Outcome"
+    },
+    "proof_result_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Proof Result Id"
+    },
+    "proposal_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "recovery_decision_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Recovery Decision Id"
+    },
+    "repair_directive_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Repair Directive Id"
+    },
+    "role_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Role Ids",
+      "type": "array"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "stage_result_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Stage Result Ids",
+      "type": "array"
+    },
+    "terminal_disposition": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Terminal Disposition",
+      "type": "string"
+    },
+    "transform_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Transform Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "experiment_record_id",
+    "run_id",
+    "planner_result_id",
+    "council_result_id",
+    "opportunity_id",
+    "cone_fingerprint",
+    "proposal_id",
+    "operation",
+    "parameters",
+    "parent_candidate_id",
+    "candidate_id",
+    "source_hash",
+    "patch_hash",
+    "transform_fingerprint",
+    "stage_result_ids",
+    "comparison_identity_hashes",
+    "proof_result_id",
+    "proof_outcome",
+    "counterexample_artifact_id",
+    "before_metrics",
+    "after_metrics",
+    "failure_event_id",
+    "repair_directive_id",
+    "candidate_failure_fingerprint_id",
+    "recovery_decision_id",
+    "descendant_outcome",
+    "role_ids",
+    "model_configuration_hashes",
+    "prompt_hashes",
+    "context_pack_hashes",
+    "input_tokens",
+    "output_tokens",
+    "planner_latency_ms",
+    "eda_runtime_ms",
+    "terminal_disposition",
+    "human_review",
+    "created_at"
+  ],
+  "title": "ExperimentRecord",
+  "type": "object"
+}

@@ -1,0 +1,675 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "CouncilRevisionRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "reason_codes": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "revised_proposal_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Revised Proposal Id",
+          "type": "string"
+        },
+        "revision_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Revision Id",
+          "type": "string"
+        },
+        "source_proposal_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Source Proposal Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "revision_id",
+        "source_proposal_id",
+        "revised_proposal_id",
+        "reason_codes"
+      ],
+      "title": "CouncilRevisionRecord",
+      "type": "object"
+    },
+    "CritiqueDisposition": {
+      "additionalProperties": false,
+      "properties": {
+        "action": {
+          "enum": [
+            "ACCEPT",
+            "REVISE",
+            "REJECT"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "chair_evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Chair Evidence Refs",
+          "type": "array"
+        },
+        "critique_disposition_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Critique Disposition Id",
+          "type": "string"
+        },
+        "objection_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Objection Id",
+          "type": "string"
+        },
+        "reason_code": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Reason Code",
+          "type": "string"
+        },
+        "resulting_proposal_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Resulting Proposal Id"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "critique_disposition_id",
+        "objection_id",
+        "action",
+        "reason_code",
+        "resulting_proposal_id",
+        "chair_evidence_refs"
+      ],
+      "title": "CritiqueDisposition",
+      "type": "object"
+    },
+    "CritiqueObjection": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Category",
+          "type": "string"
+        },
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "message": {
+          "minLength": 1,
+          "title": "Message",
+          "type": "string"
+        },
+        "objection_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Objection Id",
+          "type": "string"
+        },
+        "requested_disposition": {
+          "enum": [
+            "ACCEPT",
+            "REVISE",
+            "REJECT"
+          ],
+          "title": "Requested Disposition",
+          "type": "string"
+        },
+        "severity": {
+          "enum": [
+            "MANDATORY",
+            "ADVISORY"
+          ],
+          "title": "Severity",
+          "type": "string"
+        }
+      },
+      "required": [
+        "objection_id",
+        "severity",
+        "category",
+        "message",
+        "evidence_refs",
+        "requested_disposition"
+      ],
+      "title": "CritiqueObjection",
+      "type": "object"
+    },
+    "CritiqueReport": {
+      "additionalProperties": false,
+      "properties": {
+        "critic_class": {
+          "enum": [
+            "FORMAL",
+            "PPA"
+          ],
+          "title": "Critic Class",
+          "type": "string"
+        },
+        "critic_role": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Critic Role",
+          "type": "string"
+        },
+        "critique_report_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Critique Report Id",
+          "type": "string"
+        },
+        "objections": {
+          "items": {
+            "$ref": "#/$defs/CritiqueObjection"
+          },
+          "title": "Objections",
+          "type": "array"
+        },
+        "proposal_card_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Proposal Card Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "critique_report_id",
+        "critic_role",
+        "critic_class",
+        "proposal_card_id",
+        "objections"
+      ],
+      "title": "CritiqueReport",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "PrivateRoleRecord": {
+      "additionalProperties": false,
+      "properties": {
+        "blinded_round": {
+          "title": "Blinded Round",
+          "type": "boolean"
+        },
+        "input_tokens": {
+          "minimum": 0,
+          "title": "Input Tokens",
+          "type": "integer"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "integer"
+        },
+        "output_tokens": {
+          "minimum": 0,
+          "title": "Output Tokens",
+          "type": "integer"
+        },
+        "private_pack_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Private Pack Hash",
+          "type": "string"
+        },
+        "retrieved_evidence_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Retrieved Evidence Ids",
+          "type": "array"
+        },
+        "role_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Role Id",
+          "type": "string"
+        },
+        "role_kind": {
+          "enum": [
+            "PROPOSER",
+            "CRITIC",
+            "CHAIR"
+          ],
+          "title": "Role Kind",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "NO_SAFE_PROPOSAL",
+            "ERROR",
+            "TIMEOUT"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "structured_submission_artifact": {
+          "$ref": "#/$defs/ArtifactRef"
+        }
+      },
+      "required": [
+        "role_id",
+        "role_kind",
+        "private_pack_hash",
+        "retrieved_evidence_ids",
+        "blinded_round",
+        "structured_submission_artifact",
+        "input_tokens",
+        "output_tokens",
+        "latency_ms",
+        "status"
+      ],
+      "title": "PrivateRoleRecord",
+      "type": "object"
+    },
+    "ProposalCard": {
+      "additionalProperties": false,
+      "properties": {
+        "normalized_proposal_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Normalized Proposal Hash",
+          "type": "string"
+        },
+        "proposal_card_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Proposal Card Id",
+          "type": "string"
+        },
+        "proposal_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Proposal Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "proposal_card_id",
+        "proposal_id",
+        "normalized_proposal_hash"
+      ],
+      "title": "ProposalCard",
+      "type": "object"
+    },
+    "ProposalShortlist": {
+      "additionalProperties": false,
+      "properties": {
+        "fallback_eligible": {
+          "title": "Fallback Eligible",
+          "type": "boolean"
+        },
+        "ordered_proposal_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "maxItems": 3,
+          "title": "Ordered Proposal Ids",
+          "type": "array"
+        },
+        "proposal_shortlist_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Proposal Shortlist Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "status": {
+          "enum": [
+            "PASS",
+            "NO_SAFE_PROPOSAL",
+            "INSUFFICIENT_EVIDENCE",
+            "PARTIAL"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "unresolved_mandatory_finding_count": {
+          "minimum": 0,
+          "title": "Unresolved Mandatory Finding Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "proposal_shortlist_id",
+        "status",
+        "ordered_proposal_ids",
+        "fallback_eligible",
+        "unresolved_mandatory_finding_count"
+      ],
+      "title": "ProposalShortlist",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "common_safety_envelope_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Common Safety Envelope Hash",
+      "type": "string"
+    },
+    "council_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Council Request Id",
+      "type": "string"
+    },
+    "council_result_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Council Result Id",
+      "type": "string"
+    },
+    "council_trace_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Council Trace Id",
+      "type": "string"
+    },
+    "critique_dispositions": {
+      "items": {
+        "$ref": "#/$defs/CritiqueDisposition"
+      },
+      "title": "Critique Dispositions",
+      "type": "array"
+    },
+    "critique_reports": {
+      "items": {
+        "$ref": "#/$defs/CritiqueReport"
+      },
+      "title": "Critique Reports",
+      "type": "array"
+    },
+    "deadline_outcome": {
+      "enum": [
+        "MET",
+        "EXCEEDED",
+        "CANCELLED"
+      ],
+      "title": "Deadline Outcome",
+      "type": "string"
+    },
+    "final_ordered_proposal_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "maxItems": 3,
+      "title": "Final Ordered Proposal Ids",
+      "type": "array"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "private_role_records": {
+      "items": {
+        "$ref": "#/$defs/PrivateRoleRecord"
+      },
+      "title": "Private Role Records",
+      "type": "array"
+    },
+    "proposal_cards": {
+      "items": {
+        "$ref": "#/$defs/ProposalCard"
+      },
+      "title": "Proposal Cards",
+      "type": "array"
+    },
+    "proposal_shortlist": {
+      "$ref": "#/$defs/ProposalShortlist"
+    },
+    "revision_records": {
+      "items": {
+        "$ref": "#/$defs/CouncilRevisionRecord"
+      },
+      "maxItems": 1,
+      "title": "Revision Records",
+      "type": "array"
+    },
+    "route_reason_codes": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Route Reason Codes",
+      "type": "array"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selected_role_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Selected Role Ids",
+      "type": "array"
+    },
+    "snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Hash",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "NO_SAFE_PROPOSAL",
+        "INSUFFICIENT_EVIDENCE",
+        "PARTIAL",
+        "PLANNER_ERROR",
+        "CANCELLED",
+        "BUDGET_EXHAUSTED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "total_latency_ms": {
+      "minimum": 0,
+      "title": "Total Latency Ms",
+      "type": "integer"
+    },
+    "total_tokens": {
+      "minimum": 0,
+      "title": "Total Tokens",
+      "type": "integer"
+    },
+    "trace_completeness_percent": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Trace Completeness Percent",
+      "type": "number"
+    }
+  },
+  "required": [
+    "council_result_id",
+    "council_request_id",
+    "status",
+    "proposal_shortlist",
+    "council_trace_id",
+    "run_id",
+    "opportunity_id",
+    "snapshot_hash",
+    "policy_hash",
+    "route_reason_codes",
+    "selected_role_ids",
+    "common_safety_envelope_hash",
+    "private_role_records",
+    "proposal_cards",
+    "critique_reports",
+    "critique_dispositions",
+    "revision_records",
+    "final_ordered_proposal_ids",
+    "total_tokens",
+    "total_latency_ms",
+    "deadline_outcome",
+    "trace_completeness_percent"
+  ],
+  "title": "CouncilResult",
+  "type": "object"
+}

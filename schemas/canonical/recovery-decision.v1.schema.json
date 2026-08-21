@@ -1,0 +1,157 @@
+{
+  "additionalProperties": false,
+  "description": "Authoritative deterministic recovery decision.",
+  "properties": {
+    "action": {
+      "enum": [
+        "RETRY_INFRASTRUCTURE",
+        "REPAIR_SCHEMA",
+        "CORRECT_EXECUTOR_OUTPUT",
+        "LOCAL_PARAMETER_REVISION",
+        "NARROW_TRANSFORM_SCOPE",
+        "SWITCH_OPERATION_SAME_FAMILY",
+        "SWITCH_TRANSFORM_FAMILY",
+        "OPPORTUNITY_REANALYSIS",
+        "TARGET_NEW_PATH_CLUSTER",
+        "BRANCH_FROM_ALTERNATE_PARENT",
+        "REPARTITION_FORMAL_PROOF",
+        "PHYSICAL_ONLY_RECOMMENDATION",
+        "REJECT_CANDIDATE",
+        "ABANDON_LINEAGE",
+        "STOP_RUN_OR_REQUEST_HUMAN"
+      ],
+      "title": "Action",
+      "type": "string"
+    },
+    "decision_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Decision Hash",
+      "type": "string"
+    },
+    "excluded_transform_families": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "title": "Excluded Transform Families",
+      "type": "array"
+    },
+    "failure_event_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Failure Event Id",
+      "type": "string"
+    },
+    "invoke_reasoning": {
+      "title": "Invoke Reasoning",
+      "type": "boolean"
+    },
+    "next_parent_candidate_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Next Parent Candidate Id"
+    },
+    "policy_version": {
+      "minLength": 1,
+      "title": "Policy Version",
+      "type": "string"
+    },
+    "reason_codes": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "recovery_advice_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Recovery Advice Id"
+    },
+    "recovery_decision_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Recovery Decision Id",
+      "type": "string"
+    },
+    "recovery_request_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Recovery Request Hash",
+      "type": "string"
+    },
+    "recovery_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Recovery Request Id",
+      "type": "string"
+    },
+    "recovery_route_plan_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Recovery Route Plan Hash",
+      "type": "string"
+    },
+    "recovery_route_plan_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Recovery Route Plan Id",
+      "type": "string"
+    },
+    "remaining_family_budget": {
+      "minimum": 0,
+      "title": "Remaining Family Budget",
+      "type": "integer"
+    },
+    "remaining_lineage_budget": {
+      "minimum": 0,
+      "title": "Remaining Lineage Budget",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selected_roles": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Selected Roles",
+      "type": "array"
+    }
+  },
+  "required": [
+    "recovery_decision_id",
+    "failure_event_id",
+    "recovery_request_id",
+    "recovery_request_hash",
+    "recovery_route_plan_id",
+    "recovery_route_plan_hash",
+    "action",
+    "next_parent_candidate_id",
+    "invoke_reasoning",
+    "selected_roles",
+    "excluded_transform_families",
+    "remaining_family_budget",
+    "remaining_lineage_budget",
+    "reason_codes",
+    "policy_version",
+    "recovery_advice_id",
+    "decision_hash"
+  ],
+  "title": "RecoveryDecision",
+  "type": "object"
+}

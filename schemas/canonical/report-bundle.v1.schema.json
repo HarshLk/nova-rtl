@@ -1,0 +1,334 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ClaimEvidence": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Artifact Ids",
+          "type": "array"
+        },
+        "comparison_identity_hashes": {
+          "minProperties": 1,
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{2,95}$": {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            }
+          },
+          "title": "Comparison Identity Hashes",
+          "type": "object"
+        },
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "artifact_ids",
+        "evidence_refs",
+        "comparison_identity_hashes"
+      ],
+      "title": "ClaimEvidence",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Hash-linked claim index and sealed replay/report identity.",
+  "properties": {
+    "baseline_final_comparison_identities": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Baseline Final Comparison Identities",
+      "type": "object"
+    },
+    "binding_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Binding Artifact Refs",
+      "type": "array"
+    },
+    "bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Bundle Hash",
+      "type": "string"
+    },
+    "cdc_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Cdc Artifact Refs",
+      "type": "array"
+    },
+    "claim_to_evidence_index": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "$ref": "#/$defs/ClaimEvidence"
+        }
+      },
+      "title": "Claim To Evidence Index",
+      "type": "object"
+    },
+    "clock_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Clock Artifact Refs",
+      "type": "array"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "experiment_ledger_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Experiment Ledger Hash",
+      "type": "string"
+    },
+    "experiment_ledger_sequence_range": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "title": "Experiment Ledger Sequence Range",
+      "type": "array"
+    },
+    "formal_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Formal Artifact Refs",
+      "type": "array"
+    },
+    "ppa_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Ppa Artifact Refs",
+      "type": "array"
+    },
+    "replay_manifest_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "replay_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Replay Manifest Hash",
+      "type": "string"
+    },
+    "report_bundle_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Report Bundle Id",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selected_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Selected Candidate Id",
+      "type": "string"
+    },
+    "timing_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Timing Artifact Refs",
+      "type": "array"
+    },
+    "ui_snapshot_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Ui Snapshot Refs",
+      "type": "array"
+    }
+  },
+  "required": [
+    "report_bundle_id",
+    "run_id",
+    "selected_candidate_id",
+    "claim_to_evidence_index",
+    "baseline_final_comparison_identities",
+    "timing_artifact_refs",
+    "ppa_artifact_refs",
+    "formal_artifact_refs",
+    "binding_artifact_refs",
+    "clock_artifact_refs",
+    "cdc_artifact_refs",
+    "experiment_ledger_sequence_range",
+    "experiment_ledger_hash",
+    "replay_manifest_artifact",
+    "replay_manifest_hash",
+    "ui_snapshot_refs",
+    "bundle_hash",
+    "created_at"
+  ],
+  "title": "ReportBundle",
+  "type": "object"
+}

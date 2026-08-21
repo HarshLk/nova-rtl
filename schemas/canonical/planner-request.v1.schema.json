@@ -1,0 +1,125 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "authorized_evidence_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Authorized Evidence Ids",
+      "type": "array"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "design_contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Design Contract Hash",
+      "type": "string"
+    },
+    "deterministic_seed": {
+      "minimum": 0,
+      "title": "Deterministic Seed",
+      "type": "integer"
+    },
+    "evidence_snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Snapshot Hash",
+      "type": "string"
+    },
+    "latency_budget_ms": {
+      "exclusiveMinimum": 0,
+      "title": "Latency Budget Ms",
+      "type": "integer"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "parent_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Parent Candidate Id",
+      "type": "string"
+    },
+    "planner_mode": {
+      "enum": [
+        "HEURISTIC",
+        "SINGLE_AGENT",
+        "AGENT_COUNCIL"
+      ],
+      "title": "Planner Mode",
+      "type": "string"
+    },
+    "planner_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Planner Request Id",
+      "type": "string"
+    },
+    "policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "proposal_limit": {
+      "exclusiveMinimum": 0,
+      "title": "Proposal Limit",
+      "type": "integer"
+    },
+    "required_output_schema_name": {
+      "pattern": "^[a-z][a-z0-9-]{2,95}$",
+      "title": "Required Output Schema Name",
+      "type": "string"
+    },
+    "required_output_schema_version": {
+      "exclusiveMinimum": 0,
+      "title": "Required Output Schema Version",
+      "type": "integer"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "token_budget": {
+      "exclusiveMinimum": 0,
+      "title": "Token Budget",
+      "type": "integer"
+    },
+    "transform_registry_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Transform Registry Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "planner_request_id",
+    "run_id",
+    "parent_candidate_id",
+    "opportunity_id",
+    "evidence_snapshot_hash",
+    "design_contract_hash",
+    "policy_hash",
+    "transform_registry_hash",
+    "authorized_evidence_ids",
+    "planner_mode",
+    "proposal_limit",
+    "token_budget",
+    "latency_budget_ms",
+    "deadline",
+    "deterministic_seed",
+    "required_output_schema_name",
+    "required_output_schema_version"
+  ],
+  "title": "PlannerRequest",
+  "type": "object"
+}

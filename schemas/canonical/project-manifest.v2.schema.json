@@ -1,0 +1,906 @@
+{
+  "$defs": {
+    "AnalysisViewManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "check": {
+          "enum": [
+            "SETUP",
+            "HOLD",
+            "POWER"
+          ],
+          "title": "Check",
+          "type": "string"
+        },
+        "clock_uncertainty_policy": {
+          "title": "Clock Uncertainty Policy",
+          "type": "string"
+        },
+        "derate_policy": {
+          "title": "Derate Policy",
+          "type": "string"
+        },
+        "hard_limits": {
+          "additionalProperties": {
+            "type": "number"
+          },
+          "title": "Hard Limits",
+          "type": "object"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Id",
+          "type": "string"
+        },
+        "liberty_corner": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Liberty Corner",
+          "type": "string"
+        },
+        "mode": {
+          "const": "FUNCTIONAL",
+          "title": "Mode",
+          "type": "string"
+        },
+        "operating_condition": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Operating Condition",
+          "type": "string"
+        },
+        "rc_corner": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Rc Corner",
+          "type": "string"
+        },
+        "required": {
+          "title": "Required",
+          "type": "boolean"
+        },
+        "required_stages": {
+          "items": {
+            "enum": [
+              "OPENSTA_FULL",
+              "OPENROAD_PHYSICAL",
+              "OPENROAD_PLACED_CTS",
+              "OPENROAD_ROUTED"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required Stages",
+          "type": "array"
+        },
+        "sdc": {
+          "title": "Sdc",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "mode",
+        "check",
+        "liberty_corner",
+        "rc_corner",
+        "operating_condition",
+        "derate_policy",
+        "clock_uncertainty_policy",
+        "hard_limits",
+        "sdc",
+        "required_stages",
+        "required"
+      ],
+      "title": "AnalysisViewManifest",
+      "type": "object"
+    },
+    "CdcPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "approved_pattern_registry": {
+          "title": "Approved Pattern Registry",
+          "type": "string"
+        },
+        "checker_mode": {
+          "const": "STRUCTURAL_INVARIANT_AUDIT",
+          "title": "Checker Mode",
+          "type": "string"
+        },
+        "external_cdc_tool": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "External Cdc Tool"
+        },
+        "protocol_property_manifest": {
+          "title": "Protocol Property Manifest",
+          "type": "string"
+        },
+        "require_candidate_inventory_equivalence": {
+          "const": true,
+          "title": "Require Candidate Inventory Equivalence",
+          "type": "boolean"
+        },
+        "require_zero_unapproved_crossings": {
+          "const": true,
+          "title": "Require Zero Unapproved Crossings",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "checker_mode",
+        "approved_pattern_registry",
+        "require_zero_unapproved_crossings",
+        "require_candidate_inventory_equivalence",
+        "protocol_property_manifest",
+        "external_cdc_tool"
+      ],
+      "title": "CdcPolicy",
+      "type": "object"
+    },
+    "CompilationProfiles": {
+      "additionalProperties": false,
+      "properties": {
+        "formal": {
+          "$ref": "#/$defs/FormalCompilationProfile"
+        },
+        "functional": {
+          "$ref": "#/$defs/FunctionalCompilationProfile"
+        }
+      },
+      "required": [
+        "functional",
+        "formal"
+      ],
+      "title": "CompilationProfiles",
+      "type": "object"
+    },
+    "ConstraintPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "expected_generated_clocks_per_master": {
+          "exclusiveMinimum": 0,
+          "title": "Expected Generated Clocks Per Master",
+          "type": "integer"
+        },
+        "expected_master_clocks": {
+          "const": 5,
+          "title": "Expected Master Clocks",
+          "type": "integer"
+        },
+        "immutable": {
+          "title": "Immutable",
+          "type": "boolean"
+        },
+        "require_constraint_binding_equivalence": {
+          "const": true,
+          "title": "Require Constraint Binding Equivalence",
+          "type": "boolean"
+        },
+        "require_exception_coverage_equivalence": {
+          "const": true,
+          "title": "Require Exception Coverage Equivalence",
+          "type": "boolean"
+        },
+        "require_zero_unconstrained_endpoints": {
+          "const": true,
+          "title": "Require Zero Unconstrained Endpoints",
+          "type": "boolean"
+        },
+        "sdc": {
+          "title": "Sdc",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sdc",
+        "immutable",
+        "expected_master_clocks",
+        "expected_generated_clocks_per_master",
+        "require_zero_unconstrained_endpoints",
+        "require_constraint_binding_equivalence",
+        "require_exception_coverage_equivalence"
+      ],
+      "title": "ConstraintPolicy",
+      "type": "object"
+    },
+    "ContextIsolationPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_read_only_retrieval": {
+          "const": true,
+          "title": "Allow Read Only Retrieval",
+          "type": "boolean"
+        },
+        "blind_independent_round": {
+          "const": true,
+          "title": "Blind Independent Round",
+          "type": "boolean"
+        },
+        "blind_parallel_critics": {
+          "const": true,
+          "title": "Blind Parallel Critics",
+          "type": "boolean"
+        },
+        "chair_pack_max_tokens": {
+          "exclusiveMinimum": 0,
+          "title": "Chair Pack Max Tokens",
+          "type": "integer"
+        },
+        "mode": {
+          "const": "ROLE_SCOPED_EVIDENCE_PACKS",
+          "title": "Mode",
+          "type": "string"
+        },
+        "private_pack_max_tokens": {
+          "exclusiveMinimum": 0,
+          "title": "Private Pack Max Tokens",
+          "type": "integer"
+        },
+        "randomize_neutral_proposal_order": {
+          "const": true,
+          "title": "Randomize Neutral Proposal Order",
+          "type": "boolean"
+        },
+        "require_snapshot_hash_match": {
+          "const": true,
+          "title": "Require Snapshot Hash Match",
+          "type": "boolean"
+        },
+        "shared_envelope_max_tokens": {
+          "exclusiveMinimum": 0,
+          "title": "Shared Envelope Max Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "mode",
+        "shared_envelope_max_tokens",
+        "private_pack_max_tokens",
+        "chair_pack_max_tokens",
+        "allow_read_only_retrieval",
+        "require_snapshot_hash_match",
+        "blind_independent_round",
+        "blind_parallel_critics",
+        "randomize_neutral_proposal_order"
+      ],
+      "title": "ContextIsolationPolicy",
+      "type": "object"
+    },
+    "FormalCompilationProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "disallow_design_behavior_defines": {
+          "const": true,
+          "title": "Disallow Design Behavior Defines",
+          "type": "boolean"
+        },
+        "harness_manifest": {
+          "title": "Harness Manifest",
+          "type": "string"
+        },
+        "property_files": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Property Files",
+          "type": "array"
+        },
+        "property_only_define": {
+          "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$",
+          "title": "Property Only Define",
+          "type": "string"
+        },
+        "require_functional_logic_hash_match": {
+          "const": true,
+          "title": "Require Functional Logic Hash Match",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "property_files",
+        "harness_manifest",
+        "property_only_define",
+        "disallow_design_behavior_defines",
+        "require_functional_logic_hash_match"
+      ],
+      "title": "FormalCompilationProfile",
+      "type": "object"
+    },
+    "FormalPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "asynchronous_master_clocks": {
+          "const": 5,
+          "title": "Asynchronous Master Clocks",
+          "type": "integer"
+        },
+        "generated_clock_model": {
+          "const": "DERIVED_FROM_PROTECTED_DIVIDER_STATE",
+          "title": "Generated Clock Model",
+          "type": "string"
+        },
+        "master_clock_model": {
+          "const": "INDEPENDENT_SHARED_GOLD_GATE_EVENTS",
+          "title": "Master Clock Model",
+          "type": "string"
+        },
+        "primary_competition_contract": {
+          "const": "STRICT_SEQ_EQUIV",
+          "title": "Primary Competition Contract",
+          "type": "string"
+        },
+        "prohibit_assumption_only_equivalence": {
+          "const": true,
+          "title": "Prohibit Assumption Only Equivalence",
+          "type": "boolean"
+        },
+        "proof_scope_policy": {
+          "const": "WHOLE_DESIGN_OR_COMPOSITIONALLY_CLOSED",
+          "title": "Proof Scope Policy",
+          "type": "string"
+        },
+        "require_primary_latency_preserving_candidate": {
+          "const": true,
+          "title": "Require Primary Latency Preserving Candidate",
+          "type": "boolean"
+        },
+        "reset_assumption_manifest": {
+          "title": "Reset Assumption Manifest",
+          "type": "string"
+        },
+        "sby_multiclock": {
+          "const": true,
+          "title": "Sby Multiclock",
+          "type": "boolean"
+        }
+      },
+      "required": [
+        "primary_competition_contract",
+        "require_primary_latency_preserving_candidate",
+        "proof_scope_policy",
+        "asynchronous_master_clocks",
+        "master_clock_model",
+        "generated_clock_model",
+        "sby_multiclock",
+        "reset_assumption_manifest",
+        "prohibit_assumption_only_equivalence"
+      ],
+      "title": "FormalPolicy",
+      "type": "object"
+    },
+    "FunctionalCompilationProfile": {
+      "additionalProperties": false,
+      "properties": {
+        "defines": {
+          "items": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_$]*(?:=.*)?$",
+            "type": "string"
+          },
+          "title": "Defines",
+          "type": "array"
+        },
+        "parameters": {
+          "patternProperties": {
+            "^[A-Za-z_][A-Za-z0-9_$]*$": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "title": "Parameters",
+          "type": "object"
+        }
+      },
+      "required": [
+        "defines",
+        "parameters"
+      ],
+      "title": "FunctionalCompilationProfile",
+      "type": "object"
+    },
+    "OptimizationPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_contracts": {
+          "items": {
+            "enum": [
+              "STRICT_SEQ_EQUIV",
+              "RETIMING_EQUIV",
+              "LATENCY_AWARE"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Contracts",
+          "type": "array"
+        },
+        "deterministic_seed": {
+          "minimum": 0,
+          "title": "Deterministic Seed",
+          "type": "integer"
+        },
+        "editable_path_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Editable Path Patterns",
+          "type": "array"
+        },
+        "max_area_growth_percent": {
+          "minimum": 0,
+          "title": "Max Area Growth Percent",
+          "type": "number"
+        },
+        "max_candidates": {
+          "exclusiveMinimum": 0,
+          "title": "Max Candidates",
+          "type": "integer"
+        },
+        "objective_policy": {
+          "const": "BALANCED_PPA",
+          "title": "Objective Policy",
+          "type": "string"
+        },
+        "openroad_finalists": {
+          "exclusiveMinimum": 0,
+          "title": "Openroad Finalists",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "objective_policy",
+        "max_area_growth_percent",
+        "max_candidates",
+        "openroad_finalists",
+        "allowed_contracts",
+        "editable_path_patterns",
+        "deterministic_seed"
+      ],
+      "title": "OptimizationPolicy",
+      "type": "object"
+    },
+    "PhysicalPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "placement_finalists": {
+          "exclusiveMinimum": 0,
+          "title": "Placement Finalists",
+          "type": "integer"
+        },
+        "repeat_final_seeds": {
+          "items": {
+            "minimum": 0,
+            "type": "integer"
+          },
+          "minItems": 1,
+          "title": "Repeat Final Seeds",
+          "type": "array"
+        },
+        "routed_finalists": {
+          "exclusiveMinimum": 0,
+          "title": "Routed Finalists",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "placement_finalists",
+        "routed_finalists",
+        "repeat_final_seeds"
+      ],
+      "title": "PhysicalPolicy",
+      "type": "object"
+    },
+    "PlannerPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "aggregate_token_budget": {
+          "minimum": 0,
+          "title": "Aggregate Token Budget",
+          "type": "integer"
+        },
+        "deadline_seconds": {
+          "exclusiveMinimum": 0,
+          "title": "Deadline Seconds",
+          "type": "integer"
+        },
+        "fallback_order": {
+          "items": {
+            "enum": [
+              "SINGLE_AGENT",
+              "HEURISTIC"
+            ],
+            "type": "string"
+          },
+          "title": "Fallback Order",
+          "type": "array"
+        },
+        "max_parallel_specialists": {
+          "exclusiveMinimum": 0,
+          "title": "Max Parallel Specialists",
+          "type": "integer"
+        },
+        "max_proposals": {
+          "exclusiveMinimum": 0,
+          "title": "Max Proposals",
+          "type": "integer"
+        },
+        "max_revision_rounds": {
+          "minimum": 0,
+          "title": "Max Revision Rounds",
+          "type": "integer"
+        },
+        "mode": {
+          "enum": [
+            "HEURISTIC",
+            "SINGLE_AGENT",
+            "AGENT_COUNCIL"
+          ],
+          "title": "Mode",
+          "type": "string"
+        },
+        "runtime": {
+          "enum": [
+            "DETERMINISTIC",
+            "DIRECT",
+            "LANGGRAPH"
+          ],
+          "title": "Runtime",
+          "type": "string"
+        }
+      },
+      "required": [
+        "mode",
+        "runtime",
+        "fallback_order",
+        "max_proposals",
+        "max_parallel_specialists",
+        "max_revision_rounds",
+        "deadline_seconds",
+        "aggregate_token_budget"
+      ],
+      "title": "PlannerPolicy",
+      "type": "object"
+    },
+    "PowerActivityManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "format": {
+          "enum": [
+            "VCD",
+            "SAIF",
+            "VECTORLESS"
+          ],
+          "title": "Format",
+          "type": "string"
+        },
+        "require_same_activity_hash": {
+          "const": true,
+          "title": "Require Same Activity Hash",
+          "type": "boolean"
+        },
+        "scope": {
+          "minLength": 1,
+          "title": "Scope",
+          "type": "string"
+        },
+        "source": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Source"
+        },
+        "time_window_ns": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Time Window Ns",
+          "type": "array"
+        },
+        "vectorless_fallback": {
+          "const": "ESTIMATED_ONLY_NOT_COMPARABLE",
+          "title": "Vectorless Fallback",
+          "type": "string"
+        }
+      },
+      "required": [
+        "format",
+        "source",
+        "scope",
+        "time_window_ns",
+        "require_same_activity_hash",
+        "vectorless_fallback"
+      ],
+      "title": "PowerActivityManifest",
+      "type": "object"
+    },
+    "ProtectionPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "modules": {
+          "items": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Modules",
+          "type": "array"
+        },
+        "path_patterns": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Path Patterns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "modules",
+        "path_patterns"
+      ],
+      "title": "ProtectionPolicy",
+      "type": "object"
+    },
+    "RecoveryPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "allow_targeted_recovery_council": {
+          "title": "Allow Targeted Recovery Council",
+          "type": "boolean"
+        },
+        "diagnostic_rule_registry": {
+          "title": "Diagnostic Rule Registry",
+          "type": "string"
+        },
+        "enabled": {
+          "title": "Enabled",
+          "type": "boolean"
+        },
+        "fingerprint_schema": {
+          "minLength": 1,
+          "title": "Fingerprint Schema",
+          "type": "string"
+        },
+        "force_fresh_sessions_after_stagnation": {
+          "const": true,
+          "title": "Force Fresh Sessions After Stagnation",
+          "type": "boolean"
+        },
+        "max_recovery_depth_per_lineage": {
+          "minimum": 0,
+          "title": "Max Recovery Depth Per Lineage",
+          "type": "integer"
+        },
+        "no_progress_area_epsilon_percent": {
+          "minimum": 0,
+          "title": "No Progress Area Epsilon Percent",
+          "type": "number"
+        },
+        "no_progress_wns_epsilon_ns": {
+          "minimum": 0,
+          "title": "No Progress Wns Epsilon Ns",
+          "type": "number"
+        },
+        "policy_version": {
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "prohibit_same_transform_family_after_stagnation": {
+          "const": true,
+          "title": "Prohibit Same Transform Family After Stagnation",
+          "type": "boolean"
+        },
+        "repeated_failure_count": {
+          "exclusiveMinimum": 0,
+          "title": "Repeated Failure Count",
+          "type": "integer"
+        },
+        "similarity_threshold": {
+          "maximum": 1,
+          "minimum": 0,
+          "title": "Similarity Threshold",
+          "type": "number"
+        }
+      },
+      "required": [
+        "enabled",
+        "policy_version",
+        "diagnostic_rule_registry",
+        "fingerprint_schema",
+        "similarity_threshold",
+        "no_progress_wns_epsilon_ns",
+        "no_progress_area_epsilon_percent",
+        "repeated_failure_count",
+        "max_recovery_depth_per_lineage",
+        "allow_targeted_recovery_council",
+        "force_fresh_sessions_after_stagnation",
+        "prohibit_same_transform_family_after_stagnation"
+      ],
+      "title": "RecoveryPolicy",
+      "type": "object"
+    },
+    "RtlManifest": {
+      "additionalProperties": false,
+      "properties": {
+        "defines": {
+          "items": {
+            "pattern": "^[A-Za-z_][A-Za-z0-9_$]*(?:=.*)?$",
+            "type": "string"
+          },
+          "title": "Defines",
+          "type": "array"
+        },
+        "files": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Files",
+          "type": "array"
+        },
+        "include_dirs": {
+          "items": {
+            "type": "string"
+          },
+          "title": "Include Dirs",
+          "type": "array"
+        }
+      },
+      "required": [
+        "files",
+        "include_dirs",
+        "defines"
+      ],
+      "title": "RtlManifest",
+      "type": "object"
+    },
+    "TechnologyPolicy": {
+      "additionalProperties": false,
+      "properties": {
+        "platform_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Platform Id",
+          "type": "string"
+        },
+        "platform_lock": {
+          "title": "Platform Lock",
+          "type": "string"
+        },
+        "platform_lock_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Platform Lock Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "platform_id",
+        "platform_lock",
+        "platform_lock_hash"
+      ],
+      "title": "TechnologyPolicy",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Single strict human-authored entry point for one immutable run.",
+  "properties": {
+    "analysis_views": {
+      "items": {
+        "$ref": "#/$defs/AnalysisViewManifest"
+      },
+      "minItems": 2,
+      "title": "Analysis Views",
+      "type": "array"
+    },
+    "cdc": {
+      "$ref": "#/$defs/CdcPolicy"
+    },
+    "compilation_profiles": {
+      "$ref": "#/$defs/CompilationProfiles"
+    },
+    "constraints": {
+      "$ref": "#/$defs/ConstraintPolicy"
+    },
+    "context_isolation": {
+      "$ref": "#/$defs/ContextIsolationPolicy"
+    },
+    "formal": {
+      "$ref": "#/$defs/FormalPolicy"
+    },
+    "optimization": {
+      "$ref": "#/$defs/OptimizationPolicy"
+    },
+    "physical": {
+      "$ref": "#/$defs/PhysicalPolicy"
+    },
+    "planner": {
+      "$ref": "#/$defs/PlannerPolicy"
+    },
+    "power_activity": {
+      "$ref": "#/$defs/PowerActivityManifest"
+    },
+    "project": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Project",
+      "type": "string"
+    },
+    "protection": {
+      "$ref": "#/$defs/ProtectionPolicy"
+    },
+    "recovery": {
+      "$ref": "#/$defs/RecoveryPolicy"
+    },
+    "rtl": {
+      "$ref": "#/$defs/RtlManifest"
+    },
+    "schema_version": {
+      "const": 2,
+      "default": 2,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "technology": {
+      "$ref": "#/$defs/TechnologyPolicy"
+    },
+    "top": {
+      "pattern": "^[A-Za-z_][A-Za-z0-9_$]*$",
+      "title": "Top",
+      "type": "string"
+    }
+  },
+  "required": [
+    "project",
+    "top",
+    "rtl",
+    "compilation_profiles",
+    "constraints",
+    "technology",
+    "analysis_views",
+    "power_activity",
+    "cdc",
+    "formal",
+    "protection",
+    "optimization",
+    "planner",
+    "context_isolation",
+    "recovery",
+    "physical"
+  ],
+  "title": "ProjectManifest",
+  "type": "object"
+}
