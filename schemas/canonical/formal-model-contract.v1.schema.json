@@ -1,0 +1,107 @@
+{
+  "additionalProperties": false,
+  "description": "Immutable functional/formal identity and multi-clock assumption model.",
+  "properties": {
+    "behavioral_elaboration_delta": {
+      "const": "NONE",
+      "title": "Behavioral Elaboration Delta",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "environment_assumption_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Environment Assumption Hash",
+      "type": "string"
+    },
+    "formal_model_contract_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Formal Model Contract Id",
+      "type": "string"
+    },
+    "functional_rtl_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Functional Rtl Hash",
+      "type": "string"
+    },
+    "gate_snapshot_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Gate Snapshot Hash"
+    },
+    "generated_clock_model": {
+      "const": "DERIVED_FROM_PROTECTED_DIVIDER_STATE",
+      "title": "Generated Clock Model",
+      "type": "string"
+    },
+    "gold_snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Gold Snapshot Hash",
+      "type": "string"
+    },
+    "master_clock_model": {
+      "const": "INDEPENDENT_SHARED_GOLD_GATE_EVENTS",
+      "title": "Master Clock Model",
+      "type": "string"
+    },
+    "multiclock_enabled": {
+      "const": true,
+      "title": "Multiclock Enabled",
+      "type": "boolean"
+    },
+    "parameter_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Parameter Hash",
+      "type": "string"
+    },
+    "proof_scope_policy": {
+      "const": "WHOLE_DESIGN_OR_COMPOSITIONALLY_CLOSED",
+      "title": "Proof Scope Policy",
+      "type": "string"
+    },
+    "property_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Property Manifest Hash",
+      "type": "string"
+    },
+    "reset_assumption_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Reset Assumption Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "formal_model_contract_id",
+    "candidate_id",
+    "functional_rtl_hash",
+    "parameter_hash",
+    "gold_snapshot_hash",
+    "gate_snapshot_hash",
+    "property_manifest_hash",
+    "master_clock_model",
+    "generated_clock_model",
+    "multiclock_enabled",
+    "reset_assumption_hash",
+    "environment_assumption_hash",
+    "proof_scope_policy",
+    "behavioral_elaboration_delta"
+  ],
+  "title": "FormalModelContract",
+  "type": "object"
+}

@@ -1,0 +1,160 @@
+{
+  "$defs": {
+    "ConstraintCoverage": {
+      "additionalProperties": false,
+      "properties": {
+        "reviewed_exception_endpoints": {
+          "minimum": 0,
+          "title": "Reviewed Exception Endpoints",
+          "type": "integer"
+        },
+        "sequential_endpoints_total": {
+          "minimum": 0,
+          "title": "Sequential Endpoints Total",
+          "type": "integer"
+        },
+        "timed_endpoints": {
+          "minimum": 0,
+          "title": "Timed Endpoints",
+          "type": "integer"
+        },
+        "unresolved_selectors": {
+          "minimum": 0,
+          "title": "Unresolved Selectors",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "sequential_endpoints_total",
+        "timed_endpoints",
+        "reviewed_exception_endpoints",
+        "unresolved_selectors"
+      ],
+      "title": "ConstraintCoverage",
+      "type": "object"
+    },
+    "ResolvedConstraintCommand": {
+      "additionalProperties": false,
+      "properties": {
+        "command_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Command Id",
+          "type": "string"
+        },
+        "normalized_command_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Normalized Command Hash",
+          "type": "string"
+        },
+        "resolved_object_ids": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Resolved Object Ids",
+          "type": "array"
+        },
+        "resolved_object_set_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Resolved Object Set Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "command_id",
+        "normalized_command_hash",
+        "resolved_object_ids",
+        "resolved_object_set_hash"
+      ],
+      "title": "ResolvedConstraintCommand",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Effective SDC selector binding and endpoint coverage for one snapshot.",
+  "properties": {
+    "analysis_view_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Analysis View Ids",
+      "type": "array"
+    },
+    "binding_manifest_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Binding Manifest Id",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "comparison_to_baseline": {
+      "enum": [
+        "EQUIVALENT",
+        "APPROVED_SEMANTIC_REMAP",
+        "FORBIDDEN_DELTA"
+      ],
+      "title": "Comparison To Baseline",
+      "type": "string"
+    },
+    "coverage": {
+      "$ref": "#/$defs/ConstraintCoverage"
+    },
+    "effective_binding_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Effective Binding Hash",
+      "type": "string"
+    },
+    "netlist_snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Netlist Snapshot Hash",
+      "type": "string"
+    },
+    "resolved_commands": {
+      "items": {
+        "$ref": "#/$defs/ResolvedConstraintCommand"
+      },
+      "minItems": 1,
+      "title": "Resolved Commands",
+      "type": "array"
+    },
+    "reviewed_mapping_refs": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Reviewed Mapping Refs",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sdc_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Sdc Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "binding_manifest_id",
+    "candidate_id",
+    "sdc_hash",
+    "netlist_snapshot_hash",
+    "analysis_view_ids",
+    "resolved_commands",
+    "coverage",
+    "effective_binding_hash",
+    "comparison_to_baseline",
+    "reviewed_mapping_refs"
+  ],
+  "title": "ConstraintBindingManifest",
+  "type": "object"
+}

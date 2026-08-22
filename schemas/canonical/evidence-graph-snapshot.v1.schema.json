@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable identity and artifact index for a compressed evidence graph.",
+  "properties": {
+    "cdc_inventory_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Cdc Inventory Id",
+      "type": "string"
+    },
+    "clock_inventory_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Clock Inventory Id",
+      "type": "string"
+    },
+    "edge_counts": {
+      "patternProperties": {
+        "^[A-Z][A-Z0-9_]{2,95}$": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "Edge Counts",
+      "type": "object"
+    },
+    "edge_schema_version": {
+      "const": 1,
+      "title": "Edge Schema Version",
+      "type": "integer"
+    },
+    "evidence_resolution_index_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Resolution Index Hash",
+      "type": "string"
+    },
+    "graph_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "node_counts": {
+      "patternProperties": {
+        "^[A-Z][A-Z0-9_]{2,95}$": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "Node Counts",
+      "type": "object"
+    },
+    "node_schema_version": {
+      "const": 1,
+      "title": "Node Schema Version",
+      "type": "integer"
+    },
+    "path_record_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Hash",
+      "type": "string"
+    },
+    "source_map_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    }
+  },
+  "required": [
+    "snapshot_hash",
+    "node_schema_version",
+    "edge_schema_version",
+    "node_counts",
+    "edge_counts",
+    "graph_artifact",
+    "source_map_artifact",
+    "path_record_artifact",
+    "clock_inventory_id",
+    "cdc_inventory_id",
+    "evidence_resolution_index_hash"
+  ],
+  "title": "EvidenceGraphSnapshot",
+  "type": "object"
+}

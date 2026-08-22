@@ -1,0 +1,157 @@
+{
+  "$defs": {
+    "CdcCrossing": {
+      "additionalProperties": false,
+      "properties": {
+        "crossing_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Crossing Id",
+          "type": "string"
+        },
+        "destination_domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Destination Domain Id",
+          "type": "string"
+        },
+        "destination_object": {
+          "minLength": 1,
+          "title": "Destination Object",
+          "type": "string"
+        },
+        "protocol_property_refs": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Protocol Property Refs",
+          "type": "array"
+        },
+        "recognized_pattern": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recognized Pattern"
+        },
+        "signal_class": {
+          "enum": [
+            "SINGLE_BIT_CONTROL",
+            "MULTI_BIT_DATA",
+            "PULSE",
+            "FIFO_POINTER",
+            "RESET"
+          ],
+          "title": "Signal Class",
+          "type": "string"
+        },
+        "source_domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Source Domain Id",
+          "type": "string"
+        },
+        "source_object": {
+          "minLength": 1,
+          "title": "Source Object",
+          "type": "string"
+        },
+        "status": {
+          "enum": [
+            "APPROVED",
+            "UNAPPROVED",
+            "AMBIGUOUS"
+          ],
+          "title": "Status",
+          "type": "string"
+        },
+        "structural_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Structural Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "crossing_id",
+        "source_domain_id",
+        "destination_domain_id",
+        "source_object",
+        "destination_object",
+        "signal_class",
+        "recognized_pattern",
+        "structural_fingerprint",
+        "protocol_property_refs",
+        "status"
+      ],
+      "title": "CdcCrossing",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Typed structural CDC inventory and comparison counts.",
+  "properties": {
+    "ambiguous_count": {
+      "minimum": 0,
+      "title": "Ambiguous Count",
+      "type": "integer"
+    },
+    "approved_pattern_registry_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Approved Pattern Registry Hash",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "changed_approved_structure_count": {
+      "minimum": 0,
+      "title": "Changed Approved Structure Count",
+      "type": "integer"
+    },
+    "crossings": {
+      "items": {
+        "$ref": "#/$defs/CdcCrossing"
+      },
+      "title": "Crossings",
+      "type": "array"
+    },
+    "inventory_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Inventory Hash",
+      "type": "string"
+    },
+    "new_unapproved_count": {
+      "minimum": 0,
+      "title": "New Unapproved Count",
+      "type": "integer"
+    },
+    "removed_approved_structure_count": {
+      "minimum": 0,
+      "title": "Removed Approved Structure Count",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "crossings",
+    "approved_pattern_registry_hash",
+    "new_unapproved_count",
+    "changed_approved_structure_count",
+    "removed_approved_structure_count",
+    "ambiguous_count",
+    "inventory_hash"
+  ],
+  "title": "CDCInventory",
+  "type": "object"
+}

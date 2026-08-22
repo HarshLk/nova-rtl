@@ -1,0 +1,648 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "MetricSet": {
+      "additionalProperties": false,
+      "description": "Complete, unit-explicit measured metrics for a stage or comparison.",
+      "properties": {
+        "analysis_view_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Analysis View Id"
+        },
+        "buffer_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Buffer Count"
+        },
+        "cell_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cell Count"
+        },
+        "congestion_overflow": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Congestion Overflow"
+        },
+        "critical_path_delay_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Critical Path Delay Ns"
+        },
+        "estimated_fmax_mhz": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Fmax Mhz"
+        },
+        "failing_endpoints": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failing Endpoints"
+        },
+        "hold_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Tns Ns"
+        },
+        "hold_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Wns Ns"
+        },
+        "mapped_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mapped Area Um2"
+        },
+        "missing_metric_reasons": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Missing Metric Reasons",
+          "type": "object"
+        },
+        "physical_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physical Area Um2"
+        },
+        "power_total_uw": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Power Total Uw"
+        },
+        "register_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Register Count"
+        },
+        "runtime_ms": {
+          "minimum": 0,
+          "title": "Runtime Ms",
+          "type": "integer"
+        },
+        "setup_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Tns Ns"
+        },
+        "setup_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Wns Ns"
+        },
+        "wirelength_um": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Wirelength Um"
+        }
+      },
+      "required": [
+        "analysis_view_id",
+        "setup_wns_ns",
+        "setup_tns_ns",
+        "hold_wns_ns",
+        "hold_tns_ns",
+        "failing_endpoints",
+        "critical_path_delay_ns",
+        "estimated_fmax_mhz",
+        "mapped_area_um2",
+        "physical_area_um2",
+        "cell_count",
+        "register_count",
+        "buffer_count",
+        "power_total_uw",
+        "wirelength_um",
+        "congestion_overflow",
+        "runtime_ms",
+        "missing_metric_reasons"
+      ],
+      "title": "MetricSet",
+      "type": "object"
+    },
+    "_CandidateHardGateSummary": {
+      "additionalProperties": false,
+      "description": "Hashed resolver output proving every feasibility gate for one candidate.",
+      "properties": {
+        "binding_manifest_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Binding Manifest Id",
+          "type": "string"
+        },
+        "binding_status": {
+          "enum": [
+            "EQUIVALENT",
+            "APPROVED_SEMANTIC_REMAP",
+            "FORBIDDEN_DELTA"
+          ],
+          "title": "Binding Status",
+          "type": "string"
+        },
+        "candidate_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "cdc_inventory_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Cdc Inventory Id",
+          "type": "string"
+        },
+        "cdc_inventory_status": {
+          "enum": [
+            "UNCHANGED",
+            "CHANGED",
+            "AMBIGUOUS"
+          ],
+          "title": "Cdc Inventory Status",
+          "type": "string"
+        },
+        "clock_inventory_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Clock Inventory Id",
+          "type": "string"
+        },
+        "clock_inventory_status": {
+          "enum": [
+            "COMPLETE",
+            "INCOMPLETE",
+            "MISMATCH"
+          ],
+          "title": "Clock Inventory Status",
+          "type": "string"
+        },
+        "passed_stage_result_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Passed Stage Result Ids",
+          "type": "array"
+        },
+        "proof_contract": {
+          "enum": [
+            "STRICT_SEQ_EQUIV",
+            "RETIMING_EQUIV",
+            "LATENCY_AWARE"
+          ],
+          "title": "Proof Contract",
+          "type": "string"
+        },
+        "proof_outcome": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INCONCLUSIVE",
+            "INFRASTRUCTURE_ERROR"
+          ],
+          "title": "Proof Outcome",
+          "type": "string"
+        },
+        "proof_result_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Proof Result Id",
+          "type": "string"
+        },
+        "required_analysis_view_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Required Analysis View Ids",
+          "type": "array"
+        },
+        "source_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Source Hash",
+          "type": "string"
+        },
+        "summary_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Summary Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_id",
+        "source_hash",
+        "required_analysis_view_ids",
+        "passed_stage_result_ids",
+        "proof_result_id",
+        "proof_outcome",
+        "proof_contract",
+        "binding_manifest_id",
+        "binding_status",
+        "clock_inventory_id",
+        "clock_inventory_status",
+        "cdc_inventory_id",
+        "cdc_inventory_status",
+        "summary_hash"
+      ],
+      "title": "_CandidateHardGateSummary",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable candidate lineage and deterministic hard-gate state.",
+  "properties": {
+    "binding_manifest_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Binding Manifest Id"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "cdc_inventory_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Cdc Inventory Id"
+    },
+    "changed_spans": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Changed Spans",
+      "type": "array"
+    },
+    "classification": {
+      "enum": [
+        "REJECTED_SAFETY",
+        "REJECTED_CORRECTNESS",
+        "REJECTED_POLICY",
+        "INCONCLUSIVE",
+        "INFRASTRUCTURE_ERROR",
+        "VALID_NEGATIVE_RESULT",
+        "FEASIBLE_DOMINATED",
+        "FEASIBLE_PARETO",
+        "SELECTED"
+      ],
+      "title": "Classification",
+      "type": "string"
+    },
+    "clock_inventory_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Clock Inventory Id"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "hard_gate_summary": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/_CandidateHardGateSummary"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "lineage_depth": {
+      "exclusiveMinimum": 0,
+      "title": "Lineage Depth",
+      "type": "integer"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "parent_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Parent Candidate Id",
+      "type": "string"
+    },
+    "patch_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "per_view_metrics": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "$ref": "#/$defs/MetricSet"
+        }
+      },
+      "title": "Per View Metrics",
+      "type": "object"
+    },
+    "proof_result_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Proof Result Id"
+    },
+    "proposal_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Proposal Id",
+      "type": "string"
+    },
+    "recovery_parent_failure_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Recovery Parent Failure Id"
+    },
+    "required_correctness_contract": {
+      "enum": [
+        "STRICT_SEQ_EQUIV",
+        "RETIMING_EQUIV",
+        "LATENCY_AWARE"
+      ],
+      "title": "Required Correctness Contract",
+      "type": "string"
+    },
+    "rtl_snapshot_artifact": {
+      "$ref": "#/$defs/ArtifactRef"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selection_class": {
+      "enum": [
+        "PRIMARY_STRICT",
+        "SECONDARY_RETIMED",
+        "EXPLORATORY_LATENCY_AWARE"
+      ],
+      "title": "Selection Class",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "stage_result_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Stage Result Ids",
+      "type": "array"
+    },
+    "terminal_disposition": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Terminal Disposition",
+      "type": "string"
+    },
+    "transform_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Transform Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "run_id",
+    "parent_candidate_id",
+    "lineage_depth",
+    "proposal_id",
+    "opportunity_id",
+    "rtl_snapshot_artifact",
+    "patch_artifact",
+    "source_hash",
+    "changed_spans",
+    "transform_fingerprint",
+    "required_correctness_contract",
+    "stage_result_ids",
+    "per_view_metrics",
+    "proof_result_id",
+    "binding_manifest_id",
+    "clock_inventory_id",
+    "cdc_inventory_id",
+    "hard_gate_summary",
+    "classification",
+    "selection_class",
+    "terminal_disposition",
+    "created_at",
+    "recovery_parent_failure_id"
+  ],
+  "title": "CandidateRecord",
+  "type": "object"
+}

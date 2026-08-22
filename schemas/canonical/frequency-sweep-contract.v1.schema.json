@@ -1,0 +1,96 @@
+{
+  "additionalProperties": false,
+  "description": "Deterministic period-sweep identity kept separate from optimizer edits.",
+  "properties": {
+    "baseline_analysis_view_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Baseline Analysis View Hash",
+      "type": "string"
+    },
+    "constraint_overlay_generator_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Constraint Overlay Generator Hash",
+      "type": "string"
+    },
+    "contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Contract Hash",
+      "type": "string"
+    },
+    "fixed_non_target_clock_definitions_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Fixed Non Target Clock Definitions Hash",
+      "type": "string"
+    },
+    "frequency_sweep_contract_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Frequency Sweep Contract Id",
+      "type": "string"
+    },
+    "hold_pass_limit_ns": {
+      "title": "Hold Pass Limit Ns",
+      "type": "number"
+    },
+    "maximum_trials": {
+      "exclusiveMinimum": 0,
+      "title": "Maximum Trials",
+      "type": "integer"
+    },
+    "ordered_trial_periods_ns": {
+      "items": {
+        "exclusiveMinimum": 0,
+        "type": "number"
+      },
+      "minItems": 1,
+      "title": "Ordered Trial Periods Ns",
+      "type": "array"
+    },
+    "result_label_policy": {
+      "const": "ACHIEVED_BY_SWEEP_ONLY_ON_SETUP_HOLD_PASS",
+      "title": "Result Label Policy",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "search_method": {
+      "const": "BOUNDED_BINARY",
+      "title": "Search Method",
+      "type": "string"
+    },
+    "setup_pass_limit_ns": {
+      "title": "Setup Pass Limit Ns",
+      "type": "number"
+    },
+    "target_domain_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Target Domain Id",
+      "type": "string"
+    },
+    "target_master_clock_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Target Master Clock Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "frequency_sweep_contract_id",
+    "baseline_analysis_view_hash",
+    "target_master_clock_id",
+    "target_domain_id",
+    "ordered_trial_periods_ns",
+    "fixed_non_target_clock_definitions_hash",
+    "setup_pass_limit_ns",
+    "hold_pass_limit_ns",
+    "constraint_overlay_generator_hash",
+    "search_method",
+    "maximum_trials",
+    "result_label_policy",
+    "contract_hash"
+  ],
+  "title": "FrequencySweepContract",
+  "type": "object"
+}

@@ -1,0 +1,255 @@
+{
+  "$defs": {
+    "ClockLineageEdge": {
+      "additionalProperties": false,
+      "properties": {
+        "child_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Child Clock Id",
+          "type": "string"
+        },
+        "parent_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Parent Clock Id",
+          "type": "string"
+        },
+        "relationship": {
+          "const": "GENERATED_FROM",
+          "title": "Relationship",
+          "type": "string"
+        }
+      },
+      "required": [
+        "parent_clock_id",
+        "child_clock_id",
+        "relationship"
+      ],
+      "title": "ClockLineageEdge",
+      "type": "object"
+    },
+    "CrossMasterSynchronousRelationship": {
+      "additionalProperties": false,
+      "properties": {
+        "declaration_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Declaration Hash",
+          "type": "string"
+        },
+        "first_master_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "First Master Clock Id",
+          "type": "string"
+        },
+        "second_master_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Second Master Clock Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "first_master_clock_id",
+        "second_master_clock_id",
+        "declaration_hash"
+      ],
+      "title": "CrossMasterSynchronousRelationship",
+      "type": "object"
+    },
+    "GeneratedClockEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "active_consumer_count": {
+          "exclusiveMinimum": 0,
+          "title": "Active Consumer Count",
+          "type": "integer"
+        },
+        "clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Clock Id",
+          "type": "string"
+        },
+        "divide_by": {
+          "exclusiveMinimum": 0,
+          "title": "Divide By",
+          "type": "integer"
+        },
+        "domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "master_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Master Clock Id",
+          "type": "string"
+        },
+        "multiply_by": {
+          "exclusiveMinimum": 0,
+          "title": "Multiply By",
+          "type": "integer"
+        },
+        "source_object": {
+          "minLength": 1,
+          "title": "Source Object",
+          "type": "string"
+        },
+        "waveform_ns": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Waveform Ns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "clock_id",
+        "domain_id",
+        "master_clock_id",
+        "source_object",
+        "multiply_by",
+        "divide_by",
+        "waveform_ns",
+        "active_consumer_count"
+      ],
+      "title": "GeneratedClockEntry",
+      "type": "object"
+    },
+    "MasterClockEntry": {
+      "additionalProperties": false,
+      "properties": {
+        "active_consumer_count": {
+          "exclusiveMinimum": 0,
+          "title": "Active Consumer Count",
+          "type": "integer"
+        },
+        "clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Clock Id",
+          "type": "string"
+        },
+        "domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "period_ns": {
+          "exclusiveMinimum": 0,
+          "title": "Period Ns",
+          "type": "number"
+        },
+        "source_object": {
+          "minLength": 1,
+          "title": "Source Object",
+          "type": "string"
+        },
+        "waveform_ns": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Waveform Ns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "clock_id",
+        "domain_id",
+        "source_object",
+        "period_ns",
+        "waveform_ns",
+        "active_consumer_count"
+      ],
+      "title": "MasterClockEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete five-master generated-clock inventory and lineage graph.",
+  "properties": {
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "clock_graph_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Clock Graph Hash",
+      "type": "string"
+    },
+    "cross_master_synchronous_relationships": {
+      "items": {
+        "$ref": "#/$defs/CrossMasterSynchronousRelationship"
+      },
+      "title": "Cross Master Synchronous Relationships",
+      "type": "array"
+    },
+    "expected_generated_clocks_per_master": {
+      "exclusiveMinimum": 0,
+      "title": "Expected Generated Clocks Per Master",
+      "type": "integer"
+    },
+    "expected_master_count": {
+      "const": 5,
+      "title": "Expected Master Count",
+      "type": "integer"
+    },
+    "generated_clocks": {
+      "items": {
+        "$ref": "#/$defs/GeneratedClockEntry"
+      },
+      "minItems": 1,
+      "title": "Generated Clocks",
+      "type": "array"
+    },
+    "lineage_edges": {
+      "items": {
+        "$ref": "#/$defs/ClockLineageEdge"
+      },
+      "minItems": 1,
+      "title": "Lineage Edges",
+      "type": "array"
+    },
+    "master_clocks": {
+      "items": {
+        "$ref": "#/$defs/MasterClockEntry"
+      },
+      "minItems": 5,
+      "title": "Master Clocks",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "expected_master_count",
+    "expected_generated_clocks_per_master",
+    "master_clocks",
+    "generated_clocks",
+    "lineage_edges",
+    "cross_master_synchronous_relationships",
+    "clock_graph_hash"
+  ],
+  "title": "ClockInventory",
+  "type": "object"
+}

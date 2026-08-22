@@ -1,0 +1,269 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ResourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_cores": {
+          "exclusiveMinimum": 0,
+          "title": "Cpu Cores",
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "memory_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Memory Bytes",
+          "type": "integer"
+        },
+        "wall_time_ms": {
+          "exclusiveMinimum": 0,
+          "title": "Wall Time Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cpu_cores",
+        "memory_bytes",
+        "wall_time_ms",
+        "max_output_bytes"
+      ],
+      "title": "ResourceLimits",
+      "type": "object"
+    },
+    "ToolFingerprint": {
+      "additionalProperties": false,
+      "description": "Identity of the executable inspected by the doctor.",
+      "properties": {
+        "adapter_version": {
+          "pattern": "^[a-z][a-z0-9_-]{2,63}-v[1-9][0-9]*$",
+          "title": "Adapter Version",
+          "type": "string"
+        },
+        "build_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Build Hash",
+          "type": "string"
+        },
+        "container_digest": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Container Digest"
+        },
+        "executable": {
+          "minLength": 1,
+          "title": "Executable",
+          "type": "string"
+        },
+        "executable_sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Executable Sha256",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "tool_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Tool Id",
+          "type": "string"
+        },
+        "version": {
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        },
+        "version_args": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Version Args",
+          "type": "array"
+        }
+      },
+      "required": [
+        "tool_id",
+        "executable",
+        "version",
+        "version_args",
+        "executable_sha256",
+        "build_hash",
+        "adapter_version"
+      ],
+      "title": "ToolFingerprint",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Shell-free, isolated and self-hashed command prepared by a tool adapter.",
+  "properties": {
+    "argv": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Argv",
+      "type": "array"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "environment": {
+      "patternProperties": {
+        "^[A-Z_][A-Z0-9_]{0,63}$": {
+          "type": "string"
+        }
+      },
+      "title": "Environment",
+      "type": "object"
+    },
+    "preparation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Preparation Hash",
+      "type": "string"
+    },
+    "recipe_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Recipe Artifact Refs",
+      "type": "array"
+    },
+    "resource_limits": {
+      "$ref": "#/$defs/ResourceLimits"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stage_result_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Stage Result Id",
+      "type": "string"
+    },
+    "staged_input_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Staged Input Artifact Refs",
+      "type": "array"
+    },
+    "tool_fingerprint": {
+      "$ref": "#/$defs/ToolFingerprint"
+    },
+    "tool_job_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Tool Job Id",
+      "type": "string"
+    },
+    "working_directory": {
+      "format": "path",
+      "title": "Working Directory",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool_job_id",
+    "stage_result_id",
+    "tool_fingerprint",
+    "argv",
+    "working_directory",
+    "environment",
+    "resource_limits",
+    "deadline",
+    "staged_input_artifact_refs",
+    "recipe_artifact_refs",
+    "preparation_hash"
+  ],
+  "title": "PreparedCommand",
+  "type": "object"
+}

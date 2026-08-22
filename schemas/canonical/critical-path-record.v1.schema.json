@@ -1,0 +1,128 @@
+{
+  "additionalProperties": false,
+  "description": "View-keyed normalized timing path with parser arithmetic checks.",
+  "properties": {
+    "analysis_view_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Analysis View Id",
+      "type": "string"
+    },
+    "arrival_ns": {
+      "title": "Arrival Ns",
+      "type": "number"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "capture_clock_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Capture Clock Id",
+      "type": "string"
+    },
+    "cell_delay_ns": {
+      "minimum": 0,
+      "title": "Cell Delay Ns",
+      "type": "number"
+    },
+    "endpoint": {
+      "minLength": 1,
+      "title": "Endpoint",
+      "type": "string"
+    },
+    "launch_clock_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Launch Clock Id",
+      "type": "string"
+    },
+    "logic_depth": {
+      "minimum": 0,
+      "title": "Logic Depth",
+      "type": "integer"
+    },
+    "max_fanout": {
+      "minimum": 0,
+      "title": "Max Fanout",
+      "type": "integer"
+    },
+    "net_delay_ns": {
+      "minimum": 0,
+      "title": "Net Delay Ns",
+      "type": "number"
+    },
+    "object_sequence": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Object Sequence",
+      "type": "array"
+    },
+    "path_group": {
+      "minLength": 1,
+      "title": "Path Group",
+      "type": "string"
+    },
+    "path_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Path Id",
+      "type": "string"
+    },
+    "raw_report_artifact_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Raw Report Artifact Id",
+      "type": "string"
+    },
+    "required_ns": {
+      "title": "Required Ns",
+      "type": "number"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "slack_ns": {
+      "title": "Slack Ns",
+      "type": "number"
+    },
+    "source_span_refs": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Source Span Refs",
+      "type": "array"
+    },
+    "startpoint": {
+      "minLength": 1,
+      "title": "Startpoint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "path_id",
+    "candidate_id",
+    "analysis_view_id",
+    "path_group",
+    "launch_clock_id",
+    "capture_clock_id",
+    "startpoint",
+    "endpoint",
+    "arrival_ns",
+    "required_ns",
+    "slack_ns",
+    "cell_delay_ns",
+    "net_delay_ns",
+    "logic_depth",
+    "max_fanout",
+    "object_sequence",
+    "source_span_refs",
+    "raw_report_artifact_id"
+  ],
+  "title": "CriticalPathRecord",
+  "type": "object"
+}

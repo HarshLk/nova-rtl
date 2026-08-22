@@ -1,0 +1,123 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "candidate_budget": {
+      "exclusiveMinimum": 0,
+      "title": "Candidate Budget",
+      "type": "integer"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "design_contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Design Contract Hash",
+      "type": "string"
+    },
+    "deterministic_seed": {
+      "minimum": 0,
+      "title": "Deterministic Seed",
+      "type": "integer"
+    },
+    "formal_budget": {
+      "exclusiveMinimum": 0,
+      "title": "Formal Budget",
+      "type": "integer"
+    },
+    "latency_budget_ms": {
+      "exclusiveMinimum": 0,
+      "title": "Latency Budget Ms",
+      "type": "integer"
+    },
+    "ordered_opportunity_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Ordered Opportunity Ids",
+      "type": "array"
+    },
+    "physical_budget": {
+      "exclusiveMinimum": 0,
+      "title": "Physical Budget",
+      "type": "integer"
+    },
+    "planner_mode": {
+      "enum": [
+        "HEURISTIC",
+        "SINGLE_AGENT",
+        "AGENT_COUNCIL"
+      ],
+      "title": "Planner Mode",
+      "type": "string"
+    },
+    "policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "required_correctness_class": {
+      "enum": [
+        "PRIMARY_STRICT",
+        "SECONDARY_RETIMED",
+        "EXPLORATORY_LATENCY_AWARE"
+      ],
+      "title": "Required Correctness Class",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "search_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Search Request Id",
+      "type": "string"
+    },
+    "stop_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Stop Policy Hash",
+      "type": "string"
+    },
+    "token_budget": {
+      "exclusiveMinimum": 0,
+      "title": "Token Budget",
+      "type": "integer"
+    },
+    "transform_registry_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Transform Registry Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "search_request_id",
+    "run_id",
+    "design_contract_hash",
+    "policy_hash",
+    "transform_registry_hash",
+    "ordered_opportunity_ids",
+    "planner_mode",
+    "required_correctness_class",
+    "candidate_budget",
+    "formal_budget",
+    "physical_budget",
+    "token_budget",
+    "latency_budget_ms",
+    "deterministic_seed",
+    "stop_policy_hash",
+    "created_at"
+  ],
+  "title": "SearchRequest",
+  "type": "object"
+}

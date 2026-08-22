@@ -1,0 +1,161 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "allowed_scope": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Allowed Scope",
+      "type": "string"
+    },
+    "compiler_rule_refs": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Compiler Rule Refs",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "minItems": 1,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "failure_event_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Failure Event Id",
+      "type": "string"
+    },
+    "observed": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Observed",
+      "type": "array"
+    },
+    "preserve": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Preserve",
+      "type": "array"
+    },
+    "prohibit": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Prohibit",
+      "type": "array"
+    },
+    "recommended_actions": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Recommended Actions",
+      "type": "array"
+    },
+    "recommended_roles": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Recommended Roles",
+      "type": "array"
+    },
+    "repair_directive_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Repair Directive Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "repair_directive_id",
+    "failure_event_id",
+    "allowed_scope",
+    "observed",
+    "preserve",
+    "prohibit",
+    "recommended_actions",
+    "recommended_roles",
+    "evidence_refs",
+    "compiler_rule_refs"
+  ],
+  "title": "RepairDirective",
+  "type": "object"
+}

@@ -1,0 +1,74 @@
+{
+  "additionalProperties": false,
+  "description": "Identity of the executable inspected by the doctor.",
+  "properties": {
+    "adapter_version": {
+      "pattern": "^[a-z][a-z0-9_-]{2,63}-v[1-9][0-9]*$",
+      "title": "Adapter Version",
+      "type": "string"
+    },
+    "build_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Build Hash",
+      "type": "string"
+    },
+    "container_digest": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Container Digest"
+    },
+    "executable": {
+      "minLength": 1,
+      "title": "Executable",
+      "type": "string"
+    },
+    "executable_sha256": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Executable Sha256",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "tool_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Tool Id",
+      "type": "string"
+    },
+    "version": {
+      "minLength": 1,
+      "title": "Version",
+      "type": "string"
+    },
+    "version_args": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Version Args",
+      "type": "array"
+    }
+  },
+  "required": [
+    "tool_id",
+    "executable",
+    "version",
+    "version_args",
+    "executable_sha256",
+    "build_hash",
+    "adapter_version"
+  ],
+  "title": "ToolFingerprint",
+  "type": "object"
+}

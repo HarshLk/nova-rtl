@@ -1,0 +1,75 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "common_envelope_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Common Envelope Hash",
+      "type": "string"
+    },
+    "context_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Context Request Id",
+      "type": "string"
+    },
+    "planner_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Planner Request Id",
+      "type": "string"
+    },
+    "private_evidence_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Private Evidence Ids",
+      "type": "array"
+    },
+    "redaction_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Redaction Policy Hash",
+      "type": "string"
+    },
+    "retrieval_allowlist": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Retrieval Allowlist",
+      "type": "array"
+    },
+    "role": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Role",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Hash",
+      "type": "string"
+    },
+    "token_budget": {
+      "exclusiveMinimum": 0,
+      "title": "Token Budget",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "context_request_id",
+    "planner_request_id",
+    "role",
+    "common_envelope_hash",
+    "private_evidence_ids",
+    "retrieval_allowlist",
+    "snapshot_hash",
+    "token_budget",
+    "redaction_policy_hash"
+  ],
+  "title": "ContextRequest",
+  "type": "object"
+}

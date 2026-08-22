@@ -9,7 +9,7 @@ from urllib.parse import urlsplit
 
 from pydantic import Field, field_validator, model_validator
 
-from nova_rtl.contracts.base import AwareDatetime, EntityId, HashRef, StrictContract
+from nova_rtl.contracts.base import EntityId, HashRef, StrictContract, UtcDatetime
 
 GitCommit = str
 PROBE_VERSION_ARGUMENTS: dict[str, tuple[str, ...]] = {
@@ -432,7 +432,7 @@ class PlatformLockRequest(StrictContract):
     verified_orfs_tree_identity: HashRef
     host: HostPlatform
     tool_fingerprints: tuple[ToolFingerprint, ...] = Field(min_length=1)
-    generated_at: AwareDatetime
+    generated_at: UtcDatetime
 
     @field_validator("orfs_root")
     @classmethod
@@ -496,7 +496,7 @@ class ToolFingerprint(StrictContract):
     version_args: tuple[str, ...] = Field(min_length=1)
     executable_sha256: HashRef
     build_hash: HashRef
-    adapter_version: Literal["bootstrap-doctor-v1"]
+    adapter_version: str = Field(pattern=r"^[a-z][a-z0-9_-]{2,63}-v[1-9][0-9]*$")
     container_digest: HashRef | None = None
 
     @field_validator("executable")
@@ -698,7 +698,7 @@ class DoctorReport(StrictContract):
     status: Literal["PASS", "FAIL"]
     checks: tuple[DoctorCheck, ...] = Field(min_length=1)
     platform_lock_hash: HashRef | None
-    generated_at: AwareDatetime
+    generated_at: UtcDatetime
     exit_code: Literal[0, 2]
 
     @model_validator(mode="after")
@@ -733,7 +733,7 @@ class PlatformLock(StrictContract):
     license_notes: tuple[str, ...] = Field(min_length=1)
     deterministic_seed: int = Field(ge=0, le=2**31 - 1)
     content_identity_hash: HashRef
-    generated_at: AwareDatetime
+    generated_at: UtcDatetime
 
     @model_validator(mode="after")
     def platform_contract_is_coherent(self) -> Self:
@@ -897,7 +897,7 @@ class PlatformSmokeReport(StrictContract):
     cts_database: SignoffEvidenceFile
     setup_view: SmokeTimingView
     hold_view: SmokeTimingView
-    generated_at: AwareDatetime
+    generated_at: UtcDatetime
 
     @model_validator(mode="after")
     def views_and_artifacts_are_coherent(self) -> Self:
@@ -928,7 +928,7 @@ class M0SignoffReport(StrictContract):
     schema_version: Literal[1] = 1
     milestone: Literal["M0"]
     status: Literal["PASS"]
-    generated_at: AwareDatetime
+    generated_at: UtcDatetime
     exit_code: Literal[0]
     implementation_commit: str = Field(pattern=r"^[0-9a-f]{40}$")
     implementation_tree_hash: str = Field(pattern=r"^[0-9a-f]{40}$")

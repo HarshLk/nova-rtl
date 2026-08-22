@@ -1,0 +1,122 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "allowed_actions": {
+      "items": {
+        "enum": [
+          "RETRY_INFRASTRUCTURE",
+          "REPAIR_SCHEMA",
+          "CORRECT_EXECUTOR_OUTPUT",
+          "LOCAL_PARAMETER_REVISION",
+          "NARROW_TRANSFORM_SCOPE",
+          "SWITCH_OPERATION_SAME_FAMILY",
+          "SWITCH_TRANSFORM_FAMILY",
+          "OPPORTUNITY_REANALYSIS",
+          "TARGET_NEW_PATH_CLUSTER",
+          "BRANCH_FROM_ALTERNATE_PARENT",
+          "REPARTITION_FORMAL_PROOF",
+          "PHYSICAL_ONLY_RECOMMENDATION",
+          "REJECT_CANDIDATE",
+          "ABANDON_LINEAGE",
+          "STOP_RUN_OR_REQUEST_HUMAN"
+        ],
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Allowed Actions",
+      "type": "array"
+    },
+    "eligible_roles": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Eligible Roles",
+      "type": "array"
+    },
+    "excluded_transform_families": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "title": "Excluded Transform Families",
+      "type": "array"
+    },
+    "failure_event_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Failure Event Id",
+      "type": "string"
+    },
+    "next_parent_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Next Parent Candidate Ids",
+      "type": "array"
+    },
+    "policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "recovery_route_plan_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Recovery Route Plan Id",
+      "type": "string"
+    },
+    "remaining_family_budget": {
+      "minimum": 0,
+      "title": "Remaining Family Budget",
+      "type": "integer"
+    },
+    "remaining_latency_budget_ms": {
+      "minimum": 0,
+      "title": "Remaining Latency Budget Ms",
+      "type": "integer"
+    },
+    "remaining_lineage_budget": {
+      "minimum": 0,
+      "title": "Remaining Lineage Budget",
+      "type": "integer"
+    },
+    "remaining_token_budget": {
+      "minimum": 0,
+      "title": "Remaining Token Budget",
+      "type": "integer"
+    },
+    "repair_directive_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Repair Directive Id",
+      "type": "string"
+    },
+    "route_plan_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Route Plan Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "recovery_route_plan_id",
+    "failure_event_id",
+    "repair_directive_id",
+    "allowed_actions",
+    "eligible_roles",
+    "excluded_transform_families",
+    "next_parent_candidate_ids",
+    "remaining_family_budget",
+    "remaining_lineage_budget",
+    "remaining_token_budget",
+    "remaining_latency_budget_ms",
+    "policy_hash",
+    "route_plan_hash"
+  ],
+  "title": "RecoveryRoutePlan",
+  "type": "object"
+}

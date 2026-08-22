@@ -1,0 +1,129 @@
+{
+  "$defs": {
+    "CornerArtifactIdentity": {
+      "additionalProperties": false,
+      "properties": {
+        "artifact_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Artifact Hash",
+          "type": "string"
+        },
+        "id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "artifact_hash"
+      ],
+      "title": "CornerArtifactIdentity",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete immutable identity for one official timing, physical, or power view.",
+  "properties": {
+    "analysis_view_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Analysis View Id",
+      "type": "string"
+    },
+    "check": {
+      "enum": [
+        "SETUP",
+        "HOLD",
+        "POWER"
+      ],
+      "title": "Check",
+      "type": "string"
+    },
+    "clock_uncertainty_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Clock Uncertainty Policy Hash",
+      "type": "string"
+    },
+    "derate_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Derate Policy Hash",
+      "type": "string"
+    },
+    "hard_limits": {
+      "additionalProperties": {
+        "type": "number"
+      },
+      "title": "Hard Limits",
+      "type": "object"
+    },
+    "liberty_corner": {
+      "$ref": "#/$defs/CornerArtifactIdentity"
+    },
+    "mode": {
+      "const": "FUNCTIONAL",
+      "title": "Mode",
+      "type": "string"
+    },
+    "operating_condition": {
+      "minLength": 1,
+      "title": "Operating Condition",
+      "type": "string"
+    },
+    "power_activity_contract_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Power Activity Contract Id"
+    },
+    "rc_corner": {
+      "$ref": "#/$defs/CornerArtifactIdentity"
+    },
+    "required": {
+      "title": "Required",
+      "type": "boolean"
+    },
+    "required_stages": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Required Stages",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sdc_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Sdc Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "analysis_view_id",
+    "mode",
+    "check",
+    "required",
+    "liberty_corner",
+    "rc_corner",
+    "sdc_hash",
+    "operating_condition",
+    "derate_policy_hash",
+    "clock_uncertainty_policy_hash",
+    "hard_limits",
+    "required_stages",
+    "power_activity_contract_id"
+  ],
+  "title": "AnalysisViewContract",
+  "type": "object"
+}

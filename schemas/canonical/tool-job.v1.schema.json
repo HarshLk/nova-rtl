@@ -1,0 +1,369 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ResourceLimits": {
+      "additionalProperties": false,
+      "properties": {
+        "cpu_cores": {
+          "exclusiveMinimum": 0,
+          "title": "Cpu Cores",
+          "type": "integer"
+        },
+        "max_output_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Max Output Bytes",
+          "type": "integer"
+        },
+        "memory_bytes": {
+          "exclusiveMinimum": 0,
+          "title": "Memory Bytes",
+          "type": "integer"
+        },
+        "wall_time_ms": {
+          "exclusiveMinimum": 0,
+          "title": "Wall Time Ms",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cpu_cores",
+        "memory_bytes",
+        "wall_time_ms",
+        "max_output_bytes"
+      ],
+      "title": "ResourceLimits",
+      "type": "object"
+    },
+    "StageInputHashes": {
+      "additionalProperties": false,
+      "description": "Named cache and comparability identities shared by deterministic stages.",
+      "properties": {
+        "analysis_view": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Analysis View"
+        },
+        "constraint_binding": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Constraint Binding"
+        },
+        "constraints": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Constraints"
+        },
+        "design_contract": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Design Contract"
+        },
+        "extensions": {
+          "additionalProperties": {
+            "pattern": "^sha256:[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "title": "Extensions",
+          "type": "object"
+        },
+        "formal_model": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Formal Model"
+        },
+        "parent_stage_result": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Stage Result"
+        },
+        "platform_lock": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Platform Lock"
+        },
+        "power_activity": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Power Activity"
+        },
+        "rtl_snapshot": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Rtl Snapshot"
+        },
+        "tool_recipe": {
+          "anyOf": [
+            {
+              "pattern": "^sha256:[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Tool Recipe"
+        }
+      },
+      "required": [
+        "rtl_snapshot",
+        "design_contract",
+        "constraints",
+        "constraint_binding",
+        "analysis_view",
+        "power_activity",
+        "platform_lock",
+        "tool_recipe",
+        "formal_model",
+        "parent_stage_result",
+        "extensions"
+      ],
+      "title": "StageInputHashes",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Persisted request for one deterministic tool execution.",
+  "properties": {
+    "analysis_view_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Analysis View Id"
+    },
+    "artifact_namespace": {
+      "pattern": "^artifact://[a-zA-Z0-9._/-]+/$",
+      "title": "Artifact Namespace",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "deadline": {
+      "format": "date-time",
+      "title": "Deadline",
+      "type": "string"
+    },
+    "design_contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Design Contract Hash",
+      "type": "string"
+    },
+    "input_artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Input Artifact Refs",
+      "type": "array"
+    },
+    "input_hashes": {
+      "$ref": "#/$defs/StageInputHashes"
+    },
+    "requested_at": {
+      "format": "date-time",
+      "title": "Requested At",
+      "type": "string"
+    },
+    "resource_limits": {
+      "$ref": "#/$defs/ResourceLimits"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "stage": {
+      "enum": [
+        "RTL_PARSE",
+        "YOSYS_SYNTH",
+        "CONSTRAINT_BINDING",
+        "CLOCK_INVENTORY",
+        "CDC_INVARIANT",
+        "FORMAL_MODEL_PREFLIGHT",
+        "EQY_SMOKE",
+        "FAST_SYNTH",
+        "OPENSTA_FULL",
+        "OPENROAD_PHYSICAL",
+        "OPENROAD_PLACED_CTS",
+        "OPENROAD_ROUTED",
+        "FORMAL_EQUIVALENCE",
+        "SIMULATION",
+        "POWER_ANALYSIS"
+      ],
+      "title": "Stage",
+      "type": "string"
+    },
+    "stage_result_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Stage Result Id",
+      "type": "string"
+    },
+    "tool_job_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Tool Job Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "tool_job_id",
+    "stage_result_id",
+    "run_id",
+    "candidate_id",
+    "stage",
+    "analysis_view_id",
+    "design_contract_hash",
+    "input_artifact_refs",
+    "input_hashes",
+    "resource_limits",
+    "deadline",
+    "artifact_namespace",
+    "requested_at"
+  ],
+  "title": "ToolJob",
+  "type": "object"
+}

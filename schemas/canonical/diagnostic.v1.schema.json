@@ -1,0 +1,42 @@
+{
+  "additionalProperties": false,
+  "description": "Stable machine-readable finding with evidence-linked human context.",
+  "properties": {
+    "code": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Code",
+      "type": "string"
+    },
+    "evidence_refs": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "message": {
+      "minLength": 1,
+      "title": "Message",
+      "type": "string"
+    },
+    "severity": {
+      "enum": [
+        "INFO",
+        "WARNING",
+        "ERROR",
+        "FATAL"
+      ],
+      "title": "Severity",
+      "type": "string"
+    }
+  },
+  "required": [
+    "code",
+    "severity",
+    "message",
+    "evidence_refs"
+  ],
+  "title": "Diagnostic",
+  "type": "object"
+}

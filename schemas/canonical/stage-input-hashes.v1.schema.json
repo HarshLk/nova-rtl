@@ -1,0 +1,149 @@
+{
+  "additionalProperties": false,
+  "description": "Named cache and comparability identities shared by deterministic stages.",
+  "properties": {
+    "analysis_view": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Analysis View"
+    },
+    "constraint_binding": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Constraint Binding"
+    },
+    "constraints": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Constraints"
+    },
+    "design_contract": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Design Contract"
+    },
+    "extensions": {
+      "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Extensions",
+      "type": "object"
+    },
+    "formal_model": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Formal Model"
+    },
+    "parent_stage_result": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Parent Stage Result"
+    },
+    "platform_lock": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Platform Lock"
+    },
+    "power_activity": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Power Activity"
+    },
+    "rtl_snapshot": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Rtl Snapshot"
+    },
+    "tool_recipe": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Tool Recipe"
+    }
+  },
+  "required": [
+    "rtl_snapshot",
+    "design_contract",
+    "constraints",
+    "constraint_binding",
+    "analysis_view",
+    "power_activity",
+    "platform_lock",
+    "tool_recipe",
+    "formal_model",
+    "parent_stage_result",
+    "extensions"
+  ],
+  "title": "StageInputHashes",
+  "type": "object"
+}

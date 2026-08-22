@@ -1,0 +1,53 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "fallback_eligible": {
+      "title": "Fallback Eligible",
+      "type": "boolean"
+    },
+    "ordered_proposal_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "maxItems": 3,
+      "title": "Ordered Proposal Ids",
+      "type": "array"
+    },
+    "proposal_shortlist_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Proposal Shortlist Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "NO_SAFE_PROPOSAL",
+        "INSUFFICIENT_EVIDENCE",
+        "PARTIAL"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "unresolved_mandatory_finding_count": {
+      "minimum": 0,
+      "title": "Unresolved Mandatory Finding Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "proposal_shortlist_id",
+    "status",
+    "ordered_proposal_ids",
+    "fallback_eligible",
+    "unresolved_mandatory_finding_count"
+  ],
+  "title": "ProposalShortlist",
+  "type": "object"
+}

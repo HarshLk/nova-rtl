@@ -1,0 +1,238 @@
+{
+  "$defs": {
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "OpportunitySeverity": {
+      "additionalProperties": false,
+      "properties": {
+        "affected_endpoints": {
+          "minimum": 0,
+          "title": "Affected Endpoints",
+          "type": "integer"
+        },
+        "tns_share_percent": {
+          "maximum": 100.0,
+          "minimum": 0.0,
+          "title": "Tns Share Percent",
+          "type": "number"
+        },
+        "worst_slack_ns": {
+          "title": "Worst Slack Ns",
+          "type": "number"
+        },
+        "worst_view_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Worst View Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "worst_view_id",
+        "worst_slack_ns",
+        "affected_endpoints",
+        "tns_share_percent"
+      ],
+      "title": "OpportunitySeverity",
+      "type": "object"
+    },
+    "RootCause": {
+      "additionalProperties": false,
+      "properties": {
+        "category": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Category",
+          "type": "string"
+        },
+        "confidence": {
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        }
+      },
+      "required": [
+        "category",
+        "confidence"
+      ],
+      "title": "RootCause",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Evidence-grounded editable path or cone opportunity.",
+  "properties": {
+    "affected_analysis_view_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Affected Analysis View Ids",
+      "type": "array"
+    },
+    "editability": {
+      "enum": [
+        "RTL_EDITABLE",
+        "PROTECTED_OR_UNSAFE",
+        "NO_RTL_ACTION",
+        "INSUFFICIENT_EVIDENCE"
+      ],
+      "title": "Editability",
+      "type": "string"
+    },
+    "eligible_transform_families": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "title": "Eligible Transform Families",
+      "type": "array"
+    },
+    "evidence_refs": {
+      "items": {
+        "$ref": "#/$defs/EvidenceRef"
+      },
+      "minItems": 1,
+      "title": "Evidence Refs",
+      "type": "array"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "parent_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Parent Candidate Id",
+      "type": "string"
+    },
+    "proof_contracts": {
+      "items": {
+        "enum": [
+          "STRICT_SEQ_EQUIV",
+          "RETIMING_EQUIV",
+          "LATENCY_AWARE"
+        ],
+        "type": "string"
+      },
+      "title": "Proof Contracts",
+      "type": "array"
+    },
+    "protected_neighbors": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Protected Neighbors",
+      "type": "array"
+    },
+    "root_causes": {
+      "items": {
+        "$ref": "#/$defs/RootCause"
+      },
+      "minItems": 1,
+      "title": "Root Causes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "severity": {
+      "$ref": "#/$defs/OpportunitySeverity"
+    },
+    "source_spans": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Source Spans",
+      "type": "array"
+    },
+    "target_analysis_view_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Target Analysis View Id",
+      "type": "string"
+    },
+    "target_domain": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Target Domain",
+      "type": "string"
+    }
+  },
+  "required": [
+    "opportunity_id",
+    "parent_candidate_id",
+    "target_domain",
+    "target_analysis_view_id",
+    "affected_analysis_view_ids",
+    "root_causes",
+    "severity",
+    "editability",
+    "source_spans",
+    "protected_neighbors",
+    "eligible_transform_families",
+    "proof_contracts",
+    "evidence_refs"
+  ],
+  "title": "OptimizationOpportunity",
+  "type": "object"
+}

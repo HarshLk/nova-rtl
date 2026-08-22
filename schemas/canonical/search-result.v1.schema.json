@@ -1,0 +1,258 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "ConsumedSearchBudgets": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "minimum": 0,
+          "title": "Candidates",
+          "type": "integer"
+        },
+        "formal_jobs": {
+          "minimum": 0,
+          "title": "Formal Jobs",
+          "type": "integer"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "integer"
+        },
+        "physical_jobs": {
+          "minimum": 0,
+          "title": "Physical Jobs",
+          "type": "integer"
+        },
+        "tokens": {
+          "minimum": 0,
+          "title": "Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidates",
+        "formal_jobs",
+        "physical_jobs",
+        "tokens",
+        "latency_ms"
+      ],
+      "title": "ConsumedSearchBudgets",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "artifact_refs": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Artifact Refs",
+      "type": "array"
+    },
+    "completed_at": {
+      "format": "date-time",
+      "title": "Completed At",
+      "type": "string"
+    },
+    "consumed_budgets": {
+      "$ref": "#/$defs/ConsumedSearchBudgets"
+    },
+    "council_result_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Council Result Ids",
+      "type": "array"
+    },
+    "event_sequence_range": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "title": "Event Sequence Range",
+      "type": "array"
+    },
+    "feasible_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Feasible Candidate Ids",
+      "type": "array"
+    },
+    "ordered_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Ordered Candidate Ids",
+      "type": "array"
+    },
+    "pareto_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Pareto Candidate Ids",
+      "type": "array"
+    },
+    "planner_result_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Planner Result Ids",
+      "type": "array"
+    },
+    "recovery_decision_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Recovery Decision Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "search_request_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Search Request Id",
+      "type": "string"
+    },
+    "search_result_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Search Result Id",
+      "type": "string"
+    },
+    "selected_candidate_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Selected Candidate Id"
+    },
+    "status": {
+      "enum": [
+        "COMPLETED",
+        "BUDGET_EXHAUSTED",
+        "NO_FEASIBLE_CANDIDATE",
+        "STOPPED_BY_POLICY",
+        "INFRASTRUCTURE_BLOCKED"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "stop_reason_code": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Stop Reason Code",
+      "type": "string"
+    }
+  },
+  "required": [
+    "search_result_id",
+    "search_request_id",
+    "status",
+    "ordered_candidate_ids",
+    "feasible_candidate_ids",
+    "pareto_candidate_ids",
+    "selected_candidate_id",
+    "stop_reason_code",
+    "consumed_budgets",
+    "planner_result_ids",
+    "council_result_ids",
+    "recovery_decision_ids",
+    "event_sequence_range",
+    "artifact_refs",
+    "completed_at"
+  ],
+  "title": "SearchResult",
+  "type": "object"
+}

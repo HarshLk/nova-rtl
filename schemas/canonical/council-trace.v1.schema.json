@@ -1,0 +1,151 @@
+{
+  "$defs": {
+    "CouncilTraceEvent": {
+      "additionalProperties": false,
+      "properties": {
+        "event_type": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Event Type",
+          "type": "string"
+        },
+        "role_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Role Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 0,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "timestamp": {
+          "format": "date-time",
+          "title": "Timestamp",
+          "type": "string"
+        }
+      },
+      "required": [
+        "sequence",
+        "event_type",
+        "role_id",
+        "timestamp"
+      ],
+      "title": "CouncilTraceEvent",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "cancelled": {
+      "title": "Cancelled",
+      "type": "boolean"
+    },
+    "context_pack_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Context Pack Hashes",
+      "type": "array"
+    },
+    "council_trace_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Council Trace Id",
+      "type": "string"
+    },
+    "deadline_outcome": {
+      "enum": [
+        "MET",
+        "EXCEEDED",
+        "CANCELLED"
+      ],
+      "title": "Deadline Outcome",
+      "type": "string"
+    },
+    "events": {
+      "items": {
+        "$ref": "#/$defs/CouncilTraceEvent"
+      },
+      "minItems": 1,
+      "title": "Events",
+      "type": "array"
+    },
+    "input_tokens": {
+      "minimum": 0,
+      "title": "Input Tokens",
+      "type": "integer"
+    },
+    "latency_ms": {
+      "minimum": 0,
+      "title": "Latency Ms",
+      "type": "integer"
+    },
+    "model_configuration_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Model Configuration Hashes",
+      "type": "array"
+    },
+    "output_tokens": {
+      "minimum": 0,
+      "title": "Output Tokens",
+      "type": "integer"
+    },
+    "prompt_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Prompt Hashes",
+      "type": "array"
+    },
+    "retrieval_log_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Retrieval Log Hashes",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selected_role_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Selected Role Ids",
+      "type": "array"
+    },
+    "trace_completeness_percent": {
+      "maximum": 100.0,
+      "minimum": 0.0,
+      "title": "Trace Completeness Percent",
+      "type": "number"
+    }
+  },
+  "required": [
+    "council_trace_id",
+    "selected_role_ids",
+    "events",
+    "prompt_hashes",
+    "model_configuration_hashes",
+    "context_pack_hashes",
+    "retrieval_log_hashes",
+    "input_tokens",
+    "output_tokens",
+    "latency_ms",
+    "deadline_outcome",
+    "cancelled",
+    "trace_completeness_percent"
+  ],
+  "title": "CouncilTrace",
+  "type": "object"
+}

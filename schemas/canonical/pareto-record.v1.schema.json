@@ -1,0 +1,143 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "binding_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Binding Hash",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "cdc_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cdc Hash",
+      "type": "string"
+    },
+    "clock_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Clock Hash",
+      "type": "string"
+    },
+    "comparison_identity_hashes": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Comparison Identity Hashes",
+      "type": "object"
+    },
+    "correctness_contract": {
+      "enum": [
+        "STRICT_SEQ_EQUIV",
+        "RETIMING_EQUIV",
+        "LATENCY_AWARE"
+      ],
+      "title": "Correctness Contract",
+      "type": "string"
+    },
+    "dominated_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Dominated Candidate Ids",
+      "type": "array"
+    },
+    "feasibility_predicate_version": {
+      "minLength": 1,
+      "title": "Feasibility Predicate Version",
+      "type": "string"
+    },
+    "formal_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Formal Hash",
+      "type": "string"
+    },
+    "metric_vector": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "type": "number"
+        }
+      },
+      "title": "Metric Vector",
+      "type": "object"
+    },
+    "objective_policy_rank": {
+      "exclusiveMinimum": 0,
+      "title": "Objective Policy Rank",
+      "type": "integer"
+    },
+    "pareto_record_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Pareto Record Id",
+      "type": "string"
+    },
+    "physical_stage": {
+      "enum": [
+        "OPENROAD_PHYSICAL",
+        "OPENROAD_PLACED_CTS",
+        "OPENROAD_ROUTED"
+      ],
+      "title": "Physical Stage",
+      "type": "string"
+    },
+    "recorded_at": {
+      "format": "date-time",
+      "title": "Recorded At",
+      "type": "string"
+    },
+    "required_view_metric_ids": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        }
+      },
+      "title": "Required View Metric Ids",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selection_class": {
+      "enum": [
+        "PRIMARY_STRICT",
+        "SECONDARY_RETIMED",
+        "EXPLORATORY_LATENCY_AWARE"
+      ],
+      "title": "Selection Class",
+      "type": "string"
+    }
+  },
+  "required": [
+    "pareto_record_id",
+    "candidate_id",
+    "correctness_contract",
+    "selection_class",
+    "feasibility_predicate_version",
+    "required_view_metric_ids",
+    "metric_vector",
+    "dominated_candidate_ids",
+    "objective_policy_rank",
+    "binding_hash",
+    "clock_hash",
+    "cdc_hash",
+    "formal_hash",
+    "physical_stage",
+    "comparison_identity_hashes",
+    "recorded_at"
+  ],
+  "title": "ParetoRecord",
+  "type": "object"
+}
