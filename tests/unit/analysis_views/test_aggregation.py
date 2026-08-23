@@ -60,6 +60,7 @@ def stage_result(
     wns: float,
     hash_override: str | None = None,
     status: str = "PASS",
+    diagnostic_code: str = "INFRASTRUCTURE_TEST_FAILURE",
 ) -> StageResult:
     hashes = StageInputHashes(
         rtl_snapshot=hash_ref("1"),
@@ -139,10 +140,14 @@ def stage_result(
             if status == "PASS"
             else (
                 {
-                    "code": "INFRASTRUCTURE_TEST_FAILURE",
+                    "code": diagnostic_code,
                     "severity": "ERROR",
                     "message": "fixture non-pass result",
-                    "evidence_refs": (),
+                    "evidence_refs": (
+                        ()
+                        if diagnostic_code.startswith("INFRASTRUCTURE_")
+                        else (raw_artifact.artifact_id,)
+                    ),
                 },
             )
         ),
@@ -233,7 +238,7 @@ def test_aggregation_rejects_failed_missing_metric_and_mismatched_view_identity(
     failed["setup_slow"]["OPENSTA_FULL"] = stage_result(
         contracts[0], "OPENSTA_FULL", wns=-0.2, status="INCONCLUSIVE"
     )
-    with pytest.raises(IncompleteRequiredViewError, match="not PASS"):
+    with pytest.raises(IncompleteRequiredViewError, match="neither PASS"):
         aggregate_required_views(failed, contracts)
 
     missing = complete_results(contracts)
@@ -254,6 +259,31 @@ def test_aggregation_rejects_failed_missing_metric_and_mismatched_view_identity(
     )
     with pytest.raises(IncompleteRequiredViewError, match="identity"):
         aggregate_required_views(mismatched, contracts)
+
+
+def test_aggregation_accepts_complete_negative_slack_as_measured_design_result(
+    contracts: tuple[AnalysisViewContract, ...],
+) -> None:
+    results = complete_results(contracts)
+    results["setup_slow"]["OPENSTA_FULL"] = stage_result(
+        contracts[0],
+        "OPENSTA_FULL",
+        wns=-0.2,
+        status="FAIL",
+        diagnostic_code="TIMING_SETUP_VIOLATION",
+    )
+    results["hold_fast"]["OPENROAD_PHYSICAL"] = stage_result(
+        contracts[2],
+        "OPENROAD_PHYSICAL",
+        wns=-0.12,
+        status="FAIL",
+        diagnostic_code="PHYSICAL_TIMING_VIOLATION",
+    )
+
+    aggregated = aggregate_required_views(results, contracts)
+
+    assert aggregated.setup_wns_ns == -0.2
+    assert aggregated.hold_wns_ns == -0.12
 
 
 def test_aggregation_rejects_mixed_design_identity_and_tracks_limiting_stage(

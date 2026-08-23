@@ -1,0 +1,114 @@
+{
+  "$defs": {
+    "PowerWorkloadPhase": {
+      "additionalProperties": false,
+      "description": "One deterministic simulation phase in the power stimulus recipe.",
+      "properties": {
+        "activity_class": {
+          "enum": [
+            "RESET",
+            "IDLE",
+            "BURST",
+            "ARBITRATION",
+            "BACKPRESSURE",
+            "CDC_TRAFFIC"
+          ],
+          "title": "Activity Class",
+          "type": "string"
+        },
+        "end_ns": {
+          "exclusiveMinimum": 0,
+          "title": "End Ns",
+          "type": "number"
+        },
+        "phase_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Phase Id",
+          "type": "string"
+        },
+        "start_ns": {
+          "minimum": 0,
+          "title": "Start Ns",
+          "type": "number"
+        }
+      },
+      "required": [
+        "phase_id",
+        "start_ns",
+        "end_ns",
+        "activity_class"
+      ],
+      "title": "PowerWorkloadPhase",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Fixed simulation, VCD scope, and comparable measurement-window identity.",
+  "properties": {
+    "measurement_window_ns": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "minimum": 0,
+          "type": "number"
+        },
+        {
+          "exclusiveMinimum": 0,
+          "type": "number"
+        }
+      ],
+      "title": "Measurement Window Ns",
+      "type": "array"
+    },
+    "phases": {
+      "items": {
+        "$ref": "#/$defs/PowerWorkloadPhase"
+      },
+      "title": "Phases",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "seed": {
+      "minimum": 0,
+      "title": "Seed",
+      "type": "integer"
+    },
+    "vcd_file": {
+      "minLength": 1,
+      "title": "Vcd File",
+      "type": "string"
+    },
+    "vcd_scope": {
+      "minLength": 1,
+      "title": "Vcd Scope",
+      "type": "string"
+    },
+    "workload_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Workload Hash",
+      "type": "string"
+    },
+    "workload_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Workload Id",
+      "type": "string"
+    }
+  },
+  "required": [
+    "workload_id",
+    "seed",
+    "phases",
+    "vcd_file",
+    "vcd_scope",
+    "measurement_window_ns",
+    "workload_hash"
+  ],
+  "title": "BenchmarkPowerWorkload",
+  "type": "object"
+}

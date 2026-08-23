@@ -1,0 +1,31 @@
+schema_version: 1
+formal_model_id: benchmark_cdc_protocols
+source_files:
+  - formal/cdc_protocol_properties.sv
+harnesses:
+  - harness_id: async_fifo_harness
+    property_ids:
+      - async_fifo_gray_pointer_safety
+    bound_modules:
+      - cdc_async_fifo
+      - cdc_gray_sync
+  - harness_id: req_ack_harness
+    property_ids:
+      - req_ack_one_outstanding
+    bound_modules:
+      - cdc_req_ack
+  - harness_id: reset_harness
+    property_ids:
+      - reset_async_assert_local_release
+    bound_modules:
+      - reset_synchronizer
+  - harness_id: stable_level_harness
+    property_ids:
+      - stable_level_two_flop
+    bound_modules:
+      - cdc_level_sync
+  - harness_id: toggle_pulse_harness
+    property_ids:
+      - toggle_pulse_delivery
+    bound_modules:
+      - cdc_toggle_sync

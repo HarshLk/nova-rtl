@@ -30,6 +30,33 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["checks"][0]["name"], "nova_tool_that_does_not_exist")
         self.assertEqual(payload["checks"][0]["status"], "FAIL")
 
+    def test_cli_exposes_baseline_initialization_and_analysis_commands(self) -> None:
+        init_help = self.runner.invoke(app, ["init", "--help"])
+        analyze_help = self.runner.invoke(app, ["analyze", "--help"])
+
+        self.assertEqual(init_help.exit_code, 0, init_help.output)
+        self.assertEqual(analyze_help.exit_code, 0, analyze_help.output)
+        self.assertIn("PROJECT", init_help.output)
+        self.assertIn("--stages", analyze_help.output)
+
+    def test_cli_exposes_full_benchmark_calibration_command(self) -> None:
+        result = self.runner.invoke(app, ["benchmark", "calibrate", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("--config", result.output)
+        self.assertIn("--output", result.output)
+        self.assertIn("--max-samples", result.output)
+
+    def test_cli_exposes_m2_signoff_and_verification_commands(self) -> None:
+        signoff = self.runner.invoke(app, ["m2", "signoff", "--help"])
+        verify = self.runner.invoke(app, ["m2", "verify", "--help"])
+
+        self.assertEqual(signoff.exit_code, 0, signoff.output)
+        self.assertEqual(verify.exit_code, 0, verify.output)
+        self.assertIn("RUN_DIRECTORY", signoff.output)
+        self.assertIn("--calibration-directory", signoff.output)
+        self.assertIn("REPORT", verify.output)
+
 
 if __name__ == "__main__":
     unittest.main()

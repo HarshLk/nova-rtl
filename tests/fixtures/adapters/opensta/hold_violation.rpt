@@ -1,0 +1,7 @@
+NOVA_OPENSTA_SUMMARY
+check: HOLD
+hold_wns_ns: -0.031
+hold_tns_ns: -0.70
+failing_endpoints: 9
+critical_path_delay_ns: 0.08
+NOVA_OPENSTA_END

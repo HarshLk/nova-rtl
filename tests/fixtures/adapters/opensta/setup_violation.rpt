@@ -1,0 +1,8 @@
+NOVA_OPENSTA_SUMMARY
+check: SETUP
+setup_wns_ns: -0.18
+setup_tns_ns: -12.4
+failing_endpoints: 83
+critical_path_delay_ns: 2.41
+estimated_fmax_mhz: 414.937759
+NOVA_OPENSTA_END

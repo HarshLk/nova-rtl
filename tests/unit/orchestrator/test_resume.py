@@ -34,7 +34,7 @@ def input_hashes() -> StageInputHashes:
     )
 
 
-def test_resume_reuses_only_passed_exact_cache_identity() -> None:
+def test_resume_reuses_pass_or_complete_measured_timing_failure_with_exact_identity() -> None:
     exact = input_hashes()
     cached = SimpleNamespace(status="PASS", input_hashes=exact)
 
@@ -43,6 +43,22 @@ def test_resume_reuses_only_passed_exact_cache_identity() -> None:
     assert not RunOrchestrator.can_reuse(cached, changed)
     assert not RunOrchestrator.can_reuse(
         SimpleNamespace(status="INCONCLUSIVE", input_hashes=exact), exact
+    )
+    measured_violation = SimpleNamespace(
+        status="FAIL",
+        stage="OPENSTA_FULL",
+        input_hashes=exact,
+        diagnostics=(SimpleNamespace(code="TIMING_SETUP_VIOLATION"),),
+    )
+    assert RunOrchestrator.can_reuse(measured_violation, exact)
+    assert not RunOrchestrator.can_reuse(
+        SimpleNamespace(
+            status="INFRASTRUCTURE_ERROR",
+            stage="OPENSTA_FULL",
+            input_hashes=exact,
+            diagnostics=(SimpleNamespace(code="INFRASTRUCTURE_MALFORMED_REPORT"),),
+        ),
+        exact,
     )
 
 

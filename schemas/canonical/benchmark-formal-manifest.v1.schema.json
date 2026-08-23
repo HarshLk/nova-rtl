@@ -1,0 +1,96 @@
+{
+  "$defs": {
+    "FormalHarnessEntry": {
+      "additionalProperties": false,
+      "description": "One property family bound to protected benchmark structures.",
+      "properties": {
+        "bound_modules": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Bound Modules",
+          "type": "array"
+        },
+        "harness_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Harness Id",
+          "type": "string"
+        },
+        "property_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Property Ids",
+          "type": "array"
+        }
+      },
+      "required": [
+        "harness_id",
+        "property_ids",
+        "bound_modules"
+      ],
+      "title": "FormalHarnessEntry",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Hashed source and binding identity for benchmark CDC protocol properties.",
+  "properties": {
+    "formal_model_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Formal Model Id",
+      "type": "string"
+    },
+    "harnesses": {
+      "items": {
+        "$ref": "#/$defs/FormalHarnessEntry"
+      },
+      "title": "Harnesses",
+      "type": "array"
+    },
+    "manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Hash",
+      "type": "string"
+    },
+    "property_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Property Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_files": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Source Files",
+      "type": "array"
+    },
+    "source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "formal_model_id",
+    "source_files",
+    "source_hash",
+    "property_ids",
+    "harnesses",
+    "manifest_hash"
+  ],
+  "title": "BenchmarkFormalManifest",
+  "type": "object"
+}

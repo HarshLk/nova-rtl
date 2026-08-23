@@ -1,0 +1,15 @@
+NOVA_OPENROAD_SUMMARY
+check: SETUP
+setup_wns_ns: 0.025
+setup_tns_ns: 0.0
+hold_wns_ns: 0.011
+hold_tns_ns: 0.0
+failing_endpoints: 0
+physical_area_um2: 251002.5
+cell_count: 50420
+register_count: 18342
+buffer_count: 2090
+wirelength_um: 842301.0
+congestion_overflow: 0.0
+power_total_uw: 18240.5
+NOVA_OPENROAD_END

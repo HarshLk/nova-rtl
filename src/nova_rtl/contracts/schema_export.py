@@ -27,6 +27,17 @@ from nova_rtl.contracts.base import (
     StageInputHashes,
     StrictContract,
 )
+from nova_rtl.contracts.benchmark import (
+    BenchmarkConfig,
+    BenchmarkConstraintContract,
+    BenchmarkFormalManifest,
+    BenchmarkPowerWorkload,
+    BenchmarkSnapshot,
+    BenchmarkValidation,
+    BenchmarkValidationEvidence,
+    CalibrationReport,
+    M2SignoffReport,
+)
 from nova_rtl.contracts.events import RunEvent
 from nova_rtl.contracts.execution import PreparedCommand, RawToolResult, StageResult, ToolJob
 from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
@@ -87,6 +98,19 @@ class SchemaRegistration:
 
 SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "artifact-ref": SchemaRegistration(ArtifactRef, version=1),
+    "benchmark-constraint-contract": SchemaRegistration(
+        BenchmarkConstraintContract, version=1
+    ),
+    "benchmark-config": SchemaRegistration(BenchmarkConfig, version=1),
+    "benchmark-formal-manifest": SchemaRegistration(BenchmarkFormalManifest, version=1),
+    "benchmark-power-workload": SchemaRegistration(BenchmarkPowerWorkload, version=1),
+    "benchmark-snapshot": SchemaRegistration(BenchmarkSnapshot, version=1),
+    "benchmark-validation": SchemaRegistration(BenchmarkValidation, version=1),
+    "benchmark-validation-evidence": SchemaRegistration(
+        BenchmarkValidationEvidence, version=1
+    ),
+    "calibration-report": SchemaRegistration(CalibrationReport, version=1),
+    "m2-signoff-report": SchemaRegistration(M2SignoffReport, version=1),
     "evidence-ref": SchemaRegistration(EvidenceRef, version=1),
     "diagnostic": SchemaRegistration(Diagnostic, version=1),
     "doctor-check": SchemaRegistration(DoctorCheck, version=1),

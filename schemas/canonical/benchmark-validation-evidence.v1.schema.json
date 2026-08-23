@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "description": "Elaboration-aware selector, reachability, and endpoint validation evidence.",
+  "properties": {
+    "challenge_logic_without_observable_path": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Challenge Logic Without Observable Path",
+      "type": "array"
+    },
+    "constraint_contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Constraint Contract Hash",
+      "type": "string"
+    },
+    "elaborated_design_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Elaborated Design Hash",
+      "type": "string"
+    },
+    "evidence_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Hash",
+      "type": "string"
+    },
+    "generated_clocks_without_consumers": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Generated Clocks Without Consumers",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "unexpected_unconstrained_endpoints": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Unexpected Unconstrained Endpoints",
+      "type": "array"
+    },
+    "unresolved_selectors": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Unresolved Selectors",
+      "type": "array"
+    }
+  },
+  "required": [
+    "constraint_contract_hash",
+    "elaborated_design_hash",
+    "unresolved_selectors",
+    "generated_clocks_without_consumers",
+    "unexpected_unconstrained_endpoints",
+    "challenge_logic_without_observable_path",
+    "evidence_hash"
+  ],
+  "title": "BenchmarkValidationEvidence",
+  "type": "object"
+}

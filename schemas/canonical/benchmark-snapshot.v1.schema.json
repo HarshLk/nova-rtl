@@ -1,0 +1,262 @@
+{
+  "$defs": {
+    "BenchmarkExpectations": {
+      "additionalProperties": false,
+      "description": "Machine-checkable topology expected from a generated benchmark.",
+      "properties": {
+        "expectations_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Expectations Hash",
+          "type": "string"
+        },
+        "expected_generated_per_master": {
+          "exclusiveMinimum": 0,
+          "title": "Expected Generated Per Master",
+          "type": "integer"
+        },
+        "expected_generated_total": {
+          "exclusiveMinimum": 0,
+          "title": "Expected Generated Total",
+          "type": "integer"
+        },
+        "expected_master_clocks": {
+          "exclusiveMinimum": 0,
+          "title": "Expected Master Clocks",
+          "type": "integer"
+        },
+        "generated_clocks": {
+          "items": {
+            "$ref": "#/$defs/GeneratedClockExpectation"
+          },
+          "title": "Generated Clocks",
+          "type": "array"
+        },
+        "master_clock_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Master Clock Ids",
+          "type": "array"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "master_clock_ids",
+        "generated_clocks",
+        "expected_master_clocks",
+        "expected_generated_per_master",
+        "expected_generated_total",
+        "expectations_hash"
+      ],
+      "title": "BenchmarkExpectations",
+      "type": "object"
+    },
+    "BenchmarkFile": {
+      "additionalProperties": false,
+      "description": "Content identity for one deterministic generated file.",
+      "properties": {
+        "media_type": {
+          "minLength": 1,
+          "title": "Media Type",
+          "type": "string"
+        },
+        "relative_path": {
+          "minLength": 1,
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "relative_path",
+        "sha256",
+        "size_bytes",
+        "media_type"
+      ],
+      "title": "BenchmarkFile",
+      "type": "object"
+    },
+    "GeneratedClockExpectation": {
+      "additionalProperties": false,
+      "description": "Expected generated-clock identity, divider semantics, and active consumers.",
+      "properties": {
+        "active_consumers": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Active Consumers",
+          "type": "array"
+        },
+        "clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Clock Id",
+          "type": "string"
+        },
+        "divider_ratio": {
+          "title": "Divider Ratio",
+          "type": "integer"
+        },
+        "divider_state_fingerprint": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Divider State Fingerprint",
+          "type": "string"
+        },
+        "domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "master_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Master Clock Id",
+          "type": "string"
+        },
+        "waveform": {
+          "enum": [
+            "EVEN_50_PERCENT",
+            "ODD_ALTERNATING_DUTY"
+          ],
+          "title": "Waveform",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clock_id",
+        "domain_id",
+        "master_clock_id",
+        "divider_ratio",
+        "waveform",
+        "divider_state_fingerprint",
+        "active_consumers"
+      ],
+      "title": "GeneratedClockExpectation",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Immutable identity boundary for generated benchmark sources and expectations.",
+  "properties": {
+    "cdc_inventory_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cdc Inventory Hash",
+      "type": "string"
+    },
+    "clock_inventory_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Clock Inventory Hash",
+      "type": "string"
+    },
+    "config_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Config Hash",
+      "type": "string"
+    },
+    "constraint_contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Constraint Contract Hash",
+      "type": "string"
+    },
+    "expectations": {
+      "$ref": "#/$defs/BenchmarkExpectations"
+    },
+    "expected_generated_per_master": {
+      "exclusiveMinimum": 0,
+      "title": "Expected Generated Per Master",
+      "type": "integer"
+    },
+    "expected_generated_total": {
+      "exclusiveMinimum": 0,
+      "title": "Expected Generated Total",
+      "type": "integer"
+    },
+    "expected_master_clocks": {
+      "exclusiveMinimum": 0,
+      "title": "Expected Master Clocks",
+      "type": "integer"
+    },
+    "formal_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Formal Manifest Hash",
+      "type": "string"
+    },
+    "generated_files": {
+      "items": {
+        "$ref": "#/$defs/BenchmarkFile"
+      },
+      "title": "Generated Files",
+      "type": "array"
+    },
+    "power_workload_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Power Workload Hash",
+      "type": "string"
+    },
+    "profile": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Profile",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Hash",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "template_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Template Hash",
+      "type": "string"
+    },
+    "top_module": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Top Module",
+      "type": "string"
+    }
+  },
+  "required": [
+    "profile",
+    "top_module",
+    "config_hash",
+    "template_hash",
+    "source_hash",
+    "constraint_contract_hash",
+    "clock_inventory_hash",
+    "cdc_inventory_hash",
+    "formal_manifest_hash",
+    "power_workload_hash",
+    "expected_master_clocks",
+    "expected_generated_per_master",
+    "expected_generated_total",
+    "generated_files",
+    "expectations",
+    "snapshot_hash"
+  ],
+  "title": "BenchmarkSnapshot",
+  "type": "object"
+}

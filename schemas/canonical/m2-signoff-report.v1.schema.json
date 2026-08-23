@@ -1,0 +1,215 @@
+{
+  "additionalProperties": false,
+  "description": "Commit-bound, replayable trustworthy full-baseline sign-off packet.",
+  "properties": {
+    "analysis_view_hashes": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Analysis View Hashes",
+      "type": "object"
+    },
+    "benchmark_snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Benchmark Snapshot Hash",
+      "type": "string"
+    },
+    "calibration_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Calibration Report Hash",
+      "type": "string"
+    },
+    "calibration_validation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Calibration Validation Hash",
+      "type": "string"
+    },
+    "cdc_inventory_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cdc Inventory Hash",
+      "type": "string"
+    },
+    "clock_graph_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Clock Graph Hash",
+      "type": "string"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "constraint_binding_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Constraint Binding Hash",
+      "type": "string"
+    },
+    "design_contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Design Contract Hash",
+      "type": "string"
+    },
+    "expected_generated_clocks": {
+      "const": 105,
+      "title": "Expected Generated Clocks",
+      "type": "integer"
+    },
+    "expected_master_clocks": {
+      "const": 5,
+      "title": "Expected Master Clocks",
+      "type": "integer"
+    },
+    "formal_model_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Formal Model Hash",
+      "type": "string"
+    },
+    "hold_tns_ns": {
+      "title": "Hold Tns Ns",
+      "type": "number"
+    },
+    "hold_wns_ns": {
+      "title": "Hold Wns Ns",
+      "type": "number"
+    },
+    "input_set_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Set Hash",
+      "type": "string"
+    },
+    "ledger_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ledger Hash",
+      "type": "string"
+    },
+    "platform_lock_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Platform Lock Hash",
+      "type": "string"
+    },
+    "profile": {
+      "const": "full",
+      "title": "Profile",
+      "type": "string"
+    },
+    "raw_artifact_hashes": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Raw Artifact Hashes",
+      "type": "object"
+    },
+    "replay_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Replay Digest",
+      "type": "string"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "run_index_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Run Index Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "setup_tns_ns": {
+      "title": "Setup Tns Ns",
+      "type": "number"
+    },
+    "setup_wns_ns": {
+      "title": "Setup Wns Ns",
+      "type": "number"
+    },
+    "shared_physical_checkpoint_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Shared Physical Checkpoint Hash",
+      "type": "string"
+    },
+    "stage_result_hashes": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Stage Result Hashes",
+      "type": "object"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    },
+    "timing_constraint_status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ],
+      "title": "Timing Constraint Status",
+      "type": "string"
+    },
+    "tool_build_hashes": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Tool Build Hashes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "run_id",
+    "profile",
+    "expected_master_clocks",
+    "expected_generated_clocks",
+    "run_index_hash",
+    "benchmark_snapshot_hash",
+    "design_contract_hash",
+    "platform_lock_hash",
+    "calibration_report_hash",
+    "calibration_validation_hash",
+    "analysis_view_hashes",
+    "stage_result_hashes",
+    "raw_artifact_hashes",
+    "tool_build_hashes",
+    "constraint_binding_hash",
+    "clock_graph_hash",
+    "cdc_inventory_hash",
+    "formal_model_hash",
+    "shared_physical_checkpoint_hash",
+    "setup_wns_ns",
+    "setup_tns_ns",
+    "hold_wns_ns",
+    "hold_tns_ns",
+    "timing_constraint_status",
+    "replay_digest",
+    "ledger_hash",
+    "input_set_hash",
+    "report_hash"
+  ],
+  "title": "M2SignoffReport",
+  "type": "object"
+}

@@ -1,0 +1,106 @@
+{
+  "additionalProperties": false,
+  "description": "Deterministic validation result for one benchmark snapshot.",
+  "properties": {
+    "artifact_identity_mismatches": {
+      "default": [],
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Artifact Identity Mismatches",
+      "type": "array"
+    },
+    "cdc_inventory_mismatches": {
+      "default": [],
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Cdc Inventory Mismatches",
+      "type": "array"
+    },
+    "clock_lineage_mismatches": {
+      "default": [],
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Clock Lineage Mismatches",
+      "type": "array"
+    },
+    "expectation_mismatches": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Expectation Mismatches",
+      "type": "array"
+    },
+    "expectations_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Expectations Hash",
+      "type": "string"
+    },
+    "generated_without_consumers": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Generated Without Consumers",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Snapshot Hash",
+      "type": "string"
+    },
+    "status": {
+      "enum": [
+        "PASS",
+        "FAIL"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "unexpected_unconstrained_endpoints": {
+      "default": [],
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Unexpected Unconstrained Endpoints",
+      "type": "array"
+    },
+    "unreachable_challenge_logic": {
+      "default": [],
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Unreachable Challenge Logic",
+      "type": "array"
+    },
+    "validation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Validation Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "snapshot_hash",
+    "expectations_hash",
+    "status",
+    "expectation_mismatches",
+    "generated_without_consumers",
+    "validation_hash"
+  ],
+  "title": "BenchmarkValidation",
+  "type": "object"
+}
