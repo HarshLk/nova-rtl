@@ -30,6 +30,13 @@ class CliTests(unittest.TestCase):
         self.assertEqual(payload["checks"][0]["name"], "nova_tool_that_does_not_exist")
         self.assertEqual(payload["checks"][0]["status"], "FAIL")
 
+    def test_m1_cli_exposes_signoff_and_offline_verification(self) -> None:
+        result = self.runner.invoke(app, ["m1", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.stdout)
+        self.assertIn("signoff", result.stdout)
+        self.assertIn("verify", result.stdout)
+
 
 if __name__ == "__main__":
     unittest.main()
