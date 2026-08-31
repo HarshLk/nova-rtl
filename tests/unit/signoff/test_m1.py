@@ -18,6 +18,7 @@ from nova_rtl.signoff.m1 import (
     M1SignoffError,
     M1SignoffReport,
     M1SignoffRequest,
+    _publish_staging_no_replace,
     m1_signoff_invocation_hash,
     run_m1_signoff,
     verify_m1_signoff_packet,
@@ -50,36 +51,107 @@ def schema_manifest_hash(schema_files: tuple[SignoffEvidenceFile, ...]) -> str:
 def build_packet(tmp_path: Path) -> Path:
     packet = tmp_path / "m1-packet"
     packet.mkdir()
-    schema_files = (
-        write_evidence(
-            packet,
-            "schemas/artifact-ref.v1.schema.json",
-            b'{"title":"ArtifactRef"}\n',
-        ),
-        write_evidence(
-            packet,
-            "schemas/stage-result.v2.schema.json",
-            b'{"title":"StageResult"}\n',
-        ),
+    schema_files = tuple(
+        write_evidence(packet, f"schemas/{path.name}", path.read_bytes())
+        for path in sorted((PROJECT_ROOT / "schemas/canonical").glob("*.schema.json"))
     )
     digest = schema_manifest_hash(schema_files)
     replay_digest = hash_ref(b"replay-events")
+    python = "/usr/bin/python3"
+    command_argv = {
+        "schema_tests": (
+            python,
+            "-P",
+            "-m",
+            "pytest",
+            "tests/unit/contracts",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ),
+        "artifact_corruption_test": (
+            python,
+            "-P",
+            "-m",
+            "pytest",
+            "tests/unit/artifacts/test_store.py::"
+            "test_open_verified_fails_closed_for_corruption_and_missing_blob",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ),
+        "replay_tests": (
+            python,
+            "-P",
+            "-m",
+            "pytest",
+            "tests/unit/artifacts/test_replay.py::"
+            "test_replay_uses_sequence_and_makes_no_model_or_tool_calls",
+            "tests/unit/artifacts/test_replay.py::"
+            "test_replay_digest_is_deterministic_for_the_verified_event_stream",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ),
+        "m1_regression_tests": (
+            python,
+            "-P",
+            "-m",
+            "pytest",
+            "tests/unit/contracts",
+            "tests/unit/artifacts",
+            "tests/unit/orchestrator",
+            "tests/unit/analysis_views",
+            "-q",
+            "-p",
+            "no:cacheprovider",
+        ),
+        "replay_first": (
+            python,
+            "-P",
+            "-m",
+            "nova_rtl.artifacts.replay",
+            "tests/fixtures/runs/minimal",
+            "--digest",
+        ),
+        "replay_second": (
+            python,
+            "-P",
+            "-m",
+            "nova_rtl.artifacts.replay",
+            "tests/fixtures/runs/minimal",
+            "--digest",
+        ),
+    }
 
     def command(evidence_id: str, output: bytes) -> M1CommandEvidence:
         return M1CommandEvidence(
             evidence_id=evidence_id,
-            argv=("/usr/bin/python3", "-m", "pytest", "-q"),
+            argv=command_argv[evidence_id],
             exit_code=0,
             output=write_evidence(packet, f"reports/{evidence_id}.txt", output),
         )
+
+    commit = subprocess.run(
+        ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tree_hash = subprocess.run(
+        ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD^{tree}"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
 
     report = M1SignoffReport(
         milestone="M1",
         status="PASS",
         generated_at=datetime(2026, 8, 31, tzinfo=UTC),
-        implementation_commit="1" * 40,
-        implementation_tree_hash="2" * 40,
-        python_executable="/usr/bin/python3",
+        implementation_commit=commit,
+        implementation_tree_hash=tree_hash,
+        python_executable=python,
         python_executable_sha256=hash_ref(b"python"),
         python_version="3.11.15",
         pytest_version="8.4.2",
@@ -88,7 +160,7 @@ def build_packet(tmp_path: Path) -> Path:
         schema_files=schema_files,
         schema_test=command("schema_tests", b"54 passed\n"),
         artifact_corruption_test=command("artifact_corruption_test", b"1 passed\n"),
-        replay_test=command("replay_tests", b"3 passed\n"),
+        replay_test=command("replay_tests", b"2 passed\n"),
         m1_regression_test=command("m1_regression_tests", b"170 passed\n"),
         replay_first=command("replay_first", f"{replay_digest}\n".encode()),
         replay_second=command("replay_second", f"{replay_digest}\n".encode()),
@@ -105,11 +177,11 @@ def build_packet(tmp_path: Path) -> Path:
 def test_verify_m1_packet_accepts_exact_commit_bound_evidence(tmp_path: Path) -> None:
     packet = build_packet(tmp_path)
 
-    report = verify_m1_signoff_packet(packet)
+    report = verify_m1_signoff_packet(packet, project_root=PROJECT_ROOT)
 
     assert report.status == "PASS"
     assert report.replay_digest == hash_ref(b"replay-events")
-    assert len(report.schema_files) == 2
+    assert len(report.schema_files) == 54
 
 
 @pytest.mark.parametrize("mutation", ["artifact", "unexpected", "commit"])
@@ -132,7 +204,7 @@ def test_verify_m1_packet_fails_closed_for_any_identity_change(
         )
 
     with pytest.raises(M1SignoffError):
-        verify_m1_signoff_packet(packet)
+        verify_m1_signoff_packet(packet, project_root=PROJECT_ROOT)
 
 
 def test_m1_report_rejects_nondeterministic_schema_exports(tmp_path: Path) -> None:
@@ -144,7 +216,7 @@ def test_m1_report_rejects_nondeterministic_schema_exports(tmp_path: Path) -> No
         M1SignoffReport.model_validate(payload)
 
 
-def test_run_m1_signoff_executes_required_gates_and_publishes_atomically(
+def test_run_m1_signoff_rejects_an_unrelated_clean_repository(
     tmp_path: Path,
 ) -> None:
     project = tmp_path / "project"
@@ -185,19 +257,59 @@ def test_run_m1_signoff_executes_required_gates_and_publishes_atomically(
     subprocess.run(["git", "-C", str(project), "add", "."], check=True)
     subprocess.run(["git", "-C", str(project), "commit", "-qm", "fixture"], check=True)
 
-    report_path, generated = run_m1_signoff(
-        M1SignoffRequest(
-            project_root=project,
-            schema_directory=project / "schemas/canonical",
-            replay_fixture=project / "tests/fixtures/runs/minimal",
-            output_directory=project / "runs/m1-signoff",
-            python_executable=Path(sys.executable),
-        ),
-        generated_at=datetime(2026, 8, 31, tzinfo=UTC),
-    )
+    with pytest.raises(M1SignoffError, match="loaded NOVA package"):
+        run_m1_signoff(
+            M1SignoffRequest(
+                project_root=project,
+                schema_directory=project / "schemas/canonical",
+                replay_fixture=project / "tests/fixtures/runs/minimal",
+                output_directory=project / "runs/m1-signoff",
+                python_executable=Path(sys.executable),
+            ),
+            generated_at=datetime(2026, 8, 31, tzinfo=UTC),
+        )
 
-    assert report_path == project / "runs/m1-signoff/m1-signoff.json"
-    assert generated.schema_export_digest_first == generated.schema_export_digest_second
-    assert generated.replay_first.output.sha256 == generated.replay_second.output.sha256
-    assert verify_m1_signoff_packet(report_path.parent, project_root=project) == generated
-    assert not tuple(report_path.parent.parent.glob(".m1-signoff-*"))
+
+def test_verify_m1_packet_rejects_changed_required_command(tmp_path: Path) -> None:
+    packet = build_packet(tmp_path)
+    report_path = packet / "m1-signoff.json"
+    report = M1SignoffReport.model_validate_json(report_path.read_text(encoding="utf-8"))
+    changed_command = report.schema_test.model_copy(
+        update={"argv": (*report.schema_test.argv, "--disable-warnings")}
+    )
+    changed_report = report.model_copy(update={"schema_test": changed_command})
+    changed_report = changed_report.model_copy(
+        update={"signoff_invocation_hash": m1_signoff_invocation_hash(changed_report)}
+    )
+    report_path.write_bytes(canonical_json_bytes(changed_report) + b"\n")
+
+    with pytest.raises(M1SignoffError, match="command specification"):
+        verify_m1_signoff_packet(packet, project_root=PROJECT_ROOT)
+
+
+def test_run_m1_signoff_rejects_output_outside_project_runs(tmp_path: Path) -> None:
+    with pytest.raises(M1SignoffError, match="project runs directory"):
+        run_m1_signoff(
+            M1SignoffRequest(
+                project_root=PROJECT_ROOT,
+                schema_directory=PROJECT_ROOT / "schemas/canonical",
+                replay_fixture=PROJECT_ROOT / "tests/fixtures/runs/minimal",
+                output_directory=tmp_path / "outside",
+                python_executable=Path(sys.executable),
+            )
+        )
+
+
+def test_atomic_publication_never_replaces_a_concurrent_destination(tmp_path: Path) -> None:
+    staging = tmp_path / "staging"
+    staging.mkdir()
+    (staging / "evidence.txt").write_text("trusted\n", encoding="utf-8")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+
+    with pytest.raises(M1SignoffError, match="already exists"):
+        _publish_staging_no_replace(staging, destination)
+
+    assert destination.is_dir()
+    assert not tuple(destination.iterdir())
+    assert staging.is_dir()

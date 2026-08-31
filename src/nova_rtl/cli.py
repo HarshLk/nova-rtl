@@ -250,11 +250,11 @@ def m0_signoff(
 def m1_signoff(
     schemas: Annotated[
         Path,
-        typer.Option("--schemas", exists=True, file_okay=False, readable=True),
+        typer.Option("--schemas", file_okay=False),
     ] = Path("schemas/canonical"),
     replay_fixture: Annotated[
         Path,
-        typer.Option("--replay-fixture", exists=True, file_okay=False, readable=True),
+        typer.Option("--replay-fixture", file_okay=False),
     ] = Path("tests/fixtures/runs/minimal"),
     output: Annotated[
         Path,
@@ -273,12 +273,17 @@ def m1_signoff(
     """Run every M1 gate and atomically publish its evidence packet."""
 
     try:
+        root = (project_root or Path.cwd()).resolve()
+
+        def rooted(path: Path) -> Path:
+            return path if path.is_absolute() else root / path
+
         report_path, report = run_m1_signoff(
             M1SignoffRequest(
-                project_root=project_root or Path.cwd(),
-                schema_directory=schemas,
-                replay_fixture=replay_fixture,
-                output_directory=output,
+                project_root=root,
+                schema_directory=rooted(schemas),
+                replay_fixture=rooted(replay_fixture),
+                output_directory=rooted(output),
                 python_executable=python_executable or Path(sys.executable),
             )
         )
