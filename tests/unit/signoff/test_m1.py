@@ -18,7 +18,9 @@ from nova_rtl.signoff.m1 import (
     M1SignoffError,
     M1SignoffReport,
     M1SignoffRequest,
+    _git_query_bytes,
     _publish_staging_no_replace,
+    _require_output_boundary,
     m1_signoff_invocation_hash,
     run_m1_signoff,
     verify_m1_signoff_packet,
@@ -313,3 +315,51 @@ def test_atomic_publication_never_replaces_a_concurrent_destination(tmp_path: Pa
     assert destination.is_dir()
     assert not tuple(destination.iterdir())
     assert staging.is_dir()
+
+
+def test_git_queries_ignore_repository_replacement_objects(tmp_path: Path) -> None:
+    project = tmp_path / "replace-repo"
+    project.mkdir()
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+    subprocess.run(["git", "-C", str(project), "config", "user.name", "Test"], check=True)
+    subprocess.run(
+        ["git", "-C", str(project), "config", "user.email", "test@example.com"],
+        check=True,
+    )
+    tracked = project / "tracked.txt"
+    tracked.write_text("original\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(project), "add", "tracked.txt"], check=True)
+    subprocess.run(["git", "-C", str(project), "commit", "-qm", "original"], check=True)
+    original = subprocess.run(
+        ["git", "-C", str(project), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tracked.write_text("replacement\n", encoding="utf-8")
+    subprocess.run(["git", "-C", str(project), "commit", "-qam", "replacement"], check=True)
+    replacement = subprocess.run(
+        ["git", "-C", str(project), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(["git", "-C", str(project), "replace", original, replacement], check=True)
+
+    assert _git_query_bytes(project, "show", f"{original}:tracked.txt") == b"original\n"
+
+
+def test_output_boundary_creates_missing_ignored_runs_directory(tmp_path: Path) -> None:
+    project = tmp_path / "fresh-clone"
+    project.mkdir()
+    (project / ".gitignore").write_text("/runs/\n", encoding="utf-8")
+    subprocess.run(["git", "init", "-q", str(project)], check=True)
+
+    destination = project / "runs/m1-signoff-test"
+    _require_output_boundary(project.resolve(), destination)
+
+    assert destination.parent.is_dir()
+    assert subprocess.run(
+        ["git", "-C", str(project), "check-ignore", "-q", str(destination)],
+        check=False,
+    ).returncode == 0

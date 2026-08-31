@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import hashlib
 import io
 import json
@@ -237,6 +238,7 @@ def _git_executable() -> Path:
 def _git_environment(git: Path) -> dict[str, str]:
     return {
         "PATH": f"{git.parent}:/usr/local/bin:/usr/bin:/bin",
+        "GIT_NO_REPLACE_OBJECTS": "1",
         "LANG": "C",
         "LC_ALL": "C",
     }
@@ -273,13 +275,24 @@ def _capture_git_checkpoint(project_root: Path) -> _GitCheckpoint:
         not re.fullmatch(rf"[0-9a-f]{{{expected_length}}}", identity)
         for identity in (commit, tree_hash)
     ):
-        raise M1SignoffError("Git checkpoint did not produce full SHA-1 identities")
+        raise M1SignoffError("Git checkpoint did not produce full object identities")
     return _GitCheckpoint(commit=commit, tree_hash=tree_hash)
 
 
 def _require_output_boundary(project_root: Path, destination: Path) -> None:
     runs_root = project_root / "runs"
-    if runs_root.is_symlink() or runs_root.resolve(strict=True) != runs_root:
+    if runs_root.is_symlink():
+        raise M1SignoffError("project runs directory is missing or unsafe")
+    try:
+        runs_root.mkdir(mode=0o755, exist_ok=True)
+        canonical_runs_root = runs_root.resolve(strict=True)
+    except OSError as error:
+        raise M1SignoffError("project runs directory is missing or unsafe") from error
+    if (
+        runs_root.is_symlink()
+        or not runs_root.is_dir()
+        or canonical_runs_root != runs_root
+    ):
         raise M1SignoffError("project runs directory is missing or unsafe")
     if destination.parent != runs_root or destination.name.startswith("."):
         raise M1SignoffError("M1 output must be a direct child of the project runs directory")
@@ -615,7 +628,7 @@ def _publish_staging_no_replace(staging: Path, destination: Path) -> None:
         )
         if result != 0:
             error_number = get_errno()
-            if error_number == 17:
+            if error_number == errno.EEXIST:
                 raise M1SignoffError(f"M1 sign-off destination already exists: {destination}")
             raise M1SignoffError(
                 f"atomic M1 publication failed: {os.strerror(error_number)}"
