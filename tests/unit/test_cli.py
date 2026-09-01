@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+import os
+import subprocess
+import sys
 import unittest
+from pathlib import Path
 
 from typer.testing import CliRunner
 
 from nova_rtl.cli import app
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
 
 
 class CliTests(unittest.TestCase):
@@ -56,6 +62,31 @@ class CliTests(unittest.TestCase):
         self.assertIn("RUN_DIRECTORY", signoff.output)
         self.assertIn("--calibration-directory", signoff.output)
         self.assertIn("REPORT", verify.output)
+    def test_m1_cli_exposes_signoff_and_offline_verification(self) -> None:
+        result = self.runner.invoke(app, ["m1", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.stdout)
+        self.assertIn("signoff", result.stdout)
+        self.assertIn("verify", result.stdout)
+
+    def test_core_cli_import_does_not_require_optional_pytest(self) -> None:
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = str(PROJECT_ROOT / "src")
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-P",
+                "-c",
+                "import sys; sys.modules['pytest'] = None; import nova_rtl.cli",
+            ],
+            cwd=PROJECT_ROOT,
+            env=environment,
+            check=False,
+            capture_output=True,
+            text=True,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stderr)
 
 
 if __name__ == "__main__":

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
@@ -41,6 +42,12 @@ from nova_rtl.platform.lock import (
 )
 from nova_rtl.platform.signoff import M0SignoffRequest, SignoffError, run_m0_signoff
 from nova_rtl.platform.smoke import SmokeError
+from nova_rtl.signoff.m1 import (
+    M1SignoffError,
+    M1SignoffRequest,
+    run_m1_signoff,
+    verify_m1_signoff_packet,
+)
 
 app = typer.Typer(
     name="nova",
@@ -78,6 +85,12 @@ m2_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m2_app, name="m2")
+m1_app = typer.Typer(
+    name="m1",
+    help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
+    no_args_is_help=True,
+)
+app.add_typer(m1_app, name="m1")
 
 
 def _tool_root(
@@ -415,6 +428,20 @@ def benchmark_calibrate(
     )
 
 
+def _m1_signoff_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M1", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M1 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
 @toolchain_app.command("hydrate")
 def toolchain_hydrate(
     manifest: Annotated[
@@ -526,6 +553,97 @@ def m0_signoff(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA M0 sign-off: PASS: {report_path.resolve()}"
+    )
+
+
+@m1_app.command("signoff")
+def m1_signoff(
+    schemas: Annotated[
+        Path,
+        typer.Option("--schemas", file_okay=False),
+    ] = Path("schemas/canonical"),
+    replay_fixture: Annotated[
+        Path,
+        typer.Option("--replay-fixture", file_okay=False),
+    ] = Path("tests/fixtures/runs/minimal"),
+    output: Annotated[
+        Path,
+        typer.Option("--output", help="New immutable M1 evidence directory."),
+    ] = Path("runs/m1-signoff"),
+    project_root: Annotated[
+        Path | None,
+        typer.Option("--project-root", file_okay=False),
+    ] = None,
+    python_executable: Annotated[
+        Path | None,
+        typer.Option("--python", exists=True, dir_okay=False),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Run every M1 gate and atomically publish its evidence packet."""
+
+    try:
+        root = (project_root or Path.cwd()).resolve()
+
+        def rooted(path: Path) -> Path:
+            return path if path.is_absolute() else root / path
+
+        report_path, report = run_m1_signoff(
+            M1SignoffRequest(
+                project_root=root,
+                schema_directory=rooted(schemas),
+                replay_fixture=rooted(replay_fixture),
+                output_directory=rooted(output),
+                python_executable=python_executable or Path(sys.executable),
+            )
+        )
+    except (M1SignoffError, OSError, ValueError) as error:
+        _m1_signoff_failure(error, json_output)
+    payload = {
+        "status": report.status,
+        "milestone": report.milestone,
+        "report": str(report_path.resolve()),
+        "implementation_commit": report.implementation_commit,
+        "replay_digest": report.replay_digest,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M1 sign-off: PASS: {report_path.resolve()}"
+    )
+
+
+@m1_app.command("verify")
+def m1_verify(
+    packet: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, readable=True),
+    ],
+    project_root: Annotated[
+        Path | None,
+        typer.Option("--project-root", file_okay=False),
+    ] = None,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Verify an existing M1 packet without rerunning tests or external tools."""
+
+    try:
+        report = verify_m1_signoff_packet(
+            packet,
+            project_root=project_root or Path.cwd(),
+        )
+    except (M1SignoffError, OSError, ValueError) as error:
+        _m1_signoff_failure(error, json_output)
+    payload = {
+        "status": report.status,
+        "milestone": report.milestone,
+        "implementation_commit": report.implementation_commit,
+        "replay_digest": report.replay_digest,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M1 verification: PASS: {packet.resolve()}"
     )
 
 
