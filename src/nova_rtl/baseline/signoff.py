@@ -16,7 +16,7 @@ from nova_rtl.analysis_views.aggregation import (
 )
 from nova_rtl.artifacts.ledger import ExperimentLedger
 from nova_rtl.artifacts.replay import replay_digest, replay_run
-from nova_rtl.artifacts.store import ArtifactStore
+from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
 from nova_rtl.baseline.execution import _runtime
 from nova_rtl.baseline.flow import (
     BaselineFlowError,
@@ -24,9 +24,10 @@ from nova_rtl.baseline.flow import (
     inspect_baseline_run,
     load_run_index,
 )
+from nova_rtl.benchmark.calibrate import _timing_violation_families
 from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_config
 from nova_rtl.contracts.analysis import CDCInventory, ClockInventory
-from nova_rtl.contracts.base import canonical_json_bytes, canonical_sha256
+from nova_rtl.contracts.base import ArtifactRef, canonical_json_bytes, canonical_sha256
 from nova_rtl.contracts.benchmark import (
     BenchmarkSnapshot,
     CalibrationReport,
@@ -99,6 +100,9 @@ def _clean_commit(repository_root: Path) -> str:
     root = repository_root.resolve(strict=True)
     if Path(__file__).resolve(strict=True) != root / "src/nova_rtl/baseline/signoff.py":
         raise M2SignoffError("loaded NOVA package is outside the requested NOVA repository")
+    discovered_root = Path(_git_output(root, "rev-parse", "--show-toplevel")).resolve()
+    if discovered_root != root:
+        raise M2SignoffError("requested NOVA repository is not the Git repository root")
     if _git_output(root, "status", "--porcelain", "--untracked-files=all"):
         raise M2SignoffError("M2 sign-off requires a clean final commit")
     commit = _git_output(root, "rev-parse", "--verify", "HEAD")
@@ -120,6 +124,16 @@ def _verified_m1_dependency(
     current_commit: str,
 ) -> tuple[M1SignoffReport, str]:
     report = verify_m1_signoff_packet(m1_packet, project_root=repository_root)
+    _require_git_ancestor(repository_root, report.implementation_commit, current_commit)
+    report_bytes = (m1_packet.resolve(strict=True) / "m1-signoff.json").read_bytes()
+    return report, _hash_bytes(report_bytes)
+
+
+def _require_git_ancestor(
+    repository_root: Path,
+    ancestor: str,
+    descendant: str,
+) -> None:
     executable = _git_executable()
     ancestry = subprocess.run(
         (
@@ -128,8 +142,8 @@ def _verified_m1_dependency(
             str(repository_root),
             "merge-base",
             "--is-ancestor",
-            report.implementation_commit,
-            current_commit,
+            ancestor,
+            descendant,
         ),
         env=_git_environment(executable),
         capture_output=True,
@@ -138,8 +152,6 @@ def _verified_m1_dependency(
     )
     if ancestry.returncode != 0:
         raise M2SignoffError("verified M1 checkpoint is not an ancestor of M2")
-    report_bytes = (m1_packet.resolve(strict=True) / "m1-signoff.json").read_bytes()
-    return report, _hash_bytes(report_bytes)
 
 
 def _require_calibration_run_identity(
@@ -177,33 +189,7 @@ def _require_benchmark_source_identity(
     ).model_copy(update={"workload_scale": workload_scale})
     with tempfile.TemporaryDirectory(prefix="nova-m2-source-identity-") as temporary:
         expected = generate_benchmark(config, Path(temporary) / "full")
-    observed_identity = (
-        snapshot.config_hash,
-        snapshot.template_hash,
-        snapshot.source_hash,
-        snapshot.constraint_contract_hash,
-        snapshot.clock_inventory_hash,
-        snapshot.cdc_inventory_hash,
-        snapshot.formal_manifest_hash,
-        snapshot.power_workload_hash,
-        snapshot.expected_master_clocks,
-        snapshot.expected_generated_per_master,
-        snapshot.expected_generated_total,
-    )
-    expected_identity = (
-        expected.config_hash,
-        expected.template_hash,
-        expected.source_hash,
-        expected.constraint_contract_hash,
-        expected.clock_inventory_hash,
-        expected.cdc_inventory_hash,
-        expected.formal_manifest_hash,
-        expected.power_workload_hash,
-        expected.expected_master_clocks,
-        expected.expected_generated_per_master,
-        expected.expected_generated_total,
-    )
-    if observed_identity != expected_identity:
+    if snapshot != expected:
         raise M2SignoffError(
             "analyzed full snapshot differs from the current committed benchmark generator"
         )
@@ -253,6 +239,8 @@ def _contract_from_stage(
 def _calibration_evidence(
     calibration_directory: Path,
     snapshot: BenchmarkSnapshot,
+    expected_yosys: ToolFingerprint,
+    expected_opensta: ToolFingerprint,
 ) -> tuple[CalibrationReport, str]:
     try:
         report_bytes = (calibration_directory / "calibration-report.json").read_bytes()
@@ -271,14 +259,56 @@ def _calibration_evidence(
         report.target.minimum <= selected.mapped_cell_count <= report.target.maximum
     ):
         raise M2SignoffError("selected calibration sample is outside 45K-55K cells")
-    if selected.config_hash != snapshot.config_hash or selected.source_hash != snapshot.source_hash:
+    if (
+        selected.config_hash != snapshot.config_hash
+        or selected.source_hash != snapshot.source_hash
+        or selected.snapshot_hash != snapshot.snapshot_hash
+    ):
         raise M2SignoffError("calibration selection does not identify the analyzed full snapshot")
+    try:
+        store = ArtifactStore.open_existing(calibration_directory / "artifacts")
+        synthesis = StageResult.model_validate_json(
+            store.open_verified(selected.stage_result_artifact).read()
+        )
+        for reference in synthesis.raw_artifacts:
+            store.open_verified(reference)
+    except (ArtifactStoreError, OSError, ValueError) as error:
+        raise M2SignoffError(
+            "selected calibration stage-result artifact is missing or invalid"
+        ) from error
+    if synthesis.stage != "YOSYS_SYNTH" or synthesis.status != "PASS":
+        raise M2SignoffError("selected calibration artifact is not a passing Yosys result")
+    if synthesis.tool_fingerprint != selected.tool_fingerprint:
+        raise M2SignoffError("calibration report tool identity differs from its Yosys artifact")
+    _require_calibration_tool_identity(synthesis.tool_fingerprint, expected_yosys)
+    if synthesis.metrics.cell_count != selected.mapped_cell_count:
+        raise M2SignoffError("calibration cell count differs from its Yosys artifact")
+    if synthesis.input_hashes.rtl_snapshot != selected.source_hash:
+        raise M2SignoffError("calibration source identity differs from its Yosys artifact")
+    if synthesis.input_hashes.tool_recipe != selected.recipe_hash:
+        raise M2SignoffError("calibration recipe identity differs from its Yosys artifact")
+    mapped_design = next(
+        (
+            item
+            for item in synthesis.raw_artifacts
+            if item.artifact_id.endswith("mapped_design_json")
+        ),
+        None,
+    )
+    mapped_netlist = next(
+        (item for item in synthesis.raw_artifacts if item.artifact_id.endswith("mapped_netlist_v")),
+        None,
+    )
+    if mapped_design is None or mapped_netlist is None:
+        raise M2SignoffError("selected Yosys artifact lacks mapped design evidence")
     if validation.get("status") != "PASS" or validation.get("findings"):
         raise M2SignoffError("selected calibration structural validation is not clean")
     if validation.get("selected_config_hash") != snapshot.config_hash:
         raise M2SignoffError("calibration validation configuration identity differs")
     if validation.get("selected_source_hash") != snapshot.source_hash:
         raise M2SignoffError("calibration validation source identity differs")
+    if validation.get("mapped_cell_count") != synthesis.metrics.cell_count:
+        raise M2SignoffError("calibration validation cell count differs from Yosys evidence")
     if validation.get("generated_clock_count") != 105:
         raise M2SignoffError("calibration validation does not preserve all 105 clocks")
     if validation.get("active_generated_clock_consumer_count") != 105:
@@ -291,6 +321,44 @@ def _calibration_evidence(
     payload = {key: value for key, value in validation.items() if key != "evidence_hash"}
     if declared_hash != canonical_sha256(payload):
         raise M2SignoffError("calibration validation evidence hash differs")
+    try:
+        declared_mapped_design = ArtifactRef.model_validate(validation["mapped_design_artifact"])
+        timing_reference = ArtifactRef.model_validate(validation["timing_stage_result_artifact"])
+        if declared_mapped_design != mapped_design:
+            raise M2SignoffError("calibration validation mapped design differs from Yosys evidence")
+        store.open_verified(declared_mapped_design)
+        timing = StageResult.model_validate_json(store.open_verified(timing_reference).read())
+        for reference in timing.raw_artifacts:
+            store.open_verified(reference)
+    except M2SignoffError:
+        raise
+    except (ArtifactStoreError, KeyError, OSError, ValueError) as error:
+        raise M2SignoffError(
+            "calibration validation artifact evidence is missing or invalid"
+        ) from error
+    if timing.stage != "OPENSTA_FULL" or not (
+        timing.status == "PASS" or is_complete_measured_timing_violation(timing)
+    ):
+        raise M2SignoffError("calibration timing artifact is not a complete OpenSTA result")
+    if timing.tool_fingerprint != expected_opensta:
+        raise M2SignoffError("calibration OpenSTA identity differs from the verified toolchain")
+    if timing.input_hashes.parent_stage_result != selected.stage_result_artifact.sha256:
+        raise M2SignoffError("calibration timing artifact has the wrong Yosys parent")
+    if timing.input_hashes.rtl_snapshot != selected.source_hash:
+        raise M2SignoffError("calibration timing artifact has the wrong RTL identity")
+    timing_stdout = next(
+        (item for item in timing.raw_artifacts if item.artifact_id.endswith("_stdout")),
+        None,
+    )
+    if timing_stdout is None:
+        raise M2SignoffError("calibration timing artifact lacks raw stdout")
+    observed_families = _timing_violation_families(
+        store.open_verified(timing_stdout).read().decode("utf-8")
+    )
+    if tuple(validation.get("timing_violation_family_ids", ())) != observed_families:
+        raise M2SignoffError(
+            "calibration timing-violation families differ from raw OpenSTA evidence"
+        )
     return report, str(declared_hash)
 
 
@@ -341,22 +409,26 @@ def _build_report(
     snapshot = BenchmarkSnapshot.model_validate_json(
         store.open_verified(index.benchmark_snapshot_artifact).read()
     )
+    verified, _, _, _ = _runtime(
+        index.project_root,
+        index,
+        repository_root=repository_root,
+    )
     calibration, calibration_validation_hash = _calibration_evidence(
-        calibration_directory.resolve(), snapshot
+        calibration_directory.resolve(),
+        snapshot,
+        verified.tool_fingerprints["yosys"],
+        verified.tool_fingerprints["opensta"],
     )
     _require_benchmark_source_identity(
         repository_root,
         snapshot,
         calibration.selected_workload_scale,
     )
-    binding = _contract_from_stage(
-        by_id["stage_binding"], store, ConstraintBindingManifest
-    )
+    binding = _contract_from_stage(by_id["stage_binding"], store, ConstraintBindingManifest)
     clocks = _contract_from_stage(by_id["stage_clock"], store, ClockInventory)
     cdc = _contract_from_stage(by_id["stage_cdc"], store, CDCInventory)
-    formal = _contract_from_stage(
-        by_id["stage_formal_preflight"], store, FormalModelContract
-    )
+    formal = _contract_from_stage(by_id["stage_formal_preflight"], store, FormalModelContract)
     if binding.coverage.unresolved_selectors != 0:
         raise M2SignoffError("constraint binding has unresolved selectors")
     if binding.coverage.timed_endpoints + binding.coverage.reviewed_exception_endpoints != (
@@ -401,11 +473,6 @@ def _build_report(
     if hold_result.input_hashes.parent_stage_result != setup_result_ref.sha256:
         raise M2SignoffError("hold OpenROAD parent identity is not the setup physical result")
 
-    verified, _, _, _ = _runtime(
-        index.project_root,
-        index,
-        repository_root=repository_root,
-    )
     selected_calibration = next(
         item
         for item in calibration.samples
@@ -508,9 +575,7 @@ def run_m2_signoff(
     repository_root = repository_root.resolve(strict=True)
     commit = _clean_commit(repository_root)
     tree = _implementation_tree(repository_root, commit)
-    m1_report, m1_packet_hash = _verified_m1_dependency(
-        repository_root, m1_packet, commit
-    )
+    m1_report, m1_packet_hash = _verified_m1_dependency(repository_root, m1_packet, commit)
     report = _build_report(
         run_directory.resolve(strict=True),
         calibration_directory.resolve(strict=True),
@@ -520,15 +585,46 @@ def run_m2_signoff(
         m1_report,
         m1_packet_hash,
     )
-    path = run_directory.resolve() / "m2-signoff.json"
-    _publish_report_atomic(path, canonical_json_bytes(report))
-    verified = verify_m2_signoff(
-        path,
+    verified = _verify_observed_report(
+        report,
+        run_directory=run_directory.resolve(strict=True),
         calibration_directory=calibration_directory,
         m1_packet=m1_packet,
         repository_root=repository_root,
     )
+    path = run_directory.resolve() / "m2-signoff.json"
+    _publish_report_atomic(path, canonical_json_bytes(verified))
     return path, verified
+
+
+def _verify_observed_report(
+    observed: M2SignoffReport,
+    *,
+    run_directory: Path,
+    calibration_directory: Path,
+    m1_packet: Path,
+    repository_root: Path,
+) -> M2SignoffReport:
+    """Recompute a report completely before any packet publication."""
+
+    repository_root = repository_root.resolve(strict=True)
+    commit = _clean_commit(repository_root)
+    if observed.commit_sha != commit:
+        raise M2SignoffError("M2 sign-off report is bound to a different commit")
+    tree = _implementation_tree(repository_root, commit)
+    m1_report, m1_packet_hash = _verified_m1_dependency(repository_root, m1_packet, commit)
+    expected = _build_report(
+        run_directory.resolve(strict=True),
+        calibration_directory.resolve(strict=True),
+        repository_root,
+        commit,
+        tree,
+        m1_report,
+        m1_packet_hash,
+    )
+    if observed != expected:
+        raise M2SignoffError("M2 sign-off report differs from recomputed evidence")
+    return observed
 
 
 def verify_m2_signoff(
@@ -546,25 +642,13 @@ def verify_m2_signoff(
         )
     except (OSError, ValueError) as error:
         raise M2SignoffError("M2 sign-off report is missing or invalid") from error
-    commit = _clean_commit(repository_root.resolve(strict=True))
-    if observed.commit_sha != commit:
-        raise M2SignoffError("M2 sign-off report is bound to a different commit")
-    tree = _implementation_tree(repository_root.resolve(strict=True), commit)
-    m1_report, m1_packet_hash = _verified_m1_dependency(
-        repository_root.resolve(strict=True), m1_packet, commit
+    return _verify_observed_report(
+        observed,
+        run_directory=report_path.resolve().parent,
+        calibration_directory=calibration_directory,
+        m1_packet=m1_packet,
+        repository_root=repository_root,
     )
-    expected = _build_report(
-        report_path.resolve().parent,
-        calibration_directory.resolve(strict=True),
-        repository_root.resolve(strict=True),
-        commit,
-        tree,
-        m1_report,
-        m1_packet_hash,
-    )
-    if observed != expected:
-        raise M2SignoffError("M2 sign-off report differs from recomputed evidence")
-    return observed
 
 
 __all__ = [
