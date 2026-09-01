@@ -7,6 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+from collections.abc import Mapping
 from hashlib import sha256
 from pathlib import Path
 
@@ -25,6 +26,10 @@ from nova_rtl.baseline.flow import (
     load_run_index,
 )
 from nova_rtl.benchmark.calibrate import _timing_violation_families
+from nova_rtl.benchmark.calibration_validation import (
+    MappedStructureEvidence,
+    inspect_full_mapped_design,
+)
 from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_config
 from nova_rtl.contracts.analysis import CDCInventory, ClockInventory
 from nova_rtl.contracts.base import ArtifactRef, canonical_json_bytes, canonical_sha256
@@ -116,6 +121,20 @@ def _implementation_tree(repository_root: Path, commit: str) -> str:
     if len(tree) != 40 or any(character not in "0123456789abcdef" for character in tree):
         raise M2SignoffError("M2 sign-off could not resolve a canonical Git tree")
     return tree
+
+
+def _require_checkpoint_unchanged(
+    repository_root: Path,
+    *,
+    expected_commit: str,
+    expected_tree: str,
+) -> None:
+    observed_commit = _clean_commit(repository_root)
+    if observed_commit != expected_commit:
+        raise M2SignoffError("repository checkpoint changed during M2 sign-off")
+    observed_tree = _implementation_tree(repository_root, observed_commit)
+    if observed_tree != expected_tree:
+        raise M2SignoffError("repository checkpoint changed during M2 sign-off")
 
 
 def _verified_m1_dependency(
@@ -236,11 +255,34 @@ def _contract_from_stage(
         ) from error
 
 
+def _require_calibration_structure(
+    validation: Mapping[str, object],
+    structure: MappedStructureEvidence,
+) -> None:
+    observed = {
+        "master_clock_count": structure.master_clock_count,
+        "generated_clock_count": structure.generated_clock_count,
+        "active_generated_clock_consumer_count": structure.active_consumer_count,
+        "cdc_instance_count": structure.cdc_instance_count,
+        "challenge_family_ids": structure.challenge_family_ids,
+        "challenge_lane_count": structure.challenge_lane_count,
+    }
+    declared = {key: validation.get(key) for key in observed}
+    declared["challenge_family_ids"] = tuple(
+        validation.get("challenge_family_ids", ())  # type: ignore[arg-type]
+    )
+    if structure.findings or declared != observed:
+        raise M2SignoffError(
+            "calibration validation differs from recomputed mapped-design structure"
+        )
+
+
 def _calibration_evidence(
     calibration_directory: Path,
     snapshot: BenchmarkSnapshot,
     expected_yosys: ToolFingerprint,
     expected_opensta: ToolFingerprint,
+    repository_root: Path,
 ) -> tuple[CalibrationReport, str]:
     try:
         report_bytes = (calibration_directory / "calibration-report.json").read_bytes()
@@ -265,6 +307,9 @@ def _calibration_evidence(
         or selected.snapshot_hash != snapshot.snapshot_hash
     ):
         raise M2SignoffError("calibration selection does not identify the analyzed full snapshot")
+    config = load_benchmark_config(
+        repository_root / "benchmark/generator/benchmark.yaml", "full"
+    ).model_copy(update={"workload_scale": selected.workload_scale})
     try:
         store = ArtifactStore.open_existing(calibration_directory / "artifacts")
         synthesis = StageResult.model_validate_json(
@@ -326,7 +371,8 @@ def _calibration_evidence(
         timing_reference = ArtifactRef.model_validate(validation["timing_stage_result_artifact"])
         if declared_mapped_design != mapped_design:
             raise M2SignoffError("calibration validation mapped design differs from Yosys evidence")
-        store.open_verified(declared_mapped_design)
+        mapped_design_payload = json.loads(store.open_verified(declared_mapped_design).read())
+        structure = inspect_full_mapped_design(mapped_design_payload, config)
         timing = StageResult.model_validate_json(store.open_verified(timing_reference).read())
         for reference in timing.raw_artifacts:
             store.open_verified(reference)
@@ -336,6 +382,7 @@ def _calibration_evidence(
         raise M2SignoffError(
             "calibration validation artifact evidence is missing or invalid"
         ) from error
+    _require_calibration_structure(validation, structure)
     if timing.stage != "OPENSTA_FULL" or not (
         timing.status == "PASS" or is_complete_measured_timing_violation(timing)
     ):
@@ -419,6 +466,7 @@ def _build_report(
         snapshot,
         verified.tool_fingerprints["yosys"],
         verified.tool_fingerprints["opensta"],
+        repository_root,
     )
     _require_benchmark_source_identity(
         repository_root,
@@ -593,6 +641,11 @@ def run_m2_signoff(
         repository_root=repository_root,
     )
     path = run_directory.resolve() / "m2-signoff.json"
+    _require_checkpoint_unchanged(
+        repository_root,
+        expected_commit=commit,
+        expected_tree=tree,
+    )
     _publish_report_atomic(path, canonical_json_bytes(verified))
     return path, verified
 

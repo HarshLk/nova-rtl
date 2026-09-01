@@ -10,6 +10,7 @@ import yaml
 from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.baseline import signoff
 from nova_rtl.benchmark.calibrate import build_calibration_report
+from nova_rtl.benchmark.calibration_validation import MappedStructureEvidence
 from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_config
 from nova_rtl.contracts.base import ArtifactRef, canonical_json_bytes
 from nova_rtl.contracts.benchmark import CalibrationSample, MappedCellTarget
@@ -126,7 +127,33 @@ def test_m2_calibration_rejects_a_missing_selected_stage_result(tmp_path: Path) 
     (calibration / "calibration-validation.json").write_text("{}", encoding="utf-8")
 
     with pytest.raises(signoff.M2SignoffError, match="artifact"):
-        signoff._calibration_evidence(calibration, snapshot, yosys, opensta)
+        signoff._calibration_evidence(calibration, snapshot, yosys, opensta, PROJECT_ROOT)
+
+
+def test_m2_recomputes_calibration_structure_instead_of_trusting_claims() -> None:
+    structure = MappedStructureEvidence(
+        master_clock_count=5,
+        generated_clock_count=105,
+        active_consumer_count=105,
+        cdc_instance_count=12,
+        challenge_family_ids=tuple(f"family_{index}" for index in range(5)),
+        challenge_lane_count=20,
+        findings=(),
+    )
+    validation = {
+        "master_clock_count": 5,
+        "generated_clock_count": 105,
+        "active_generated_clock_consumer_count": 105,
+        "cdc_instance_count": 12,
+        "challenge_family_ids": tuple(f"family_{index}" for index in range(5)),
+        "challenge_lane_count": 20,
+    }
+
+    signoff._require_calibration_structure(validation, structure)
+
+    validation["generated_clock_count"] = 104
+    with pytest.raises(signoff.M2SignoffError, match="mapped-design structure"):
+        signoff._require_calibration_structure(validation, structure)
 
 
 def test_m2_snapshot_must_match_the_current_committed_generator(tmp_path: Path) -> None:
@@ -215,6 +242,24 @@ def test_failed_prepublication_verification_preserves_previous_packet(
             calibration,
             m1_packet,
             repository_root=repository,
+        )
+
+    assert destination.read_bytes() == b"previous-packet\n"
+
+
+def test_checkpoint_change_after_verification_prevents_publication(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    destination = tmp_path / "m2-signoff.json"
+    destination.write_bytes(b"previous-packet\n")
+    monkeypatch.setattr(signoff, "_clean_commit", lambda _root: "b" * 40)
+
+    with pytest.raises(signoff.M2SignoffError, match="changed during M2 sign-off"):
+        signoff._require_checkpoint_unchanged(
+            tmp_path,
+            expected_commit="a" * 40,
+            expected_tree="c" * 40,
         )
 
     assert destination.read_bytes() == b"previous-packet\n"
