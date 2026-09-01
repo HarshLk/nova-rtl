@@ -260,8 +260,13 @@ def _load_contract(store: ArtifactStore, reference: ArtifactRef, model):  # type
         raise BaselineFlowError(f"invalid initialized artifact: {reference.artifact_id}") from error
 
 
-def _runtime(project_root: Path, index: BaselineRunIndex):
-    repository_root = Path.cwd().resolve()
+def _runtime(
+    project_root: Path,
+    index: BaselineRunIndex,
+    *,
+    repository_root: Path | None = None,
+):
+    repository_root = (repository_root or Path.cwd()).resolve()
     loaded = load_toolchain_source_manifest(
         repository_root / "config/platform/toolchain-sources.json"
     )

@@ -194,7 +194,16 @@ def m2_signoff(
             file_okay=False,
             readable=True,
         ),
-    ] = Path("benchmark/build/full-calibration-final"),
+    ],
+    m1_packet: Annotated[
+        Path,
+        typer.Option(
+            "--m1-packet",
+            exists=True,
+            file_okay=False,
+            readable=True,
+        ),
+    ],
     repository_root: Annotated[
         Path,
         typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
@@ -207,6 +216,7 @@ def m2_signoff(
         path, report = run_m2_signoff(
             run_directory,
             calibration_directory,
+            m1_packet,
             repository_root=repository_root,
         )
     except (M2SignoffError, OSError, ValidationError, ValueError) as error:
@@ -233,7 +243,16 @@ def m2_verify(
             file_okay=False,
             readable=True,
         ),
-    ] = Path("benchmark/build/full-calibration-final"),
+    ],
+    m1_packet: Annotated[
+        Path,
+        typer.Option(
+            "--m1-packet",
+            exists=True,
+            file_okay=False,
+            readable=True,
+        ),
+    ],
     repository_root: Annotated[
         Path,
         typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
@@ -246,6 +265,7 @@ def m2_verify(
         report = verify_m2_signoff(
             report_path,
             calibration_directory=calibration_directory,
+            m1_packet=m1_packet,
             repository_root=repository_root,
         )
     except (M2SignoffError, OSError, ValidationError, ValueError) as error:

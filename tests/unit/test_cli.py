@@ -61,7 +61,12 @@ class CliTests(unittest.TestCase):
         self.assertEqual(verify.exit_code, 0, verify.output)
         self.assertIn("RUN_DIRECTORY", signoff.output)
         self.assertIn("--calibration-directory", signoff.output)
+        self.assertIn("--m1-packet", signoff.output)
+        self.assertNotIn("full-calibration-final", signoff.output)
         self.assertIn("REPORT", verify.output)
+        self.assertIn("--m1-packet", verify.output)
+        self.assertNotIn("full-calibration-final", verify.output)
+
     def test_m1_cli_exposes_signoff_and_offline_verification(self) -> None:
         result = self.runner.invoke(app, ["m1", "--help"])
 

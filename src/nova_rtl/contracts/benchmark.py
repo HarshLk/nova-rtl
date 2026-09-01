@@ -556,6 +556,10 @@ class M2SignoffReport(StrictContract):
     schema_version: Literal[1] = 1
     status: Literal["PASS"]
     commit_sha: GitCommitSha
+    implementation_tree_hash: GitCommitSha
+    m1_implementation_commit: GitCommitSha
+    m1_signoff_invocation_hash: HashRef
+    m1_packet_hash: HashRef
     run_id: EntityId
     profile: Literal["full"]
     expected_master_clocks: Literal[5]
@@ -625,6 +629,10 @@ class M2SignoffReport(StrictContract):
         expected_input_set_hash = canonical_sha256(
             {
                 "commit_sha": self.commit_sha,
+                "implementation_tree_hash": self.implementation_tree_hash,
+                "m1_implementation_commit": self.m1_implementation_commit,
+                "m1_signoff_invocation_hash": self.m1_signoff_invocation_hash,
+                "m1_packet_hash": self.m1_packet_hash,
                 "run_index_hash": self.run_index_hash,
                 "benchmark_snapshot_hash": self.benchmark_snapshot_hash,
                 "design_contract_hash": self.design_contract_hash,

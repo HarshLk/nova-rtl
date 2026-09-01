@@ -75,6 +75,11 @@
       "title": "Hold Wns Ns",
       "type": "number"
     },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
     "input_set_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Input Set Hash",
@@ -83,6 +88,21 @@
     "ledger_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Ledger Hash",
+      "type": "string"
+    },
+    "m1_implementation_commit": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M1 Implementation Commit",
+      "type": "string"
+    },
+    "m1_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M1 Packet Hash",
+      "type": "string"
+    },
+    "m1_signoff_invocation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M1 Signoff Invocation Hash",
       "type": "string"
     },
     "platform_lock_hash": {
@@ -181,6 +201,10 @@
   "required": [
     "status",
     "commit_sha",
+    "implementation_tree_hash",
+    "m1_implementation_commit",
+    "m1_signoff_invocation_hash",
+    "m1_packet_hash",
     "run_id",
     "profile",
     "expected_master_clocks",
