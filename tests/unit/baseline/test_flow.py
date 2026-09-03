@@ -16,11 +16,26 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 PROFILE_MANIFEST = PROJECT_ROOT / "benchmark/generator/benchmark.yaml"
 
 
-def _locked_platform() -> tuple[PlatformLock, Path]:
+def _touch_platform_artifact(orfs_root: Path, artifact) -> None:  # type: ignore[no-untyped-def]
+    path = orfs_root / artifact.logical_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("", encoding="utf-8")
+
+
+def _locked_platform(tmp_path: Path) -> tuple[PlatformLock, Path]:
     lock = PlatformLock.model_validate(
         yaml.safe_load((PROJECT_ROOT / "config/platform/platform.lock.yaml").read_text())
     )
-    return lock, PROJECT_ROOT / ".nova-tools/components/orfs"
+    orfs_root = tmp_path / "orfs"
+    artifacts = (
+        lock.tech_lef,
+        *lock.cell_lefs,
+        *lock.setup_corner.liberty_files,
+        *lock.hold_corner.liberty_files,
+    )
+    for artifact in artifacts:
+        _touch_platform_artifact(orfs_root, artifact)
+    return lock, orfs_root
 
 
 def test_resume_manifest_excludes_historical_stages_without_current_hashes() -> None:
@@ -41,8 +56,8 @@ def test_cdc_property_recipe_is_bounded_multiclock_and_uses_staged_sources() -> 
     assert "cdc_protocol_properties.sv inputs/input_formal_property_source" in recipe
 
 
-def test_hold_physical_analysis_reuses_the_setup_placed_checkpoint() -> None:
-    lock, orfs_root = _locked_platform()
+def test_hold_physical_analysis_reuses_the_setup_placed_checkpoint(tmp_path: Path) -> None:
+    lock, orfs_root = _locked_platform(tmp_path)
 
     setup = _openroad_recipe(
         lock,
