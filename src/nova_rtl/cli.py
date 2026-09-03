@@ -20,6 +20,7 @@ from nova_rtl.benchmark.calibrate import CalibrationError, run_full_calibration
 from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_config
 from nova_rtl.benchmark.validate import validate_benchmark
 from nova_rtl.contracts.platform import PlatformLockRequest
+from nova_rtl.evidence.execution import EvidenceExecutionError, analyze_evidence_run
 from nova_rtl.platform.activation import (
     ToolchainVerificationError,
     create_toolchain_receipt,
@@ -321,17 +322,30 @@ def baseline_analyze(
         str,
         typer.Option(
             "--stages",
-            help="Comma-separated complete tiny baseline stage set.",
+            help=(
+                "Comma-separated complete baseline stage set, or "
+                "evidence,opportunities for M3."
+            ),
         ),
     ] = "yosys,opensta,binding,clock,cdc,formal-smoke,openroad",
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    """Execute or resume every required tiny-profile baseline stage."""
+    """Execute or resume a complete baseline or M3 evidence stage set."""
 
     try:
-        analyze_run(run_directory, requested_stages=stages.split(","))
-        evidence = inspect_baseline_run(run_directory)
-    except (BaselineFlowError, OSError, ValidationError, ValueError) as error:
+        selected = tuple(item.strip().lower() for item in stages.split(",") if item.strip())
+        if frozenset(selected) == frozenset({"evidence", "opportunities"}):
+            evidence = analyze_evidence_run(run_directory, requested_stages=selected)
+        else:
+            analyze_run(run_directory, requested_stages=selected)
+            evidence = inspect_baseline_run(run_directory)
+    except (
+        BaselineFlowError,
+        EvidenceExecutionError,
+        OSError,
+        ValidationError,
+        ValueError,
+    ) as error:
         _baseline_failure(error, json_output)
     payload = evidence.model_dump(mode="json")
     typer.echo(

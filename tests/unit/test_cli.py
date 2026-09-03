@@ -50,6 +50,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(analyze_help.exit_code, 0, analyze_help.output)
         self.assertIn("PROJECT", _plain_output(init_help.output))
         self.assertIn("--stages", _plain_output(analyze_help.output))
+        self.assertIn("evidence,opportunities", _plain_output(analyze_help.output))
 
     def test_cli_exposes_full_benchmark_calibration_command(self) -> None:
         result = self.runner.invoke(app, ["benchmark", "calibrate", "--help"])
