@@ -105,6 +105,7 @@ def cluster_payload() -> dict[str, object]:
         "source_span_ids": ["source_span_001"],
         "protected_neighbor_ids": ["cdc_sync_001"],
         "features": feature_payload(),
+        "root_causes": [{"category": "DEEP_PRIORITY_CHAIN", "confidence": 0.9}],
         "cluster_hash": hash_ref("0"),
     }
     payload["cluster_hash"] = payload_hash(payload, "cluster_hash")

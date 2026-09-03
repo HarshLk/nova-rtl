@@ -20,6 +20,7 @@ from nova_rtl.contracts.base import (
     canonical_sha256,
 )
 from nova_rtl.contracts.manifest import JsonScalar
+from nova_rtl.contracts.optimization import RootCause
 
 EvidenceAttributeName = Annotated[
     str,
@@ -342,6 +343,7 @@ class PathCluster(StrictContract):
     source_span_ids: tuple[EntityId, ...]
     protected_neighbor_ids: tuple[EntityId, ...]
     features: PathFeatureVector
+    root_causes: tuple[RootCause, ...] = Field(min_length=1)
     cluster_hash: HashRef
 
     @field_validator(
@@ -360,6 +362,13 @@ class PathCluster(StrictContract):
     def identity_is_self_hashed(self) -> Self:
         if self.worst_analysis_view_id not in self.analysis_view_ids:
             raise ValueError("worst analysis view must be a cluster analysis view")
+        categories = tuple(item.category for item in self.root_causes)
+        if len(categories) != len(set(categories)):
+            raise ValueError("root-cause categories must be unique")
+        if tuple(item.confidence for item in self.root_causes) != tuple(
+            sorted((item.confidence for item in self.root_causes), reverse=True)
+        ):
+            raise ValueError("root causes must be ordered by descending confidence")
         expected_hash = canonical_sha256(self, exclude=frozenset({"cluster_hash"}))
         if self.cluster_hash != expected_hash:
             raise ValueError("cluster_hash does not match the canonical path cluster")
