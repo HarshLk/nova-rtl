@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import unittest
@@ -12,6 +13,11 @@ from typer.testing import CliRunner
 from nova_rtl.cli import app
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
+ANSI_CONTROL_SEQUENCE = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
+
+
+def _plain_output(output: str) -> str:
+    return ANSI_CONTROL_SEQUENCE.sub("", output)
 
 
 class CliTests(unittest.TestCase):
@@ -42,16 +48,17 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(init_help.exit_code, 0, init_help.output)
         self.assertEqual(analyze_help.exit_code, 0, analyze_help.output)
-        self.assertIn("PROJECT", init_help.output)
-        self.assertIn("--stages", analyze_help.output)
+        self.assertIn("PROJECT", _plain_output(init_help.output))
+        self.assertIn("--stages", _plain_output(analyze_help.output))
 
     def test_cli_exposes_full_benchmark_calibration_command(self) -> None:
         result = self.runner.invoke(app, ["benchmark", "calibrate", "--help"])
 
         self.assertEqual(result.exit_code, 0, result.output)
-        self.assertIn("--config", result.output)
-        self.assertIn("--output", result.output)
-        self.assertIn("--max-samples", result.output)
+        output = _plain_output(result.output)
+        self.assertIn("--config", output)
+        self.assertIn("--output", output)
+        self.assertIn("--max-samples", output)
 
     def test_cli_exposes_m2_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m2", "signoff", "--help"])
@@ -59,13 +66,15 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(signoff.exit_code, 0, signoff.output)
         self.assertEqual(verify.exit_code, 0, verify.output)
-        self.assertIn("RUN_DIRECTORY", signoff.output)
-        self.assertIn("--calibration-directory", signoff.output)
-        self.assertIn("--m1-packet", signoff.output)
-        self.assertNotIn("full-calibration-final", signoff.output)
-        self.assertIn("REPORT", verify.output)
-        self.assertIn("--m1-packet", verify.output)
-        self.assertNotIn("full-calibration-final", verify.output)
+        signoff_output = _plain_output(signoff.output)
+        verify_output = _plain_output(verify.output)
+        self.assertIn("RUN_DIRECTORY", signoff_output)
+        self.assertIn("--calibration-directory", signoff_output)
+        self.assertIn("--m1-packet", signoff_output)
+        self.assertNotIn("full-calibration-final", signoff_output)
+        self.assertIn("REPORT", verify_output)
+        self.assertIn("--m1-packet", verify_output)
+        self.assertNotIn("full-calibration-final", verify_output)
 
     def test_m1_cli_exposes_signoff_and_offline_verification(self) -> None:
         result = self.runner.invoke(app, ["m1", "--help"])
