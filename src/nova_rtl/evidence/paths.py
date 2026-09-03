@@ -120,8 +120,13 @@ def _root_causes(
     elif features.physical_dominance >= 0.65:
         add("PLACEMENT_OR_WIRE_DOMINATED", 0.95)
     else:
-        if features.mux_depth >= 3 or (
-            "priority" in identity and features.logic_depth >= 3
+        if (
+            features.mux_depth >= 3
+            or ("priority" in identity and features.logic_depth >= 3)
+            or (
+                "timing_opportunity_lane" in identity
+                and features.logic_depth >= 4
+            )
         ):
             add("DEEP_PRIORITY_CHAIN", 0.95)
         if features.boolean_depth >= 6:
@@ -214,9 +219,12 @@ def cluster_paths(
         boolean_depth = max(item[1] for item in type_features)
         comparator_depth = max(item[2] for item in type_features)
         arithmetic_depth = max(item[3] for item in type_features)
-        span_occurrences = Counter(
-            span for item in records for span in item.source_span_ids
-        )
+        distinct_owner_spans = {
+            (item.owner_hierarchy, span)
+            for item in records
+            for span in item.source_span_ids
+        }
+        span_occurrences = Counter(span for _, span in distinct_owner_spans)
         repeated_predicates = sum(max(count - 1, 0) for count in span_occurrences.values())
         reconvergence = sum(max(count - 1, 0) for count in object_counts.values())
         mapping_confidence = (

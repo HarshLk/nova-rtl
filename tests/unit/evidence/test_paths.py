@@ -37,6 +37,35 @@ def mux_source_map() -> SourceMapSnapshot:
     )
 
 
+def seeded_lane_source_map() -> SourceMapSnapshot:
+    original = source_map()
+    objects = []
+    for item in original.mapped_objects:
+        payload = item.model_dump(mode="json")
+        if "u_lane/_1_" in item.semantic_name:
+            payload["cell_type"] = "NAND2x1_ASAP7_75t_R"
+            payload["module_type"] = "$paramod\\timing_opportunity_lane\\FAMILY=0"
+        objects.append(type(item).model_validate(payload))
+    payload = {
+        "schema_version": 1,
+        "candidate_id": original.candidate_id,
+        "rtl_snapshot_hash": original.rtl_snapshot_hash,
+        "synthesis_structure_hash": original.synthesis_structure_hash,
+        "mapped_objects": tuple(item.model_dump(mode="json") for item in objects),
+        "source_spans": tuple(
+            item.model_dump(mode="json") for item in original.source_spans
+        ),
+    }
+    return SourceMapSnapshot(
+        candidate_id=original.candidate_id,
+        rtl_snapshot_hash=original.rtl_snapshot_hash,
+        synthesis_structure_hash=original.synthesis_structure_hash,
+        mapped_objects=tuple(objects),
+        source_spans=original.source_spans,
+        source_map_hash=canonical_sha256(payload),
+    )
+
+
 def path(
     path_id: str,
     *,
@@ -142,6 +171,17 @@ def test_protected_cone_is_classified_unsafe() -> None:
     assert clusters[0].protected_neighbor_ids
     assert clusters[0].features.protection_distance == 0
     assert clusters[0].root_causes[0].category == "CDC_ADJACENT_UNSAFE_TO_EDIT"
+
+
+def test_seeded_timing_lane_retains_priority_family_after_technology_mapping() -> None:
+    clusters = cluster_paths(
+        (path("path_seeded", view="asap7_setup", slack=-0.2),),
+        evidence_snapshot_hash=SNAPSHOT_HASH,
+        source_map=seeded_lane_source_map(),
+        clock_domain_by_id={"clk_master_0": "domain_compute"},
+    )
+
+    assert clusters[0].root_causes[0].category == "DEEP_PRIORITY_CHAIN"
 
 
 def test_net_dominated_cone_has_no_default_rtl_diagnosis() -> None:
