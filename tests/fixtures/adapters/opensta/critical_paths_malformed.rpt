@@ -1,0 +1,15 @@
+Startpoint: u_scheduler/start_reg
+            (rising edge-triggered flip-flop clocked by clk_scheduler)
+Endpoint: u_scheduler/end_reg
+          (rising edge-triggered flip-flop clocked by clk_scheduler)
+Path Group: clk_scheduler
+Path Type: max
+
+      Delay        Time   Description
+-----------------------------------------------------------------
+   0.100000    0.100000 ^ u_scheduler/start_reg/Q (DFFHQNx1_ASAP7_75t_R)
+   0.900000    1.000000 ^ u_scheduler/end_reg/D (DFFHQNx1_ASAP7_75t_R)
+               1.000000   data arrival time
+               1.000000   data required time
+-----------------------------------------------------------------
+              -0.500000   slack (VIOLATED)

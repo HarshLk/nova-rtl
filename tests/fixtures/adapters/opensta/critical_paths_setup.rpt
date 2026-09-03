@@ -1,0 +1,52 @@
+Startpoint: u_scheduler/start_reg
+            (rising edge-triggered flip-flop clocked by clk_scheduler)
+Endpoint: u_scheduler/end_reg
+          (rising edge-triggered flip-flop clocked by clk_scheduler)
+Path Group: clk_scheduler
+Path Type: max
+
+      Delay        Time   Description
+-----------------------------------------------------------------
+   0.100000    0.100000 ^ u_scheduler/start_reg/Q (DFFHQNx1_ASAP7_75t_R)
+   0.400000    0.500000 ^ u_scheduler/priority_and/Y (AND2x2_ASAP7_75t_R)
+   0.700000    1.200000 ^ u_scheduler/priority_mux/Y (AO21x2_ASAP7_75t_R)
+   0.000000       1.200000 ^ u_scheduler/end_reg/D (DFFHQNx1_ASAP7_75t_R)
+               1.200000   data arrival time
+
+               1.000000   data required time
+-----------------------------------------------------------------
+               1.000000   data required time
+              -1.200000   data arrival time
+-----------------------------------------------------------------
+              -0.200000   slack (VIOLATED)
+
+
+Startpoint: u_compute/start_reg
+            (rising edge-triggered flip-flop clocked by clk_compute)
+Endpoint: u_compute/end_reg
+          (rising edge-triggered flip-flop clocked by clk_compute)
+Path Group: clk_compute
+Path Type: max
+
+      Delay        Time   Description
+-----------------------------------------------------------------
+   0.100000    0.100000 ^ u_compute/start_reg/Q (DFFHQNx1_ASAP7_75t_R)
+   0.700000    0.800000 ^ u_compute/reduction/Y (XOR2x2_ASAP7_75t_R)
+   0.000000    0.800000 ^ u_compute/end_reg/D (DFFHQNx1_ASAP7_75t_R)
+               0.800000   data arrival time
+
+               1.000000   data required time
+-----------------------------------------------------------------
+               1.000000   data required time
+              -0.800000   data arrival time
+-----------------------------------------------------------------
+               0.200000   slack (MET)
+
+NOVA_OPENSTA_SUMMARY
+check: SETUP
+failing_endpoints: 1
+critical_path_delay_ns: 1.2
+setup_wns_ns: -0.2
+setup_tns_ns: -0.2
+estimated_fmax_mhz: 833.333333
+NOVA_OPENSTA_END
