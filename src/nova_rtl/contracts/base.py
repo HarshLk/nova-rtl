@@ -77,7 +77,18 @@ NonNegativeFloat = Annotated[float, Field(strict=True, ge=0, allow_inf_nan=False
 PositiveFloat = Annotated[float, Field(strict=True, gt=0, allow_inf_nan=False)]
 
 REGISTERED_STAGE_INPUT_EXTENSIONS = frozenset(
-    {"legacy_source_object", "legacy_migration_adapter"}
+    {
+        "analysis_view_set",
+        "cdc_inventory",
+        "clock_inventory",
+        "critical_path_records",
+        "evidence_graph",
+        "legacy_migration_adapter",
+        "legacy_source_object",
+        "protection_policy",
+        "synthesis_structure",
+        "transform_registry",
+    }
 )
 METRIC_VALUE_FIELDS = frozenset(
     {

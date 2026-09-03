@@ -357,3 +357,87 @@ def test_nonpass_stage_result_requires_a_diagnostic() -> None:
 
     with pytest.raises(ValidationError, match="diagnostic"):
         StageResult.model_validate(payload)
+
+
+def m3_metric_payload() -> dict[str, object]:
+    unavailable = {
+        "setup_wns_ns",
+        "setup_tns_ns",
+        "hold_wns_ns",
+        "hold_tns_ns",
+        "failing_endpoints",
+        "critical_path_delay_ns",
+        "estimated_fmax_mhz",
+        "mapped_area_um2",
+        "physical_area_um2",
+        "cell_count",
+        "register_count",
+        "buffer_count",
+        "power_total_uw",
+        "wirelength_um",
+        "congestion_overflow",
+    }
+    return {
+        "analysis_view_id": None,
+        **{name: None for name in unavailable},
+        "runtime_ms": 12,
+        "missing_metric_reasons": {
+            name: "not produced by this deterministic stage" for name in unavailable
+        },
+    }
+
+
+def m3_stage_result_payload(stage: str) -> dict[str, object]:
+    payload = stage_result_payload()
+    payload["stage"] = stage
+    payload["analysis_view_id"] = None
+    payload["metrics"] = m3_metric_payload()
+    hashes = payload["input_hashes"]
+    assert isinstance(hashes, dict)
+    hashes["analysis_view"] = None
+    if stage == "EVIDENCE_GRAPH":
+        hashes["extensions"] = {
+            "analysis_view_set": hash_ref("8"),
+            "cdc_inventory": hash_ref("9"),
+            "clock_inventory": hash_ref("a"),
+            "critical_path_records": hash_ref("b"),
+            "protection_policy": hash_ref("c"),
+            "synthesis_structure": hash_ref("d"),
+        }
+    else:
+        hashes["parent_stage_result"] = hash_ref("8")
+        hashes["extensions"] = {
+            "evidence_graph": hash_ref("9"),
+            "protection_policy": hash_ref("a"),
+            "transform_registry": hash_ref("b"),
+        }
+    return payload
+
+
+@pytest.mark.parametrize("stage", ["EVIDENCE_GRAPH", "OPPORTUNITY_FORMATION"])
+def test_m3_stage_results_require_complete_stage_specific_identity(stage: str) -> None:
+    payload = m3_stage_result_payload(stage)
+
+    result = StageResult.model_validate(payload)
+
+    assert result.stage == stage
+    assert result.analysis_view_id is None
+
+    missing_identity = m3_stage_result_payload(stage)
+    hashes = missing_identity["input_hashes"]
+    assert isinstance(hashes, dict)
+    extensions = hashes["extensions"]
+    assert isinstance(extensions, dict)
+    extensions.pop(next(iter(extensions)))
+    with pytest.raises(ValidationError, match="stage input extension identity is missing"):
+        StageResult.model_validate(missing_identity)
+
+
+def test_m3_extension_identities_cannot_leak_into_prior_stage_contracts() -> None:
+    payload = stage_result_payload()
+    hashes = payload["input_hashes"]
+    assert isinstance(hashes, dict)
+    hashes["extensions"] = {"evidence_graph": hash_ref("8")}
+
+    with pytest.raises(ValidationError, match="not valid for OPENSTA_FULL"):
+        StageResult.model_validate(payload)
