@@ -19,6 +19,27 @@ class IncompleteRequiredViewError(RuntimeError):
     """A required view, stage, metric, or immutable identity is incomplete."""
 
 
+_MEASURED_TIMING_VIOLATION_CODES = frozenset(
+    {
+        "TIMING_SETUP_VIOLATION",
+        "TIMING_HOLD_VIOLATION",
+        "PHYSICAL_TIMING_VIOLATION",
+    }
+)
+
+
+def is_complete_measured_timing_violation(result: StageResult) -> bool:
+    return (
+        result.status == "FAIL"
+        and result.stage in {"OPENSTA_FULL", "OPENROAD_PHYSICAL"}
+        and bool(result.diagnostics)
+        and all(
+            diagnostic.code in _MEASURED_TIMING_VIOLATION_CODES
+            for diagnostic in result.diagnostics
+        )
+    )
+
+
 class PerViewMetrics(StrictContract):
     analysis_view_id: EntityId
     check: Literal["SETUP", "HOLD", "POWER"]
@@ -86,9 +107,10 @@ def aggregate_required_views(
                 raise IncompleteRequiredViewError(
                     f"required view {contract.analysis_view_id} stage label mismatch for {stage}"
                 )
-            if result.status != "PASS":
+            if result.status != "PASS" and not is_complete_measured_timing_violation(result):
                 raise IncompleteRequiredViewError(
-                    f"required view {contract.analysis_view_id} stage {stage} is not PASS"
+                    f"required view {contract.analysis_view_id} stage {stage} "
+                    "is neither PASS nor a complete measured timing violation"
                 )
             input_hashes = result.input_hashes
             if (
@@ -213,4 +235,5 @@ __all__ = [
     "IncompleteRequiredViewError",
     "PerViewMetrics",
     "aggregate_required_views",
+    "is_complete_measured_timing_violation",
 ]

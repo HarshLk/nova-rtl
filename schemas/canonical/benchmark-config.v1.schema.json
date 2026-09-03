@@ -1,0 +1,119 @@
+{
+  "$defs": {
+    "BenchmarkMasterDomain": {
+      "additionalProperties": false,
+      "description": "Stable identity of one independently clocked benchmark subsystem.",
+      "properties": {
+        "domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "master_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Master Clock Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "domain_id",
+        "master_clock_id"
+      ],
+      "title": "BenchmarkMasterDomain",
+      "type": "object"
+    },
+    "MappedCellTarget": {
+      "additionalProperties": false,
+      "description": "Inclusive mapped standard-cell target used by later calibration.",
+      "properties": {
+        "maximum": {
+          "exclusiveMinimum": 0,
+          "title": "Maximum",
+          "type": "integer"
+        },
+        "minimum": {
+          "exclusiveMinimum": 0,
+          "title": "Minimum",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "minimum",
+        "maximum"
+      ],
+      "title": "MappedCellTarget",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Resolved, profile-specific input to deterministic benchmark generation.",
+  "properties": {
+    "divider_ratios": {
+      "items": {
+        "type": "integer"
+      },
+      "title": "Divider Ratios",
+      "type": "array"
+    },
+    "generated_clocks_per_master": {
+      "exclusiveMinimum": 0,
+      "title": "Generated Clocks Per Master",
+      "type": "integer"
+    },
+    "mapped_cell_target": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/MappedCellTarget"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "master_domains": {
+      "items": {
+        "$ref": "#/$defs/BenchmarkMasterDomain"
+      },
+      "title": "Master Domains",
+      "type": "array"
+    },
+    "profile": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Profile",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "template_version": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Template Version",
+      "type": "string"
+    },
+    "top_module": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Top Module",
+      "type": "string"
+    },
+    "workload_scale": {
+      "exclusiveMinimum": 0,
+      "title": "Workload Scale",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "profile",
+    "template_version",
+    "top_module",
+    "workload_scale",
+    "master_domains",
+    "generated_clocks_per_master",
+    "divider_ratios",
+    "mapped_cell_target"
+  ],
+  "title": "BenchmarkConfig",
+  "type": "object"
+}

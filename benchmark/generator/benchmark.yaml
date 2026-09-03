@@ -1,0 +1,47 @@
+schema_version: 1
+template_version: benchmark_template_v1
+top_module: nebula_top
+master_domains:
+  - domain_id: ingress
+    master_clock_id: clk_ingress
+  - domain_id: schedule
+    master_clock_id: clk_schedule
+  - domain_id: dma
+    master_clock_id: clk_dma
+  - domain_id: compute
+    master_clock_id: clk_compute
+  - domain_id: control
+    master_clock_id: clk_control
+divider_ratios:
+  - 2
+  - 3
+  - 4
+  - 5
+  - 6
+  - 7
+  - 8
+  - 10
+  - 12
+  - 16
+  - 20
+  - 24
+  - 25
+  - 32
+  - 40
+  - 48
+  - 50
+  - 64
+  - 80
+  - 96
+  - 128
+profiles:
+  tiny:
+    workload_scale: 1
+    generated_clocks_per_master: 2
+    mapped_cell_target: null
+  full:
+    workload_scale: 4
+    generated_clocks_per_master: 21
+    mapped_cell_target:
+      minimum: 45000
+      maximum: 55000

@@ -140,6 +140,29 @@ class ArtifactStore:
             classification=classification,
         )
 
+    def put_named_bytes(
+        self,
+        data: bytes,
+        *,
+        artifact_id: str,
+        media_type: str,
+        classification: Classification,
+        producer_stage_result_id: str | None,
+    ) -> ArtifactRef:
+        """Publish content once and return a resolvable semantic-role reference."""
+
+        content_ref = self.put_bytes(
+            data,
+            media_type=media_type,
+            classification=classification,
+        )
+        payload = content_ref.model_dump(mode="python")
+        payload.update(
+            artifact_id=artifact_id,
+            producer_stage_result_id=producer_stage_result_id,
+        )
+        return ArtifactRef.model_validate(payload)
+
     def blob_path(self, ref: ArtifactRef) -> Path:
         """Resolve a content URI only when all reference identities agree."""
 
@@ -153,7 +176,7 @@ class ArtifactStore:
             raise ArtifactIntegrityError(
                 f"artifact {ref.artifact_id} has an invalid content-addressed URI"
             )
-        if ref.sha256 != f"sha256:{digest}" or ref.artifact_id != f"artifact_{digest}":
+        if ref.sha256 != f"sha256:{digest}":
             raise ArtifactIntegrityError(
                 f"artifact {ref.artifact_id} content identities disagree"
             )

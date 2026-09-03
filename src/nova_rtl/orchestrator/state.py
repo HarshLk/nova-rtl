@@ -9,6 +9,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from nova_rtl.analysis_views.aggregation import is_complete_measured_timing_violation
 from nova_rtl.artifacts.ledger import ExperimentLedger
 from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.contracts.base import (
@@ -331,7 +332,10 @@ class RunOrchestrator:
         """Authorize reuse only for a successful exact StageInputHashes match."""
 
         return (
-            getattr(cached_stage, "status", None) == "PASS"
+            (
+                getattr(cached_stage, "status", None) == "PASS"
+                or is_complete_measured_timing_violation(cached_stage)  # type: ignore[arg-type]
+            )
             and getattr(cached_stage, "input_hashes", None) == requested_hashes
         )
 

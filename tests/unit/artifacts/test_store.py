@@ -52,6 +52,31 @@ def test_put_json_uses_canonical_contract_bytes(store: ArtifactStore) -> None:
     assert store.open_verified(ref).read() == b'{"count":2,"name":"counter"}'
 
 
+def test_named_refs_preserve_semantic_roles_while_resolving_content_bytes(
+    store: ArtifactStore,
+) -> None:
+    stdout = store.put_named_bytes(
+        b"",
+        artifact_id="stage_sim_stdout",
+        media_type="text/plain",
+        classification="INTERNAL",
+        producer_stage_result_id="stage_sim_001",
+    )
+    stderr = store.put_named_bytes(
+        b"",
+        artifact_id="stage_sim_stderr",
+        media_type="text/plain",
+        classification="INTERNAL",
+        producer_stage_result_id="stage_sim_001",
+    )
+
+    assert stdout.artifact_id != stderr.artifact_id
+    assert stdout.sha256 == stderr.sha256
+    assert stdout.uri == stderr.uri
+    assert store.open_verified(stdout).read() == b""
+    assert store.open_verified(stderr).read() == b""
+
+
 def test_concurrent_puts_publish_one_verified_blob(store: ArtifactStore) -> None:
     def put_once(_: int):
         return store.put_bytes(

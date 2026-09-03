@@ -1,0 +1,33 @@
+schema_version: 1
+workload_id: nebula_deterministic_power
+seed: 1592594996
+vcd_file: nebula_activity.vcd
+vcd_scope: tb_nebula.dut
+measurement_window_ns:
+  - 300.0
+  - 4300.0
+phases:
+  - phase_id: reset
+    start_ns: 0.0
+    end_ns: 100.0
+    activity_class: RESET
+  - phase_id: idle
+    start_ns: 100.0
+    end_ns: 300.0
+    activity_class: IDLE
+  - phase_id: bursts
+    start_ns: 300.0
+    end_ns: 1300.0
+    activity_class: BURST
+  - phase_id: arbitration
+    start_ns: 1300.0
+    end_ns: 2300.0
+    activity_class: ARBITRATION
+  - phase_id: backpressure
+    start_ns: 2300.0
+    end_ns: 3300.0
+    activity_class: BACKPRESSURE
+  - phase_id: cdc_traffic
+    start_ns: 3300.0
+    end_ns: 4300.0
+    activity_class: CDC_TRAFFIC

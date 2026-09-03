@@ -1,0 +1,287 @@
+{
+  "$defs": {
+    "GeneratedClockConstraint": {
+      "additionalProperties": false,
+      "description": "One generated-clock SDC binding and waveform declaration.",
+      "properties": {
+        "clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Clock Id",
+          "type": "string"
+        },
+        "divide_by": {
+          "exclusiveMinimum": 0,
+          "title": "Divide By",
+          "type": "integer"
+        },
+        "domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "edge_indices": {
+          "items": {
+            "exclusiveMinimum": 0,
+            "type": "integer"
+          },
+          "title": "Edge Indices",
+          "type": "array"
+        },
+        "master_clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Master Clock Id",
+          "type": "string"
+        },
+        "source_selector": {
+          "minLength": 1,
+          "title": "Source Selector",
+          "type": "string"
+        },
+        "target_selector": {
+          "minLength": 1,
+          "title": "Target Selector",
+          "type": "string"
+        },
+        "waveform_mode": {
+          "enum": [
+            "EVEN_DIVIDE_BY",
+            "ODD_EDGE_LIST"
+          ],
+          "title": "Waveform Mode",
+          "type": "string"
+        }
+      },
+      "required": [
+        "clock_id",
+        "domain_id",
+        "master_clock_id",
+        "source_selector",
+        "target_selector",
+        "divide_by",
+        "waveform_mode",
+        "edge_indices"
+      ],
+      "title": "GeneratedClockConstraint",
+      "type": "object"
+    },
+    "MasterClockConstraint": {
+      "additionalProperties": false,
+      "description": "One stable master-clock SDC binding.",
+      "properties": {
+        "clock_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Clock Id",
+          "type": "string"
+        },
+        "domain_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Domain Id",
+          "type": "string"
+        },
+        "period_ns": {
+          "exclusiveMinimum": 0,
+          "title": "Period Ns",
+          "type": "number"
+        },
+        "source_selector": {
+          "minLength": 1,
+          "title": "Source Selector",
+          "type": "string"
+        },
+        "waveform_ns": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "minimum": 0,
+              "type": "number"
+            }
+          ],
+          "title": "Waveform Ns",
+          "type": "array"
+        }
+      },
+      "required": [
+        "clock_id",
+        "domain_id",
+        "source_selector",
+        "period_ns",
+        "waveform_ns"
+      ],
+      "title": "MasterClockConstraint",
+      "type": "object"
+    },
+    "ReviewedConstraintException": {
+      "additionalProperties": false,
+      "description": "Narrow timing exception accepted by benchmark policy review.",
+      "properties": {
+        "exception_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Exception Id",
+          "type": "string"
+        },
+        "exception_type": {
+          "const": "FALSE_PATH",
+          "title": "Exception Type",
+          "type": "string"
+        },
+        "from_selector": {
+          "minLength": 1,
+          "title": "From Selector",
+          "type": "string"
+        },
+        "rationale": {
+          "minLength": 1,
+          "title": "Rationale",
+          "type": "string"
+        },
+        "to_selector": {
+          "minLength": 1,
+          "title": "To Selector",
+          "type": "string"
+        }
+      },
+      "required": [
+        "exception_id",
+        "exception_type",
+        "from_selector",
+        "to_selector",
+        "rationale"
+      ],
+      "title": "ReviewedConstraintException",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Complete profile-specific SDC semantics and stable selector inventory.",
+  "properties": {
+    "asynchronous_master_groups": {
+      "items": {
+        "items": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "title": "Asynchronous Master Groups",
+      "type": "array"
+    },
+    "contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Contract Hash",
+      "type": "string"
+    },
+    "expected_unconstrained_endpoints": {
+      "const": 0,
+      "title": "Expected Unconstrained Endpoints",
+      "type": "integer"
+    },
+    "generated_clocks": {
+      "items": {
+        "$ref": "#/$defs/GeneratedClockConstraint"
+      },
+      "title": "Generated Clocks",
+      "type": "array"
+    },
+    "hold_clock_uncertainty_ns": {
+      "minimum": 0,
+      "title": "Hold Clock Uncertainty Ns",
+      "type": "number"
+    },
+    "input_delay_clock_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Input Delay Clock Id",
+      "type": "string"
+    },
+    "input_delay_ns": {
+      "minimum": 0,
+      "title": "Input Delay Ns",
+      "type": "number"
+    },
+    "input_delay_selectors": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Input Delay Selectors",
+      "type": "array"
+    },
+    "master_clocks": {
+      "items": {
+        "$ref": "#/$defs/MasterClockConstraint"
+      },
+      "title": "Master Clocks",
+      "type": "array"
+    },
+    "output_delay_clock_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Output Delay Clock Id",
+      "type": "string"
+    },
+    "output_delay_ns": {
+      "minimum": 0,
+      "title": "Output Delay Ns",
+      "type": "number"
+    },
+    "output_delay_selectors": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Output Delay Selectors",
+      "type": "array"
+    },
+    "reviewed_exceptions": {
+      "items": {
+        "$ref": "#/$defs/ReviewedConstraintException"
+      },
+      "title": "Reviewed Exceptions",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sdc_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Sdc Hash",
+      "type": "string"
+    },
+    "setup_clock_uncertainty_ns": {
+      "minimum": 0,
+      "title": "Setup Clock Uncertainty Ns",
+      "type": "number"
+    },
+    "top_module": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Top Module",
+      "type": "string"
+    }
+  },
+  "required": [
+    "top_module",
+    "master_clocks",
+    "generated_clocks",
+    "asynchronous_master_groups",
+    "setup_clock_uncertainty_ns",
+    "hold_clock_uncertainty_ns",
+    "input_delay_ns",
+    "input_delay_clock_id",
+    "input_delay_selectors",
+    "output_delay_ns",
+    "output_delay_clock_id",
+    "output_delay_selectors",
+    "reviewed_exceptions",
+    "expected_unconstrained_endpoints",
+    "sdc_hash",
+    "contract_hash"
+  ],
+  "title": "BenchmarkConstraintContract",
+  "type": "object"
+}

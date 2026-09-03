@@ -9,8 +9,16 @@ from pathlib import Path
 from typing import Annotated
 
 import typer
+import yaml
+from pydantic import ValidationError
 
 from nova_rtl import __version__
+from nova_rtl.baseline.execution import analyze_run
+from nova_rtl.baseline.flow import BaselineFlowError, initialize_run, inspect_baseline_run
+from nova_rtl.baseline.signoff import M2SignoffError, run_m2_signoff, verify_m2_signoff
+from nova_rtl.benchmark.calibrate import CalibrationError, run_full_calibration
+from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_config
+from nova_rtl.benchmark.validate import validate_benchmark
 from nova_rtl.contracts.platform import PlatformLockRequest
 from nova_rtl.platform.activation import (
     ToolchainVerificationError,
@@ -65,6 +73,18 @@ m0_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m0_app, name="m0")
+benchmark_app = typer.Typer(
+    name="benchmark",
+    help="Generate and validate deterministic RTL benchmark snapshots.",
+    no_args_is_help=True,
+)
+app.add_typer(benchmark_app, name="benchmark")
+m2_app = typer.Typer(
+    name="m2",
+    help="Build and verify the trustworthy full-baseline M2 sign-off packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m2_app, name="m2")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -116,6 +136,316 @@ def _signoff_failure(error: Exception, json_output: bool) -> None:
     else:
         typer.echo(f"NOVA M0 sign-off: FAIL: {error}", err=True)
     raise typer.Exit(2)
+
+
+def _benchmark_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA benchmark generation: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+def _baseline_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA baseline: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+def _m2_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M2", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M2 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+@m2_app.command("signoff")
+def m2_signoff(
+    run_directory: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, readable=True, metavar="RUN_DIRECTORY"),
+    ],
+    calibration_directory: Annotated[
+        Path,
+        typer.Option(
+            "--calibration-directory",
+            exists=True,
+            file_okay=False,
+            readable=True,
+        ),
+    ],
+    m1_packet: Annotated[
+        Path,
+        typer.Option(
+            "--m1-packet",
+            exists=True,
+            file_okay=False,
+            readable=True,
+        ),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create and immediately verify the final commit-bound M2 packet."""
+
+    try:
+        path, report = run_m2_signoff(
+            run_directory,
+            calibration_directory,
+            m1_packet,
+            repository_root=repository_root,
+        )
+    except (M2SignoffError, OSError, ValidationError, ValueError) as error:
+        _m2_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M2 sign-off: PASS: {path}"
+    )
+
+
+@m2_app.command("verify")
+def m2_verify(
+    report_path: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT"),
+    ],
+    calibration_directory: Annotated[
+        Path,
+        typer.Option(
+            "--calibration-directory",
+            exists=True,
+            file_okay=False,
+            readable=True,
+        ),
+    ],
+    m1_packet: Annotated[
+        Path,
+        typer.Option(
+            "--m1-packet",
+            exists=True,
+            file_okay=False,
+            readable=True,
+        ),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Recompute and verify every identity in an M2 packet."""
+
+    try:
+        report = verify_m2_signoff(
+            report_path,
+            calibration_directory=calibration_directory,
+            m1_packet=m1_packet,
+            repository_root=repository_root,
+        )
+    except (M2SignoffError, OSError, ValidationError, ValueError) as error:
+        _m2_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M2 verification: PASS: {report_path.resolve()}"
+    )
+
+
+@app.command("init")
+def baseline_init(
+    project: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="PROJECT"),
+    ],
+    runs_root: Annotated[Path, typer.Option("--runs-root", file_okay=False)] = Path("runs"),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Snapshot a generated benchmark into a durable content-addressed run."""
+
+    try:
+        initialized = initialize_run(project, runs_root=runs_root)
+    except (BaselineFlowError, OSError, ValidationError, ValueError) as error:
+        _baseline_failure(error, json_output)
+    payload = {
+        "status": "INITIALIZED",
+        "run_id": initialized.run_id,
+        "run_directory": str(initialized.run_directory),
+        "design_contract_hash": initialized.design_contract_hash,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA baseline initialized: {initialized.run_directory}"
+    )
+
+
+@app.command("analyze")
+def baseline_analyze(
+    run_directory: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=False,
+            readable=True,
+            metavar="RUN_DIRECTORY",
+        ),
+    ],
+    stages: Annotated[
+        str,
+        typer.Option(
+            "--stages",
+            help="Comma-separated complete tiny baseline stage set.",
+        ),
+    ] = "yosys,opensta,binding,clock,cdc,formal-smoke,openroad",
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Execute or resume every required tiny-profile baseline stage."""
+
+    try:
+        analyze_run(run_directory, requested_stages=stages.split(","))
+        evidence = inspect_baseline_run(run_directory)
+    except (BaselineFlowError, OSError, ValidationError, ValueError) as error:
+        _baseline_failure(error, json_output)
+    payload = evidence.model_dump(mode="json")
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA baseline analysis: {evidence.status}: {run_directory.resolve()}"
+    )
+
+
+@benchmark_app.command("generate")
+def benchmark_generate(
+    config: Annotated[
+        Path,
+        typer.Option("--config", exists=True, dir_okay=False, readable=True),
+    ] = Path("benchmark/generator/benchmark.yaml"),
+    profile: Annotated[str, typer.Option("--profile")] = "full",
+    output: Annotated[
+        Path,
+        typer.Option("--output", help="New immutable benchmark snapshot directory."),
+    ] = Path("benchmark/build/generated"),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Generate one profile and atomically publish its content-addressed snapshot."""
+
+    try:
+        resolved = load_benchmark_config(config, profile)
+        snapshot = generate_benchmark(resolved, output)
+        validation = validate_benchmark(snapshot, snapshot.expectations)
+    except (FileNotFoundError, OSError, ValidationError, ValueError, yaml.YAMLError) as error:
+        _benchmark_failure(error, json_output)
+    payload = {
+        "status": validation.status,
+        "profile": snapshot.profile,
+        "expected_master_clocks": snapshot.expected_master_clocks,
+        "expected_generated_per_master": snapshot.expected_generated_per_master,
+        "expected_generated_total": snapshot.expected_generated_total,
+        "config_hash": snapshot.config_hash,
+        "template_hash": snapshot.template_hash,
+        "source_hash": snapshot.source_hash,
+        "snapshot_hash": snapshot.snapshot_hash,
+        "output": str(output.resolve()),
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA benchmark generation: {validation.status}: {output.resolve()}"
+    )
+
+
+@benchmark_app.command("calibrate")
+def benchmark_calibrate(
+    config: Annotated[
+        Path,
+        typer.Option("--config", exists=True, dir_okay=False, readable=True),
+    ] = Path("benchmark/generator/benchmark.yaml"),
+    output: Annotated[
+        Path,
+        typer.Option("--output", help="New immutable full calibration evidence directory."),
+    ] = Path("benchmark/build/full-calibration"),
+    max_samples: Annotated[
+        int,
+        typer.Option("--max-samples", min=1, max=12),
+    ] = 12,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Calibrate only the full profile's workload scale against locked ASAP7 Yosys."""
+
+    try:
+        resolved = load_benchmark_config(config, "full")
+        result = run_full_calibration(resolved, output, max_samples=max_samples)
+    except (
+        CalibrationError,
+        FileExistsError,
+        OSError,
+        ValidationError,
+        ValueError,
+        yaml.YAMLError,
+    ) as error:
+        _benchmark_failure(error, json_output)
+    payload = {
+        "status": result.report.status,
+        "selected_workload_scale": result.report.selected_workload_scale,
+        "samples": [
+            {
+                "workload_scale": sample.workload_scale,
+                "mapped_cell_count": sample.mapped_cell_count,
+                "config_hash": sample.config_hash,
+                "source_hash": sample.source_hash,
+                "recipe_hash": sample.recipe_hash,
+                "tool_build_hash": sample.tool_fingerprint.build_hash,
+            }
+            for sample in result.report.samples
+        ],
+        "report_hash": result.report.report_hash,
+        "report_artifact": result.report_artifact.model_dump(mode="json"),
+        "validation_hash": (
+            result.validation.evidence_hash if result.validation is not None else None
+        ),
+        "timing_violation_family_ids": (
+            result.validation.timing_violation_family_ids
+            if result.validation is not None
+            else ()
+        ),
+        "output": str(result.output),
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else (
+            "NOVA full benchmark calibration: "
+            f"{result.report.status}: scale={result.report.selected_workload_scale}: "
+            f"{result.output}"
+        )
+    )
 
 
 def _m1_signoff_failure(error: Exception, json_output: bool) -> None:

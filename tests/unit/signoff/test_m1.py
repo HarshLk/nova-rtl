@@ -53,9 +53,47 @@ def schema_manifest_hash(schema_files: tuple[SignoffEvidenceFile, ...]) -> str:
 def build_packet(tmp_path: Path) -> Path:
     packet = tmp_path / "m1-packet"
     packet.mkdir()
+    commit = subprocess.run(
+        ["git", "--no-replace-objects", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    tracked_schemas = subprocess.run(
+        [
+            "git",
+            "--no-replace-objects",
+            "-C",
+            str(PROJECT_ROOT),
+            "ls-tree",
+            "-r",
+            "--name-only",
+            commit,
+            "--",
+            "schemas/canonical",
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.splitlines()
     schema_files = tuple(
-        write_evidence(packet, f"schemas/{path.name}", path.read_bytes())
-        for path in sorted((PROJECT_ROOT / "schemas/canonical").glob("*.schema.json"))
+        write_evidence(
+            packet,
+            f"schemas/{Path(path).name}",
+            subprocess.run(
+                [
+                    "git",
+                    "--no-replace-objects",
+                    "-C",
+                    str(PROJECT_ROOT),
+                    "show",
+                    f"{commit}:{path}",
+                ],
+                check=True,
+                capture_output=True,
+            ).stdout,
+        )
+        for path in sorted(path for path in tracked_schemas if path.endswith(".schema.json"))
     )
     digest = schema_manifest_hash(schema_files)
     replay_digest = hash_ref(b"replay-events")
@@ -134,14 +172,15 @@ def build_packet(tmp_path: Path) -> Path:
             output=write_evidence(packet, f"reports/{evidence_id}.txt", output),
         )
 
-    commit = subprocess.run(
-        ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD"],
-        check=True,
-        capture_output=True,
-        text=True,
-    ).stdout.strip()
     tree_hash = subprocess.run(
-        ["git", "-C", str(PROJECT_ROOT), "rev-parse", "HEAD^{tree}"],
+        [
+            "git",
+            "--no-replace-objects",
+            "-C",
+            str(PROJECT_ROOT),
+            "rev-parse",
+            "HEAD^{tree}",
+        ],
         check=True,
         capture_output=True,
         text=True,
@@ -160,7 +199,7 @@ def build_packet(tmp_path: Path) -> Path:
         schema_export_digest_first=digest,
         schema_export_digest_second=digest,
         schema_files=schema_files,
-        schema_test=command("schema_tests", b"54 passed\n"),
+        schema_test=command("schema_tests", f"{len(schema_files)} passed\n".encode()),
         artifact_corruption_test=command("artifact_corruption_test", b"1 passed\n"),
         replay_test=command("replay_tests", b"2 passed\n"),
         m1_regression_test=command("m1_regression_tests", b"170 passed\n"),
@@ -183,7 +222,11 @@ def test_verify_m1_packet_accepts_exact_commit_bound_evidence(tmp_path: Path) ->
 
     assert report.status == "PASS"
     assert report.replay_digest == hash_ref(b"replay-events")
-    assert len(report.schema_files) == 54
+    assert {
+        "schemas/artifact-ref.v1.schema.json",
+        "schemas/run-event.v1.schema.json",
+        "schemas/stage-result.v2.schema.json",
+    } <= {item.relative_path for item in report.schema_files}
 
 
 @pytest.mark.parametrize("mutation", ["artifact", "unexpected", "commit"])
