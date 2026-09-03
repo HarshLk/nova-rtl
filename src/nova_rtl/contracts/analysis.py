@@ -156,6 +156,7 @@ class CriticalPathRecord(StrictContract):
     path_id: EntityId
     candidate_id: EntityId
     analysis_view_id: EntityId
+    path_type: Literal["MAX", "MIN"] = "MAX"
     path_group: NonEmptyString
     launch_clock_id: EntityId
     capture_clock_id: EntityId
@@ -174,9 +175,16 @@ class CriticalPathRecord(StrictContract):
 
     @model_validator(mode="after")
     def timing_arithmetic_and_sequences_are_consistent(self) -> Self:
-        expected_slack = self.required_ns - self.arrival_ns
+        expected_slack = (
+            self.required_ns - self.arrival_ns
+            if self.path_type == "MAX"
+            else self.arrival_ns - self.required_ns
+        )
         if abs(self.slack_ns - expected_slack) > 1e-6:
-            raise ValueError("slack_ns must equal required_ns - arrival_ns within parser tolerance")
+            raise ValueError(
+                "slack_ns must match MAX required_ns - arrival_ns or "
+                "MIN arrival_ns - required_ns within parser tolerance"
+            )
         if len(self.source_span_refs) != len(set(self.source_span_refs)):
             raise ValueError("source_span_refs must be unique")
         return self

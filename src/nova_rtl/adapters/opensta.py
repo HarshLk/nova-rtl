@@ -100,7 +100,7 @@ def _parse_path(
     start = _required_match(_START, block, "startpoint")
     endpoint = _required_match(_END, block, "endpoint")
     path_group = _required_match(_PATH_GROUP, block, "path group").group("group")
-    _required_match(_PATH_TYPE, block, "path type")
+    path_type = _required_match(_PATH_TYPE, block, "path type").group("kind")
 
     start_description = _description(start)
     endpoint_description = _description(endpoint)
@@ -121,15 +121,25 @@ def _parse_path(
     if slack_match is None:
         raise CriticalPathParseError("timing path is missing slack")
     slack_value = Decimal(slack_match.group(1))
-    arithmetic_error = abs((required_value - arrival_value) - slack_value)
+    expected_slack = (
+        required_value - arrival_value
+        if path_type == "max"
+        else arrival_value - required_value
+    )
+    arithmetic_error = abs(expected_slack - slack_value)
     if arithmetic_error > Decimal("0.000010"):
         raise CriticalPathParseError("timing path slack arithmetic is inconsistent")
     arrival = float(arrival_value)
     slack = float(slack_value)
-    # OpenSTA reports six decimal places from separately accumulated values;
-    # real reports can differ by a few final-place units. Preserve the explicit
-    # arrival/slack evidence and normalize their implied required time.
-    required = float(arrival_value + slack_value)
+    # OpenSTA reports six decimal places from separately accumulated values.
+    # Preserve raw values when they satisfy the canonical tolerance; otherwise
+    # normalize only the final-place rounding discrepancy.
+    if arithmetic_error < Decimal("0.000001"):
+        required = float(required_value)
+    elif path_type == "max":
+        required = float(arrival_value + slack_value)
+    else:
+        required = float(arrival_value - slack_value)
 
     data_section = block.split("data arrival time", maxsplit=1)[0]
     points = tuple(_POINT.finditer(data_section))
@@ -158,6 +168,7 @@ def _parse_path(
             path_id=f"path_{identity[:24]}",
             candidate_id=candidate_id,
             analysis_view_id=analysis_view_id,
+            path_type=path_type.upper(),
             path_group=path_group,
             launch_clock_id=clock_ids_by_name[launch_name],
             capture_clock_id=clock_ids_by_name[capture_name],

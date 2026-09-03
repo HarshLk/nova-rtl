@@ -191,6 +191,10 @@ def test_critical_path_record_checks_parser_arithmetic() -> None:
     with pytest.raises(ValidationError, match="required_ns - arrival_ns"):
         CriticalPathRecord.model_validate(inconsistent)
 
+    hold = critical_path_payload()
+    hold.update(path_type="MIN", arrival_ns=0.2, required_ns=0.1, slack_ns=0.1)
+    assert CriticalPathRecord.model_validate(hold).path_type == "MIN"
+
 
 def test_clock_inventory_requires_five_masters_complete_lineage_and_consumers() -> None:
     inventory = ClockInventory.model_validate(clock_inventory_payload())

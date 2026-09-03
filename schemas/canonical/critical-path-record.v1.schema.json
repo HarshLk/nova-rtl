@@ -70,6 +70,15 @@
       "title": "Path Id",
       "type": "string"
     },
+    "path_type": {
+      "default": "MAX",
+      "enum": [
+        "MAX",
+        "MIN"
+      ],
+      "title": "Path Type",
+      "type": "string"
+    },
     "raw_report_artifact_id": {
       "pattern": "^[a-z][a-z0-9_]{2,95}$",
       "title": "Raw Report Artifact Id",

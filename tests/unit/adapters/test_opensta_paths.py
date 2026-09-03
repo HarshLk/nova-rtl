@@ -106,6 +106,22 @@ def test_opensta_paths_accept_inline_port_descriptions() -> None:
     assert record.startpoint == "port:workload_phase[2]"
 
 
+def test_opensta_paths_use_min_delay_arithmetic_for_hold() -> None:
+    report = (FIXTURES / "critical_paths_setup.rpt").read_text(encoding="utf-8")
+    _, compute = report.split("Startpoint: u_compute/start_reg", maxsplit=1)
+    compute = compute.replace("Path Type: max", "Path Type: min", 1)
+    compute = compute.replace("0.800000   data arrival time", "0.056996   data arrival time")
+    compute = compute.replace("1.000000   data required time", "0.031710   data required time")
+    compute = compute.replace("-0.800000   data arrival time", "-0.056996   data arrival time")
+    compute = compute.replace("0.200000   slack (MET)", "0.025286   slack (MET)")
+
+    record = parse("Startpoint: u_compute/start_reg" + compute)[0]
+
+    assert record.path_type == "MIN"
+    assert record.required_ns == 0.031710
+    assert record.slack_ns == pytest.approx(record.arrival_ns - record.required_ns)
+
+
 def test_opensta_paths_require_at_least_one_complete_path() -> None:
     with pytest.raises(CriticalPathParseError, match="no complete timing paths"):
         parse("NOVA_OPENSTA_SUMMARY\ncheck: SETUP\nNOVA_OPENSTA_END\n")
