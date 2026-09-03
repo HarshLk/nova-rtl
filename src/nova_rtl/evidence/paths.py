@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+import math
 from collections import Counter
 from collections.abc import Mapping, Sequence
 
-from nova_rtl.contracts.analysis import CriticalPathRecord
+from nova_rtl.contracts.analysis import CDCInventory, CriticalPathRecord
 from nova_rtl.contracts.base import canonical_sha256
 from nova_rtl.contracts.optimization import RootCause
 from nova_rtl.evidence.models import PathCluster, PathFeatureVector
@@ -159,6 +160,9 @@ def cluster_paths(
     evidence_snapshot_hash: str,
     source_map: SourceMapSnapshot,
     clock_domain_by_id: Mapping[str, str],
+    cdc_inventory: CDCInventory | None = None,
+    tns_by_analysis_view: Mapping[str, float] | None = None,
+    wns_by_analysis_view: Mapping[str, float] | None = None,
 ) -> tuple[PathCluster, ...]:
     """Cluster source-mapped paths by shared cone and classify root causes."""
 
@@ -185,7 +189,147 @@ def cluster_paths(
             raise PathClusteringError(f"path {path.path_id} contains unknown source span")
         domain_by_path[path.path_id] = domain
 
-    negative_total = sum(max(-path.slack_ns, 0.0) for path in ordered_paths)
+    cdc_endpoints = (
+        {
+            endpoint
+            for crossing in cdc_inventory.crossings
+            for endpoint in (crossing.source_object, crossing.destination_object)
+        }
+        if cdc_inventory is not None
+        else set()
+    )
+
+    def matches_cdc_endpoint(semantic_name: str, endpoint: str) -> bool:
+        structural_name = semantic_name.split(":", maxsplit=1)[-1]
+        base_name = structural_name.split("[", maxsplit=1)[0]
+        normalized_endpoint = endpoint.split(":", maxsplit=1)[-1]
+        return base_name == normalized_endpoint or base_name.startswith(
+            f"{normalized_endpoint}/"
+        )
+
+    def matches_endpoint_leaf(semantic_name: str, endpoint: str) -> bool:
+        structural_name = semantic_name.split(":", maxsplit=1)[-1]
+        base_name = structural_name.split("[", maxsplit=1)[0]
+        normalized_endpoint = endpoint.split(":", maxsplit=1)[-1]
+        return base_name.rsplit("/", maxsplit=1)[-1] == normalized_endpoint.rsplit(
+            "/", maxsplit=1
+        )[-1]
+
+    def object_matches_cdc_endpoint(item: MappedObjectRecord, endpoint: str) -> bool:
+        return matches_cdc_endpoint(item.semantic_name, endpoint) or any(
+            matches_cdc_endpoint(alias, endpoint) for alias in item.structural_aliases
+        )
+
+    def objects_for_endpoint(endpoint: str) -> tuple[MappedObjectRecord, ...]:
+        exact = tuple(
+            item
+            for item in source_map.mapped_objects
+            if object_matches_cdc_endpoint(item, endpoint)
+        )
+        if exact:
+            return exact
+        return tuple(
+            item
+            for item in source_map.mapped_objects
+            if any(
+                matches_endpoint_leaf(alias, endpoint)
+                for alias in item.structural_aliases
+            )
+        )
+
+    cdc_objects_by_endpoint = {
+        endpoint: objects_for_endpoint(endpoint) for endpoint in cdc_endpoints
+    }
+    cdc_object_ids = {
+        item.object_id
+        for objects in cdc_objects_by_endpoint.values()
+        for item in objects
+    }
+
+    cdc_object_names = {
+        item.semantic_name
+        for item in source_map.mapped_objects
+        if item.object_id in cdc_object_ids
+    }
+    if cdc_inventory is not None:
+        for crossing in cdc_inventory.crossings:
+            for role, endpoint in (
+                ("source", crossing.source_object),
+                ("destination", crossing.destination_object),
+            ):
+                if not cdc_objects_by_endpoint[endpoint]:
+                    raise PathClusteringError(
+                        f"CDC crossing {crossing.crossing_id} has unresolved {role} endpoint"
+                    )
+    cdc_neighbor_names = {
+        edge.destination_object
+        for edge in source_map.connectivity_edges
+        if edge.source_object in cdc_object_names
+    } | {
+        edge.source_object
+        for edge in source_map.connectivity_edges
+        if edge.destination_object in cdc_object_names
+    }
+
+    negative_by_view = {
+        view_id: sum(
+            max(-path.slack_ns, 0.0)
+            for path in ordered_paths
+            if path.analysis_view_id == view_id
+        )
+        for view_id in {path.analysis_view_id for path in ordered_paths}
+    }
+    if tns_by_analysis_view is None:
+        measured_tns_by_view = negative_by_view
+    else:
+        missing_views = set(negative_by_view) - set(tns_by_analysis_view)
+        if missing_views:
+            raise PathClusteringError(
+                f"missing measured TNS for analysis view: {sorted(missing_views)[0]}"
+            )
+        measured_tns_by_view = {}
+        for view_id, reported_negative in negative_by_view.items():
+            measured_tns = float(tns_by_analysis_view[view_id])
+            if not math.isfinite(measured_tns) or measured_tns > 1e-6:
+                raise PathClusteringError(
+                    f"invalid measured TNS for analysis view: {view_id}"
+                )
+            measured_negative = abs(min(measured_tns, 0.0))
+            if (reported_negative > 1e-6) != (measured_negative > 1e-6):
+                raise PathClusteringError(
+                    f"measured TNS disagrees with critical paths for analysis view: {view_id}"
+                )
+            worst_negative = max(
+                (
+                    max(-path.slack_ns, 0.0)
+                    for path in ordered_paths
+                    if path.analysis_view_id == view_id
+                ),
+                default=0.0,
+            )
+            if measured_negative + 1e-4 < worst_negative:
+                raise PathClusteringError(
+                    f"measured TNS is smaller than WNS for analysis view: {view_id}"
+                )
+            measured_tns_by_view[view_id] = measured_negative
+    if wns_by_analysis_view is not None:
+        missing_wns = set(negative_by_view) - set(wns_by_analysis_view)
+        if missing_wns:
+            raise PathClusteringError(
+                f"missing measured WNS for analysis view: {sorted(missing_wns)[0]}"
+            )
+        for view_id in negative_by_view:
+            measured_wns = float(wns_by_analysis_view[view_id])
+            parsed_wns = min(
+                path.slack_ns
+                for path in ordered_paths
+                if path.analysis_view_id == view_id
+            )
+            if not math.isfinite(measured_wns) or abs(measured_wns - parsed_wns) > 1e-4:
+                raise PathClusteringError(
+                    f"measured WNS disagrees with critical paths for analysis view: {view_id}"
+                )
+    negative_total = sum(measured_tns_by_view.values())
     clusters = []
     for group in _partition(ordered_paths, domain_by_path):
         worst = min(group, key=lambda item: (item.slack_ns, item.path_id))
@@ -203,7 +347,15 @@ def cluster_paths(
             sorted({span for path in group for span in path.source_span_refs})
         )
         protected_neighbor_ids = tuple(
-            sorted({item.object_id for item in records if item.protected})
+            sorted(
+                {
+                    item.object_id
+                    for item in records
+                    if item.protected
+                    or item.object_id in cdc_object_ids
+                    or item.semantic_name in cdc_neighbor_names
+                }
+            )
         )
         cell_delay = sum(path.cell_delay_ns for path in group)
         net_delay = sum(path.net_delay_ns for path in group)
@@ -233,7 +385,14 @@ def cluster_paths(
             if source_span_ids
             else 0.0
         )
-        cluster_negative = sum(max(-path.slack_ns, 0.0) for path in group)
+        cluster_negative = sum(
+            measured_tns_by_view[path.analysis_view_id]
+            * max(-path.slack_ns, 0.0)
+            / negative_by_view[path.analysis_view_id]
+            if negative_by_view[path.analysis_view_id]
+            else 0.0
+            for path in group
+        )
         tns_share = 100.0 * cluster_negative / negative_total if negative_total else 0.0
         features = PathFeatureVector(
             worst_slack_ns=worst.slack_ns,

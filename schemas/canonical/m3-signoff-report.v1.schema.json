@@ -1,0 +1,236 @@
+{
+  "additionalProperties": false,
+  "description": "Commit-bound, independently reconstructed M3 milestone evidence.",
+  "properties": {
+    "cluster_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cluster Artifact Hash",
+      "type": "string"
+    },
+    "cluster_collection_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cluster Collection Hash",
+      "type": "string"
+    },
+    "cluster_count": {
+      "exclusiveMinimum": 0,
+      "title": "Cluster Count",
+      "type": "integer"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "editability_counts": {
+      "patternProperties": {
+        "^[A-Z][A-Z0-9_]{2,95}$": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "Editability Counts",
+      "type": "object"
+    },
+    "editable_opportunity_count": {
+      "exclusiveMinimum": 0,
+      "title": "Editable Opportunity Count",
+      "type": "integer"
+    },
+    "evidence_input_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Input Hash",
+      "type": "string"
+    },
+    "evidence_snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Snapshot Hash",
+      "type": "string"
+    },
+    "evidence_stage_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evidence Stage Result Hash",
+      "type": "string"
+    },
+    "expected_generated_clocks": {
+      "const": 105,
+      "title": "Expected Generated Clocks",
+      "type": "integer"
+    },
+    "expected_master_clocks": {
+      "const": 5,
+      "title": "Expected Master Clocks",
+      "type": "integer"
+    },
+    "graph_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Graph Artifact Hash",
+      "type": "string"
+    },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
+    "input_set_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Set Hash",
+      "type": "string"
+    },
+    "ledger_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ledger Hash",
+      "type": "string"
+    },
+    "m2_commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M2 Commit Sha",
+      "type": "string"
+    },
+    "m2_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M2 Packet Hash",
+      "type": "string"
+    },
+    "m2_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M2 Report Hash",
+      "type": "string"
+    },
+    "opportunity_count": {
+      "exclusiveMinimum": 0,
+      "title": "Opportunity Count",
+      "type": "integer"
+    },
+    "opportunity_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Opportunity Policy Hash",
+      "type": "string"
+    },
+    "opportunity_stage_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Opportunity Stage Result Hash",
+      "type": "string"
+    },
+    "path_collection_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Path Collection Hash",
+      "type": "string"
+    },
+    "path_count": {
+      "exclusiveMinimum": 0,
+      "title": "Path Count",
+      "type": "integer"
+    },
+    "path_record_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Path Record Artifact Hash",
+      "type": "string"
+    },
+    "profile": {
+      "const": "full",
+      "title": "Profile",
+      "type": "string"
+    },
+    "ranked_opportunity_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ranked Opportunity Artifact Hash",
+      "type": "string"
+    },
+    "ranking_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ranking Hash",
+      "type": "string"
+    },
+    "replay_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Replay Digest",
+      "type": "string"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "root_cause_counts": {
+      "patternProperties": {
+        "^[A-Z][A-Z0-9_]{2,95}$": {
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "title": "Root Cause Counts",
+      "type": "object"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "run_index_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Run Index Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "source_map_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Map Artifact Hash",
+      "type": "string"
+    },
+    "source_map_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Map Hash",
+      "type": "string"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "implementation_tree_hash",
+    "m2_commit_sha",
+    "m2_packet_hash",
+    "m2_report_hash",
+    "run_id",
+    "profile",
+    "expected_master_clocks",
+    "expected_generated_clocks",
+    "run_index_hash",
+    "evidence_stage_result_hash",
+    "opportunity_stage_result_hash",
+    "evidence_input_hash",
+    "evidence_snapshot_hash",
+    "graph_artifact_hash",
+    "source_map_hash",
+    "source_map_artifact_hash",
+    "path_collection_hash",
+    "path_record_artifact_hash",
+    "cluster_collection_hash",
+    "cluster_artifact_hash",
+    "opportunity_policy_hash",
+    "ranked_opportunity_artifact_hash",
+    "ranking_hash",
+    "path_count",
+    "cluster_count",
+    "opportunity_count",
+    "editable_opportunity_count",
+    "root_cause_counts",
+    "editability_counts",
+    "replay_digest",
+    "ledger_hash",
+    "input_set_hash",
+    "report_hash"
+  ],
+  "title": "M3SignoffReport",
+  "type": "object"
+}

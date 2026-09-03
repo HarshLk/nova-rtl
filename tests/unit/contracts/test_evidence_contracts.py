@@ -12,6 +12,7 @@ from nova_rtl.contracts.analysis import (
     CriticalPathRecord,
     EvidenceGraphSnapshot,
 )
+from nova_rtl.contracts.base import canonical_json_bytes, canonical_sha256
 
 
 def hash_ref(digit: str) -> str:
@@ -151,7 +152,9 @@ def cdc_inventory_payload() -> dict[str, object]:
 def evidence_graph_payload() -> dict[str, object]:
     payload: dict[str, object] = {
         "schema_version": 1,
+        "evidence_input_hash": hash_ref("7"),
         "snapshot_hash": hash_ref("0"),
+        "snapshot_index_hash": hash_ref("0"),
         "node_schema_version": 1,
         "edge_schema_version": 1,
         "node_counts": {"CELL": 100, "PIN": 300},
@@ -178,7 +181,16 @@ def evidence_graph_payload() -> dict[str, object]:
         "cdc_inventory_id": "cdc_inventory_baseline",
         "evidence_resolution_index_hash": hash_ref("6"),
     }
-    payload["snapshot_hash"] = canonical_payload_hash(payload, "snapshot_hash")
+    payload["snapshot_hash"] = canonical_sha256(
+        {
+            "edge_schema_version": payload["edge_schema_version"],
+            "evidence_input_hash": payload["evidence_input_hash"],
+            "node_schema_version": payload["node_schema_version"],
+        }
+    )
+    payload["snapshot_index_hash"] = canonical_payload_hash(
+        payload, "snapshot_index_hash"
+    )
     return payload
 
 
@@ -194,6 +206,16 @@ def test_critical_path_record_checks_parser_arithmetic() -> None:
     hold = critical_path_payload()
     hold.update(path_type="MIN", arrival_ns=0.2, required_ns=0.1, slack_ns=0.1)
     assert CriticalPathRecord.model_validate(hold).path_type == "MIN"
+
+
+def test_critical_path_v1_replay_preserves_absent_default_path_type() -> None:
+    legacy = critical_path_payload()
+    encoded = canonical_json_bytes(legacy)
+
+    record = CriticalPathRecord.model_validate_json(encoded)
+
+    assert record.path_type == "MAX"
+    assert canonical_json_bytes(record) == encoded
 
 
 def test_clock_inventory_requires_five_masters_complete_lineage_and_consumers() -> None:
@@ -246,13 +268,13 @@ def test_evidence_graph_snapshot_binds_all_indexes_and_artifacts() -> None:
     upstream_artifacts["path_record_artifact"]["producer_stage_result_id"] = (
         "stage_opensta_001"
     )
-    upstream_artifacts["snapshot_hash"] = canonical_payload_hash(
-        upstream_artifacts, "snapshot_hash"
+    upstream_artifacts["snapshot_index_hash"] = canonical_payload_hash(
+        upstream_artifacts, "snapshot_index_hash"
     )
     graph = EvidenceGraphSnapshot.model_validate(upstream_artifacts)
     assert graph.source_map_artifact.producer_stage_result_id == "stage_yosys_001"
 
     tampered = evidence_graph_payload()
     tampered["clock_inventory_id"] = "clock_inventory_other"
-    with pytest.raises(ValidationError, match="snapshot_hash"):
+    with pytest.raises(ValidationError, match="snapshot_index_hash"):
         EvidenceGraphSnapshot.model_validate(tampered)

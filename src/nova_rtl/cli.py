@@ -21,6 +21,7 @@ from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_conf
 from nova_rtl.benchmark.validate import validate_benchmark
 from nova_rtl.contracts.platform import PlatformLockRequest
 from nova_rtl.evidence.execution import EvidenceExecutionError, analyze_evidence_run
+from nova_rtl.evidence.signoff import M3SignoffError, run_m3_signoff, verify_m3_signoff
 from nova_rtl.platform.activation import (
     ToolchainVerificationError,
     create_toolchain_receipt,
@@ -86,6 +87,12 @@ m2_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m2_app, name="m2")
+m3_app = typer.Typer(
+    name="m3",
+    help="Build and verify the source-mapped evidence and opportunity sign-off packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m3_app, name="m3")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -178,6 +185,20 @@ def _m2_failure(error: Exception, json_output: bool) -> None:
         )
     else:
         typer.echo(f"NOVA M2 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+def _m3_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M3", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M3 sign-off: FAIL: {error}", err=True)
     raise typer.Exit(2)
 
 
@@ -276,6 +297,74 @@ def m2_verify(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA M2 verification: PASS: {report_path.resolve()}"
+    )
+
+
+@m3_app.command("signoff")
+def m3_signoff(
+    run_directory: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, readable=True, metavar="RUN_DIRECTORY"),
+    ],
+    m2_packet: Annotated[
+        Path,
+        typer.Option("--m2-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create and immediately verify the final commit-bound M3 packet."""
+
+    try:
+        path, report = run_m3_signoff(
+            run_directory,
+            m2_packet,
+            repository_root=repository_root,
+        )
+    except (M3SignoffError, OSError, ValidationError, ValueError) as error:
+        _m3_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M3 sign-off: PASS: {path}"
+    )
+
+
+@m3_app.command("verify")
+def m3_verify(
+    report_path: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT"),
+    ],
+    m2_packet: Annotated[
+        Path,
+        typer.Option("--m2-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Reconstruct and verify every identity in an M3 packet."""
+
+    try:
+        report = verify_m3_signoff(
+            report_path,
+            m2_packet=m2_packet,
+            repository_root=repository_root,
+        )
+    except (M3SignoffError, OSError, ValidationError, ValueError) as error:
+        _m3_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M3 verification: PASS: {report_path.resolve()}"
     )
 
 

@@ -23,6 +23,9 @@ def mux_source_map() -> SourceMapSnapshot:
         "rtl_snapshot_hash": original.rtl_snapshot_hash,
         "synthesis_structure_hash": original.synthesis_structure_hash,
         "mapped_objects": tuple(item.model_dump(mode="json") for item in objects),
+        "connectivity_edges": tuple(
+            item.model_dump(mode="json") for item in original.connectivity_edges
+        ),
         "source_spans": tuple(
             item.model_dump(mode="json") for item in original.source_spans
         ),
@@ -32,6 +35,7 @@ def mux_source_map() -> SourceMapSnapshot:
         rtl_snapshot_hash=original.rtl_snapshot_hash,
         synthesis_structure_hash=original.synthesis_structure_hash,
         mapped_objects=tuple(objects),
+        connectivity_edges=original.connectivity_edges,
         source_spans=original.source_spans,
         source_map_hash=canonical_sha256(payload),
     )
@@ -52,6 +56,9 @@ def seeded_lane_source_map() -> SourceMapSnapshot:
         "rtl_snapshot_hash": original.rtl_snapshot_hash,
         "synthesis_structure_hash": original.synthesis_structure_hash,
         "mapped_objects": tuple(item.model_dump(mode="json") for item in objects),
+        "connectivity_edges": tuple(
+            item.model_dump(mode="json") for item in original.connectivity_edges
+        ),
         "source_spans": tuple(
             item.model_dump(mode="json") for item in original.source_spans
         ),
@@ -61,6 +68,7 @@ def seeded_lane_source_map() -> SourceMapSnapshot:
         rtl_snapshot_hash=original.rtl_snapshot_hash,
         synthesis_structure_hash=original.synthesis_structure_hash,
         mapped_objects=tuple(objects),
+        connectivity_edges=original.connectivity_edges,
         source_spans=original.source_spans,
         source_map_hash=canonical_sha256(payload),
     )
@@ -173,6 +181,58 @@ def test_protected_cone_is_classified_unsafe() -> None:
     assert clusters[0].root_causes[0].category == "CDC_ADJACENT_UNSAFE_TO_EDIT"
 
 
+def test_cdc_inventory_endpoint_marks_an_otherwise_editable_path_unsafe() -> None:
+    from nova_rtl.contracts.analysis import CDCInventory
+    from nova_rtl.contracts.base import canonical_sha256
+    from tests.unit.contracts.test_evidence_contracts import cdc_inventory_payload
+
+    payload = cdc_inventory_payload()
+    payload["crossings"][0]["source_object"] = "u_lane/_1_/A"
+    payload["crossings"][0]["destination_object"] = "u_sync/_2_/D"
+    payload["inventory_hash"] = canonical_sha256(
+        {key: value for key, value in payload.items() if key != "inventory_hash"}
+    )
+    cdc = CDCInventory.model_validate(payload)
+
+    clusters = cluster_paths(
+        (path("path_cdc_adjacent", view="asap7_setup", slack=-0.2),),
+        evidence_snapshot_hash=SNAPSHOT_HASH,
+        source_map=mux_source_map(),
+        clock_domain_by_id={"clk_master_0": "domain_compute"},
+        cdc_inventory=cdc,
+    )
+
+    assert clusters[0].protected_neighbor_ids
+    assert clusters[0].root_causes[0].category == "CDC_ADJACENT_UNSAFE_TO_EDIT"
+
+
+def test_one_hop_cdc_neighbor_is_unsafe_to_edit() -> None:
+    from nova_rtl.contracts.analysis import CDCInventory
+    from tests.unit.contracts.test_evidence_contracts import cdc_inventory_payload
+
+    payload = cdc_inventory_payload()
+    payload["crossings"][0]["source_object"] = "u_lane/_1_/A"
+    payload["crossings"][0]["destination_object"] = "u_sync/_2_/D"
+    payload["inventory_hash"] = canonical_sha256(
+        {key: value for key, value in payload.items() if key != "inventory_hash"}
+    )
+    cdc = CDCInventory.model_validate(payload)
+    adjacent_path = path("path_cdc_neighbor", view="asap7_setup", slack=-0.2).model_copy(
+        update={"object_sequence": ("pin:u_lane/a",)}
+    )
+
+    cluster = cluster_paths(
+        (adjacent_path,),
+        evidence_snapshot_hash=SNAPSHOT_HASH,
+        source_map=mux_source_map(),
+        clock_domain_by_id={"clk_master_0": "domain_compute"},
+        cdc_inventory=cdc,
+    )[0]
+
+    assert cluster.protected_neighbor_ids
+    assert cluster.root_causes[0].category == "CDC_ADJACENT_UNSAFE_TO_EDIT"
+
+
 def test_seeded_timing_lane_retains_priority_family_after_technology_mapping() -> None:
     clusters = cluster_paths(
         (path("path_seeded", view="asap7_setup", slack=-0.2),),
@@ -194,6 +254,29 @@ def test_net_dominated_cone_has_no_default_rtl_diagnosis() -> None:
 
     categories = tuple(item.category for item in clusters[0].root_causes)
     assert categories[0] == "PLACEMENT_OR_WIRE_DOMINATED"
+
+
+def test_measured_tns_and_wns_must_agree_with_reported_paths() -> None:
+    records = (path("path_setup", view="asap7_setup", slack=-0.2),)
+    kwargs = {
+        "evidence_snapshot_hash": SNAPSHOT_HASH,
+        "source_map": mux_source_map(),
+        "clock_domain_by_id": {"clk_master_0": "domain_compute"},
+    }
+
+    import pytest
+
+    from nova_rtl.evidence.paths import PathClusteringError
+
+    with pytest.raises(PathClusteringError, match="TNS disagrees"):
+        cluster_paths(records, **kwargs, tns_by_analysis_view={"asap7_setup": 0.0})
+    with pytest.raises(PathClusteringError, match="WNS disagrees"):
+        cluster_paths(
+            records,
+            **kwargs,
+            tns_by_analysis_view={"asap7_setup": -0.2},
+            wns_by_analysis_view={"asap7_setup": -0.1},
+        )
 
 
 def test_root_cause_vocabulary_is_exact() -> None:

@@ -8,6 +8,7 @@ import zstandard
 from pydantic import ValidationError
 
 from nova_rtl.artifacts.store import ArtifactStore
+from nova_rtl.contracts.manifest import OptimizationPolicy
 from nova_rtl.contracts.optimization import OptimizationOpportunity
 from nova_rtl.evidence.graph import (
     EvidenceGraphBuildInputs,
@@ -19,6 +20,7 @@ from nova_rtl.evidence.opportunities import (
     OpportunityPolicy,
     default_opportunity_policy,
     form_opportunities,
+    opportunity_policy_from_project,
     rank_opportunities,
 )
 from nova_rtl.evidence.paths import cluster_paths
@@ -116,3 +118,20 @@ def test_opportunity_policy_is_self_hashed_and_closed_to_known_families() -> Non
     payload["available_transform_families"] = ["UNKNOWN_TRANSFORM"]
     with pytest.raises(ValidationError, match="registered cause-to-transform mapping"):
         OpportunityPolicy.model_validate(payload)
+
+
+def test_opportunity_policy_uses_project_edit_and_proof_allowlists() -> None:
+    project_policy = OptimizationPolicy(
+        objective_policy="BALANCED_PPA",
+        max_area_growth_percent=5.0,
+        max_candidates=4,
+        openroad_finalists=1,
+        allowed_contracts=("STRICT_SEQ_EQUIV",),
+        editable_path_patterns=("rtl/workload/lane.sv",),
+        deterministic_seed=7,
+    )
+
+    policy = opportunity_policy_from_project(project_policy)
+
+    assert policy.editable_path_patterns == ("rtl/workload/lane.sv",)
+    assert policy.proof_contracts == ("STRICT_SEQ_EQUIV",)

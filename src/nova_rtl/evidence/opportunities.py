@@ -18,7 +18,7 @@ from nova_rtl.contracts.base import (
     StrictContract,
     canonical_sha256,
 )
-from nova_rtl.contracts.manifest import CorrectnessContract
+from nova_rtl.contracts.manifest import CorrectnessContract, OptimizationPolicy
 from nova_rtl.contracts.optimization import (
     OpportunitySeverity,
     OptimizationOpportunity,
@@ -47,7 +47,7 @@ class OpportunityPolicy(StrictContract):
     schema_version: Literal[1] = 1
     cause_to_transform: dict[str, str]
     available_transform_families: tuple[str, ...] = Field(min_length=1)
-    editable_path_patterns: tuple[str, ...] = Field(min_length=1)
+    editable_path_patterns: tuple[str, ...]
     proof_contracts: tuple[CorrectnessContract, ...] = Field(min_length=1)
     minimum_source_mapping_confidence: float = Field(strict=True, ge=0.0, le=1.0)
     maximum_estimated_proof_cost: float = Field(strict=True, ge=0.0, le=1.0)
@@ -94,6 +94,23 @@ def default_opportunity_policy() -> OpportunityPolicy:
         "available_transform_families": tuple(sorted(CAUSE_TO_TRANSFORM.values())),
         "editable_path_patterns": ("rtl/subsystems/**", "rtl/workload/**"),
         "proof_contracts": ("STRICT_SEQ_EQUIV",),
+        "minimum_source_mapping_confidence": 0.8,
+        "maximum_estimated_proof_cost": 1.0,
+    }
+    return OpportunityPolicy(**payload, policy_hash=canonical_sha256(payload))
+
+
+def opportunity_policy_from_project(
+    optimization: OptimizationPolicy,
+) -> OpportunityPolicy:
+    """Derive M3 edit and proof authorization from the signed project manifest."""
+
+    payload = {
+        "schema_version": 1,
+        "cause_to_transform": dict(sorted(CAUSE_TO_TRANSFORM.items())),
+        "available_transform_families": tuple(sorted(set(CAUSE_TO_TRANSFORM.values()))),
+        "editable_path_patterns": tuple(sorted(optimization.editable_path_patterns)),
+        "proof_contracts": tuple(sorted(optimization.allowed_contracts)),
         "minimum_source_mapping_confidence": 0.8,
         "maximum_estimated_proof_cost": 1.0,
     }
@@ -182,12 +199,14 @@ def form_opportunities(
     cluster: PathCluster,
     graph: EvidenceGraphView,
     policy: OpportunityPolicy,
+    *,
+    _nodes: dict[str, EvidenceNode] | None = None,
 ) -> tuple[OptimizationOpportunity, ...]:
     """Form one safe, evidence-grounded optimization decision for a path cluster."""
 
     if cluster.evidence_snapshot_hash != graph.snapshot.snapshot_hash:
         raise OpportunityFormationError("cluster and evidence graph snapshot hashes differ")
-    nodes = _node_by_semantic_id(graph)
+    nodes = _nodes if _nodes is not None else _node_by_semantic_id(graph)
     required_ids = set(cluster.path_ids) | set(cluster.source_span_ids)
     required_ids |= set(cluster.dominant_object_ids) | set(cluster.protected_neighbor_ids)
     missing = required_ids - set(nodes)
@@ -300,7 +319,11 @@ def rank_opportunities(
 
     if not clusters:
         raise OpportunityFormationError("at least one path cluster is required")
-    formed = [form_opportunities(cluster, graph, policy)[0] for cluster in clusters]
+    nodes = _node_by_semantic_id(graph)
+    formed = [
+        form_opportunities(cluster, graph, policy, _nodes=nodes)[0]
+        for cluster in clusters
+    ]
     cluster_by_opportunity = {
         opportunity.opportunity_id: cluster
         for opportunity, cluster in zip(formed, clusters, strict=True)

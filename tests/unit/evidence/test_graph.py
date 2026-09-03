@@ -8,6 +8,7 @@ import zstandard
 
 from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.contracts.analysis import CDCInventory, ClockInventory, CriticalPathRecord
+from nova_rtl.contracts.base import canonical_sha256
 from nova_rtl.evidence.graph import (
     EvidenceGraphBuildError,
     EvidenceGraphBuildInputs,
@@ -30,7 +31,13 @@ def hash_ref(digit: str) -> str:
 
 def graph_inputs(*, reverse_paths: bool = False) -> EvidenceGraphBuildInputs:
     clock_inventory = ClockInventory.model_validate(clock_inventory_payload())
-    cdc_inventory = CDCInventory.model_validate(cdc_inventory_payload())
+    cdc_payload = cdc_inventory_payload()
+    cdc_payload["crossings"][0]["source_object"] = "u_lane/_1_/A"
+    cdc_payload["crossings"][0]["destination_object"] = "u_sync/_2_/D"
+    cdc_payload["inventory_hash"] = canonical_sha256(
+        {key: value for key, value in cdc_payload.items() if key != "inventory_hash"}
+    )
+    cdc_inventory = CDCInventory.model_validate(cdc_payload)
     mapped = source_map()
     span_ids = tuple(item.source_span_id for item in mapped.source_spans)
     paths = (
@@ -90,6 +97,14 @@ def graph_inputs(*, reverse_paths: bool = False) -> EvidenceGraphBuildInputs:
                 analysis_view_id="asap7_setup",
                 analysis_view_hash=hash_ref("5"),
                 opensta_stage_result_hash=hash_ref("6"),
+                openroad_stage_result_hash=hash_ref("7"),
+                openroad_metrics_hash=hash_ref("8"),
+                physical_area_um2=100.0,
+                wirelength_um=200.0,
+                congestion_overflow=0.0,
+                physical_cell_count=1000,
+                physical_register_count=100,
+                physical_buffer_count=10,
             ),
         ),
     )
@@ -129,7 +144,7 @@ def test_evidence_graph_is_content_addressed_and_order_independent(tmp_path: Pat
         reference["snapshot_hash"]
         for node in document["nodes"]
         for reference in node["evidence_refs"]
-    } == {graph_inputs().input_identity.identity_hash}
+    } == {first.snapshot_hash}
 
 
 def test_evidence_graph_preserves_protection_and_traceability(tmp_path: Path) -> None:
@@ -146,6 +161,10 @@ def test_evidence_graph_preserves_protection_and_traceability(tmp_path: Path) ->
     assert any("CDC" in node["protection_kinds"] for node in protected)
     assert any(edge["kind"] == "MAPS_TO" for edge in document["edges"])
     assert any(edge["kind"] == "CLOCKED_BY" for edge in document["edges"])
+    assert any(edge["kind"] == "CONNECTS" for edge in document["edges"])
+    assert any(edge["kind"] == "DATA_DEPENDENCY" for edge in document["edges"])
+    assert any(node["kind"] == "NET" for node in document["nodes"])
+    assert any(node["kind"] == "PHYSICAL_REGION" for node in document["nodes"])
     assert store.open_verified(snapshot.source_map_artifact).read()
     assert store.open_verified(snapshot.path_record_artifact).read()
 
@@ -160,7 +179,6 @@ def test_evidence_graph_rejects_hash_or_source_reference_mismatch(tmp_path: Path
             inputs.model_copy(update={"input_identity": mismatched_identity}),
             artifact_store=ArtifactStore(tmp_path / "hash-mismatch"),
         )
-
     path_payload = inputs.critical_paths[0].model_dump(mode="json")
     path_payload["source_span_refs"] = ["source_missing"]
     invalid_path = CriticalPathRecord.model_validate(path_payload)
@@ -170,4 +188,32 @@ def test_evidence_graph_rejects_hash_or_source_reference_mismatch(tmp_path: Path
                 update={"critical_paths": (invalid_path, *inputs.critical_paths[1:])}
             ),
             artifact_store=ArtifactStore(tmp_path / "span-mismatch"),
+        )
+
+
+def test_evidence_graph_rejects_unresolved_cdc_endpoint(tmp_path: Path) -> None:
+    inputs = graph_inputs()
+    payload = inputs.cdc_inventory.model_dump(mode="json")
+    payload["crossings"][0]["source_object"] = "missing/source"
+    payload["inventory_hash"] = canonical_sha256(
+        {key: value for key, value in payload.items() if key != "inventory_hash"}
+    )
+    inventory = CDCInventory.model_validate(payload)
+    identity_payload = inputs.input_identity.model_dump(mode="json")
+    identity_payload["cdc_inventory_hash"] = inventory.inventory_hash
+    identity_payload["identity_hash"] = canonical_sha256(
+        {key: value for key, value in identity_payload.items() if key != "identity_hash"}
+    )
+
+    with pytest.raises(EvidenceGraphBuildError, match="unresolved source endpoint"):
+        build_evidence_graph(
+            inputs.model_copy(
+                update={
+                    "cdc_inventory": inventory,
+                    "input_identity": type(inputs.input_identity).model_validate(
+                        identity_payload
+                    ),
+                }
+            ),
+            artifact_store=ArtifactStore(tmp_path / "unresolved-cdc"),
         )

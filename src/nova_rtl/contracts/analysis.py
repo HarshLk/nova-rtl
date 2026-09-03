@@ -4,7 +4,14 @@ from __future__ import annotations
 
 from typing import Annotated, Literal, Self
 
-from pydantic import Field, StringConstraints, field_validator, model_validator
+from pydantic import (
+    Field,
+    SerializerFunctionWrapHandler,
+    StringConstraints,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from nova_rtl.contracts.base import (
     ArtifactRef,
@@ -172,6 +179,15 @@ class CriticalPathRecord(StrictContract):
     object_sequence: tuple[NonEmptyString, ...] = Field(min_length=1)
     source_span_refs: tuple[EntityId, ...]
     raw_report_artifact_id: EntityId
+
+    @model_serializer(mode="wrap")
+    def serialize_legacy_compatibly(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        serialized = handler(self)
+        if "path_type" not in self.model_fields_set:
+            serialized.pop("path_type", None)
+        return serialized
 
     @model_validator(mode="after")
     def timing_arithmetic_and_sequences_are_consistent(self) -> Self:
@@ -356,7 +372,9 @@ class EvidenceGraphSnapshot(StrictContract):
     """Immutable identity and artifact index for a compressed evidence graph."""
 
     schema_version: Literal[1] = 1
+    evidence_input_hash: HashRef | None = None
     snapshot_hash: HashRef
+    snapshot_index_hash: HashRef | None = None
     node_schema_version: Literal[1]
     edge_schema_version: Literal[1]
     node_counts: dict[StableUpperString, NonNegativeInt]
@@ -367,6 +385,16 @@ class EvidenceGraphSnapshot(StrictContract):
     clock_inventory_id: EntityId
     cdc_inventory_id: EntityId
     evidence_resolution_index_hash: HashRef
+
+    @model_serializer(mode="wrap")
+    def serialize_legacy_compatibly(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        serialized = handler(self)
+        if self.evidence_input_hash is None:
+            serialized.pop("evidence_input_hash", None)
+            serialized.pop("snapshot_index_hash", None)
+        return serialized
 
     @model_validator(mode="after")
     def artifacts_and_identity_are_consistent(self) -> Self:
@@ -380,9 +408,122 @@ class EvidenceGraphSnapshot(StrictContract):
             raise ValueError("evidence graph artifact IDs must be unique")
         if self.graph_artifact.media_type != "application/zstd":
             raise ValueError("compressed evidence graph must use application/zstd")
-        expected_hash = canonical_sha256(self, exclude=frozenset({"snapshot_hash"}))
+        if (self.evidence_input_hash is None) != (self.snapshot_index_hash is None):
+            raise ValueError(
+                "evidence_input_hash and snapshot_index_hash must be present together"
+            )
+        if self.evidence_input_hash is None:
+            legacy_payload = self.model_dump(
+                mode="json",
+                exclude={"evidence_input_hash", "snapshot_hash", "snapshot_index_hash"},
+            )
+            if self.snapshot_hash != canonical_sha256(legacy_payload):
+                raise ValueError("snapshot_hash does not match legacy evidence graph identity")
+            return self
+        expected_hash = canonical_sha256(
+            {
+                "edge_schema_version": self.edge_schema_version,
+                "evidence_input_hash": self.evidence_input_hash,
+                "node_schema_version": self.node_schema_version,
+            }
+        )
         if self.snapshot_hash != expected_hash:
             raise ValueError("snapshot_hash does not match canonical evidence graph identity")
+        expected_index_hash = canonical_sha256(
+            self, exclude=frozenset({"snapshot_index_hash"})
+        )
+        if self.snapshot_index_hash != expected_index_hash:
+            raise ValueError("snapshot_index_hash does not match evidence graph indexes")
+        return self
+
+
+M3GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+
+
+class M3SignoffReport(StrictContract):
+    """Commit-bound, independently reconstructed M3 milestone evidence."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: M3GitCommitSha
+    implementation_tree_hash: M3GitCommitSha
+    m2_commit_sha: M3GitCommitSha
+    m2_packet_hash: HashRef
+    m2_report_hash: HashRef
+    run_id: EntityId
+    profile: Literal["full"]
+    expected_master_clocks: Literal[5]
+    expected_generated_clocks: Literal[105]
+    run_index_hash: HashRef
+    evidence_stage_result_hash: HashRef
+    opportunity_stage_result_hash: HashRef
+    evidence_input_hash: HashRef
+    evidence_snapshot_hash: HashRef
+    graph_artifact_hash: HashRef
+    source_map_hash: HashRef
+    source_map_artifact_hash: HashRef
+    path_collection_hash: HashRef
+    path_record_artifact_hash: HashRef
+    cluster_collection_hash: HashRef
+    cluster_artifact_hash: HashRef
+    opportunity_policy_hash: HashRef
+    ranked_opportunity_artifact_hash: HashRef
+    ranking_hash: HashRef
+    path_count: int = Field(strict=True, gt=0)
+    cluster_count: int = Field(strict=True, gt=0)
+    opportunity_count: int = Field(strict=True, gt=0)
+    editable_opportunity_count: int = Field(strict=True, gt=0)
+    root_cause_counts: dict[StableUpperString, NonNegativeInt]
+    editability_counts: dict[StableUpperString, NonNegativeInt]
+    replay_digest: HashRef
+    ledger_hash: HashRef
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def identities_counts_and_hashes_are_consistent(self) -> Self:
+        for label, values in (
+            ("root_cause_counts", self.root_cause_counts),
+            ("editability_counts", self.editability_counts),
+        ):
+            if not values or tuple(values) != tuple(sorted(values)):
+                raise ValueError(f"{label} must be nonempty and canonically ordered")
+        if sum(self.editability_counts.values()) != self.opportunity_count:
+            raise ValueError("editability counts must cover every opportunity")
+        if self.editability_counts.get("RTL_EDITABLE") != self.editable_opportunity_count:
+            raise ValueError("editable opportunity count differs from editability inventory")
+        if sum(self.root_cause_counts.values()) < self.cluster_count:
+            raise ValueError("every cluster requires at least one root cause")
+        expected_input_hash = canonical_sha256(
+            {
+                "commit_sha": self.commit_sha,
+                "implementation_tree_hash": self.implementation_tree_hash,
+                "m2_commit_sha": self.m2_commit_sha,
+                "m2_packet_hash": self.m2_packet_hash,
+                "m2_report_hash": self.m2_report_hash,
+                "run_index_hash": self.run_index_hash,
+                "evidence_stage_result_hash": self.evidence_stage_result_hash,
+                "opportunity_stage_result_hash": self.opportunity_stage_result_hash,
+                "evidence_input_hash": self.evidence_input_hash,
+                "evidence_snapshot_hash": self.evidence_snapshot_hash,
+                "graph_artifact_hash": self.graph_artifact_hash,
+                "source_map_artifact_hash": self.source_map_artifact_hash,
+                "path_record_artifact_hash": self.path_record_artifact_hash,
+                "cluster_artifact_hash": self.cluster_artifact_hash,
+                "ranked_opportunity_artifact_hash": (
+                    self.ranked_opportunity_artifact_hash
+                ),
+                "replay_digest": self.replay_digest,
+                "ledger_hash": self.ledger_hash,
+            }
+        )
+        if self.input_set_hash != expected_input_hash:
+            raise ValueError("input_set_hash does not match the M3 evidence boundary")
+        expected_report_hash = canonical_sha256(
+            self, exclude=frozenset({"report_hash"})
+        )
+        if self.report_hash != expected_report_hash:
+            raise ValueError("report_hash does not match canonical M3 sign-off report")
         return self
 
 
@@ -392,6 +533,7 @@ __all__ = [
     "ClockInventory",
     "CriticalPathRecord",
     "EvidenceGraphSnapshot",
+    "M3SignoffReport",
     "FrequencySweepContract",
     "PowerActivityContract",
 ]

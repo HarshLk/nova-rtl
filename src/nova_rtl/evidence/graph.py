@@ -153,6 +153,32 @@ def _edge_id(
     )
 
 
+def _snapshot_hash(evidence_input_hash: str) -> str:
+    return canonical_sha256(
+        {
+            "edge_schema_version": 1,
+            "evidence_input_hash": evidence_input_hash,
+            "node_schema_version": 1,
+        }
+    )
+
+
+def _matches_structural_endpoint(semantic_name: str, endpoint: str) -> bool:
+    structural_name = semantic_name.split(":", maxsplit=1)[-1]
+    endpoint = endpoint.split(":", maxsplit=1)[-1]
+    base_name = structural_name.split("[", maxsplit=1)[0]
+    return base_name == endpoint or base_name.startswith(f"{endpoint}/")
+
+
+def _matches_endpoint_leaf(semantic_name: str, endpoint: str) -> bool:
+    structural_name = semantic_name.split(":", maxsplit=1)[-1]
+    base_name = structural_name.split("[", maxsplit=1)[0]
+    normalized_endpoint = endpoint.split(":", maxsplit=1)[-1]
+    return base_name.rsplit("/", maxsplit=1)[-1] == normalized_endpoint.rsplit(
+        "/", maxsplit=1
+    )[-1]
+
+
 def _validated_inputs(inputs: EvidenceGraphBuildInputs) -> None:
     identity = inputs.input_identity
     if inputs.source_map.candidate_id != identity.candidate_id:
@@ -197,7 +223,7 @@ def _path_collection(inputs: EvidenceGraphBuildInputs) -> CriticalPathCollection
 
 
 def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
-    snapshot_hash = inputs.input_identity.identity_hash
+    snapshot_hash = _snapshot_hash(inputs.input_identity.identity_hash)
     candidate_id = inputs.input_identity.candidate_id
     nodes: dict[str, EvidenceNode] = {}
     semantic_nodes: dict[str, str] = {}
@@ -266,9 +292,37 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
     ordered_objects = tuple(
         sorted(inputs.source_map.mapped_objects, key=lambda item: item.semantic_name)
     )
+    mapped_module_types = {mapped.module_type for mapped in ordered_objects}
+    module_nodes: dict[tuple[str, str], str] = {}
+    for item in ordered_objects:
+        module_key = (item.owner_hierarchy, item.module_type)
+        if module_key not in module_nodes:
+            semantic_id = _entity_id(
+                "module",
+                {"module_type": item.module_type, "owner_hierarchy": item.owner_hierarchy},
+            )
+            module_nodes[module_key] = add_node(
+                kind="MODULE",
+                semantic_id=semantic_id,
+                semantic_name=f"module:{item.owner_hierarchy}:{item.module_type}",
+                attributes={
+                    "module_type": item.module_type,
+                    "owner_hierarchy": item.owner_hierarchy,
+                },
+                provenance="DETERMINISTIC_DERIVED",
+                evidence_kind="CONE",
+                artifact_id=_SOURCE_MAP_ARTIFACT_ID,
+                pointer=None,
+            )
     for index, item in enumerate(ordered_objects):
+        if item.kind == "CELL" and "DFF" in (item.cell_type or "").upper():
+            node_kind = "REGISTER"
+        elif item.kind == "CELL" and item.cell_type not in mapped_module_types:
+            node_kind = "EXPRESSION"
+        else:
+            node_kind = item.kind
         add_node(
-            kind=item.kind,
+            kind=node_kind,
             semantic_id=item.object_id,
             semantic_name=item.semantic_name,
             attributes={
@@ -277,6 +331,7 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
                 "module_type": item.module_type,
                 "owner_hierarchy": item.owner_hierarchy,
                 "semantic_name": item.semantic_name,
+                "structural_alias_count": len(item.structural_aliases),
             },
             provenance="TOOL_MEASURED",
             evidence_kind="CONE",
@@ -286,6 +341,37 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
             protection_kinds=item.protection_kinds,
         )
 
+    connection_counts = Counter(
+        edge.net_id for edge in inputs.source_map.connectivity_edges
+    )
+    for net_id in sorted(connection_counts):
+        add_node(
+            kind="NET",
+            semantic_id=net_id,
+            semantic_name=f"net:{net_id}",
+            attributes={"connection_count": connection_counts[net_id]},
+            provenance="TOOL_MEASURED",
+            evidence_kind="CONE",
+            artifact_id=_SOURCE_MAP_ARTIFACT_ID,
+            pointer=None,
+        )
+
+    constraint_node = add_node(
+        kind="CONSTRAINT_BINDING",
+        semantic_id=_entity_id(
+            "constraint_binding",
+            {"constraint_binding_hash": inputs.input_identity.constraint_binding_hash},
+        ),
+        semantic_name="constraint:resolved_binding",
+        attributes={
+            "constraint_binding_hash": inputs.input_identity.constraint_binding_hash,
+        },
+        provenance="TOOL_MEASURED",
+        evidence_kind="BINDING",
+        artifact_id=_GRAPH_ARTIFACT_ID,
+        pointer=None,
+    )
+
     for view in inputs.input_identity.analysis_views:
         add_node(
             kind="ANALYSIS_VIEW",
@@ -293,12 +379,57 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
             semantic_name=f"view:{view.analysis_view_id}",
             attributes={
                 "analysis_view_hash": view.analysis_view_hash,
+                "openroad_stage_result_hash": view.openroad_stage_result_hash,
                 "opensta_stage_result_hash": view.opensta_stage_result_hash,
             },
             provenance="TOOL_MEASURED",
             evidence_kind="METRIC",
             artifact_id=_GRAPH_ARTIFACT_ID,
             pointer=None,
+        )
+        add_node(
+            kind="PHYSICAL_REGION",
+            semantic_id=_entity_id(
+                "physical_region",
+                {
+                    "analysis_view_id": view.analysis_view_id,
+                    "openroad_stage_result_hash": view.openroad_stage_result_hash,
+                },
+            ),
+            semantic_name=f"physical:{view.analysis_view_id}",
+            attributes={
+                "analysis_view_id": view.analysis_view_id,
+                "buffer_count": view.physical_buffer_count,
+                "cell_count": view.physical_cell_count,
+                "congestion_overflow": view.congestion_overflow,
+                "openroad_stage_result_hash": view.openroad_stage_result_hash,
+                "openroad_metrics_hash": view.openroad_metrics_hash,
+                "physical_area_um2": view.physical_area_um2,
+                "register_count": view.physical_register_count,
+                "wirelength_um": view.wirelength_um,
+            },
+            provenance="TOOL_MEASURED",
+            evidence_kind="PHYSICAL",
+            artifact_id=_GRAPH_ARTIFACT_ID,
+            pointer=None,
+        )
+
+    domain_nodes: dict[str, str] = {}
+    domain_ids = {
+        item.domain_id for item in inputs.clock_inventory.master_clocks
+    } | {item.domain_id for item in inputs.clock_inventory.generated_clocks}
+    for domain_id in sorted(domain_ids):
+        domain_nodes[domain_id] = add_node(
+            kind="CLOCK_DOMAIN",
+            semantic_id=domain_id,
+            semantic_name=f"domain:{domain_id}",
+            attributes={"domain_id": domain_id},
+            provenance="DETERMINISTIC_DERIVED",
+            evidence_kind="CLOCK",
+            artifact_id=_GRAPH_ARTIFACT_ID,
+            pointer=None,
+            protected=True,
+            protection_kinds=("CLOCK",),
         )
 
     for clock in inputs.clock_inventory.master_clocks:
@@ -339,6 +470,15 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
             protection_kinds=("CLOCK",),
         )
 
+    connectivity_neighbors: dict[str, set[str]] = {}
+    for connection in inputs.source_map.connectivity_edges:
+        connectivity_neighbors.setdefault(connection.source_object, set()).add(
+            connection.destination_object
+        )
+        connectivity_neighbors.setdefault(connection.destination_object, set()).add(
+            connection.source_object
+        )
+
     for crossing in inputs.cdc_inventory.crossings:
         add_node(
             kind="CDC_STRUCTURE",
@@ -362,6 +502,18 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
         )
 
     ordered_paths = tuple(sorted(inputs.critical_paths, key=lambda item: item.path_id))
+    path_group_nodes: dict[str, str] = {}
+    for path_group in sorted({path.path_group for path in ordered_paths}):
+        path_group_nodes[path_group] = add_node(
+            kind="PATH_GROUP",
+            semantic_id=_entity_id("path_group", {"path_group": path_group}),
+            semantic_name=f"path_group:{path_group}",
+            attributes={"path_group": path_group},
+            provenance="DETERMINISTIC_DERIVED",
+            evidence_kind="PATH",
+            artifact_id=_PATH_RECORD_ARTIFACT_ID,
+            pointer=None,
+        )
     for index, path in enumerate(ordered_paths):
         add_node(
             kind="TIMING_PATH",
@@ -383,6 +535,23 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
             artifact_id=_PATH_RECORD_ARTIFACT_ID,
             pointer=f"/records/{index}",
         )
+        if path.slack_ns < 0:
+            add_node(
+                kind="VIOLATION",
+                semantic_id=_entity_id(
+                    "violation", {"path_id": path.path_id, "slack_ns": path.slack_ns}
+                ),
+                semantic_name=f"violation:{path.path_id}",
+                attributes={
+                    "analysis_view_id": path.analysis_view_id,
+                    "path_id": path.path_id,
+                    "slack_ns": path.slack_ns,
+                },
+                provenance="TOOL_MEASURED",
+                evidence_kind="METRIC",
+                artifact_id=_PATH_RECORD_ARTIFACT_ID,
+                pointer=f"/records/{index}",
+            )
 
     edges: dict[str, EvidenceEdge] = {}
 
@@ -417,12 +586,25 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
 
     for item in ordered_objects:
         object_node = semantic_nodes[item.semantic_name]
+        add_edge(
+            kind="CONTAINS",
+            source=module_nodes[(item.owner_hierarchy, item.module_type)],
+            target=object_node,
+        )
         for span_id in item.source_span_ids:
             add_edge(
                 kind="MAPS_TO",
                 source=object_node,
                 target=semantic_nodes[f"source:{span_id}"],
             )
+
+    for connection in inputs.source_map.connectivity_edges:
+        source = semantic_nodes[connection.source_object]
+        destination = semantic_nodes[connection.destination_object]
+        net = semantic_nodes[f"net:{connection.net_id}"]
+        add_edge(kind="CONNECTS", source=source, target=net)
+        add_edge(kind="CONNECTS", source=net, target=destination)
+        add_edge(kind="DATA_DEPENDENCY", source=source, target=destination)
 
     for edge in inputs.clock_inventory.lineage_edges:
         add_edge(
@@ -431,14 +613,59 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
             target=semantic_nodes[f"clock:{edge.parent_clock_id}"],
         )
 
+    for clock in (*inputs.clock_inventory.master_clocks, *inputs.clock_inventory.generated_clocks):
+        add_edge(
+            kind="CONTAINS",
+            source=domain_nodes[clock.domain_id],
+            target=semantic_nodes[f"clock:{clock.clock_id}"],
+        )
+
+    for view in inputs.input_identity.analysis_views:
+        add_edge(
+            kind="RESOLVES_CONSTRAINT",
+            source=semantic_nodes[f"view:{view.analysis_view_id}"],
+            target=constraint_node,
+        )
+        add_edge(
+            kind="PHYSICALLY_NEAR",
+            source=semantic_nodes[f"view:{view.analysis_view_id}"],
+            target=semantic_nodes[f"physical:{view.analysis_view_id}"],
+        )
+
     for crossing in inputs.cdc_inventory.crossings:
         crossing_node = semantic_nodes[f"cdc:{crossing.crossing_id}"]
         for role, object_name in (
             ("source", crossing.source_object),
             ("destination", crossing.destination_object),
         ):
-            if object_name in semantic_nodes:
-                object_node = semantic_nodes[object_name]
+            matching_objects = tuple(
+                item
+                for item in ordered_objects
+                if _matches_structural_endpoint(item.semantic_name, object_name)
+                or any(
+                    _matches_structural_endpoint(alias, object_name)
+                    for alias in item.structural_aliases
+                )
+            )
+            if not matching_objects:
+                matching_objects = tuple(
+                    item
+                    for item in ordered_objects
+                    if any(
+                        _matches_endpoint_leaf(alias, object_name)
+                        for alias in item.structural_aliases
+                    )
+                )
+            matching_nodes = tuple(
+                semantic_nodes[item.semantic_name] for item in matching_objects
+            )
+            if not matching_nodes:
+                raise EvidenceGraphBuildError(
+                    f"CDC crossing {crossing.crossing_id} has unresolved {role} endpoint"
+                )
+            for matched_object, object_node in zip(
+                matching_objects, matching_nodes, strict=True
+            ):
                 add_edge(
                     kind="CROSSES_DOMAIN",
                     source=object_node,
@@ -446,6 +673,15 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
                     attributes={"role": role},
                 )
                 add_edge(kind="PROTECTED_BY", source=object_node, target=crossing_node)
+                for neighbor in sorted(
+                    connectivity_neighbors.get(matched_object.semantic_name, set())
+                ):
+                    add_edge(
+                        kind="NEAR_PROTECTED_BOUNDARY",
+                        source=semantic_nodes[neighbor],
+                        target=crossing_node,
+                        attributes={"role": role},
+                    )
 
     for path in ordered_paths:
         path_node = semantic_nodes[f"path:{path.path_id}"]
@@ -476,6 +712,18 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
             source=path_node,
             target=semantic_nodes[f"view:{path.analysis_view_id}"],
         )
+        add_edge(
+            kind="MEMBER_OF_PATH_GROUP",
+            source=path_node,
+            target=path_group_nodes[path.path_group],
+        )
+        violation_name = f"violation:{path.path_id}"
+        if violation_name in semantic_nodes:
+            add_edge(
+                kind="HAS_VIOLATION",
+                source=path_node,
+                target=semantic_nodes[violation_name],
+            )
         for span_id in path.source_span_refs:
             add_edge(
                 kind="MAPS_TO",
@@ -487,12 +735,12 @@ def _build_document(inputs: EvidenceGraphBuildInputs) -> EvidenceGraphDocument:
     ordered_edges = tuple(edges[edge_id] for edge_id in sorted(edges))
     payload = {
         "schema_version": 1,
-        "evidence_input_hash": snapshot_hash,
+        "evidence_input_hash": inputs.input_identity.identity_hash,
         "nodes": tuple(item.model_dump(mode="json") for item in ordered_nodes),
         "edges": tuple(item.model_dump(mode="json") for item in ordered_edges),
     }
     return EvidenceGraphDocument(
-        evidence_input_hash=snapshot_hash,
+        evidence_input_hash=inputs.input_identity.identity_hash,
         nodes=ordered_nodes,
         edges=ordered_edges,
         document_hash=canonical_sha256(payload),
@@ -530,7 +778,7 @@ def build_evidence_graph(
     )
     graph_bytes = canonical_json_bytes(document)
     compressed = zstandard.ZstdCompressor(
-        level=19,
+        level=3,
         threads=0,
         write_checksum=True,
         write_content_size=True,
@@ -557,6 +805,7 @@ def build_evidence_graph(
     }
     payload = {
         "schema_version": 1,
+        "evidence_input_hash": inputs.input_identity.identity_hash,
         "node_schema_version": 1,
         "edge_schema_version": 1,
         "node_counts": node_counts,
@@ -570,9 +819,11 @@ def build_evidence_graph(
         + inputs.cdc_inventory.inventory_hash.removeprefix("sha256:")[:16],
         "evidence_resolution_index_hash": canonical_sha256(resolution_index),
     }
+    snapshot_hash = _snapshot_hash(inputs.input_identity.identity_hash)
+    indexed_payload = {**payload, "snapshot_hash": snapshot_hash}
     return EvidenceGraphSnapshot(
-        **payload,
-        snapshot_hash=canonical_sha256(payload),
+        **indexed_payload,
+        snapshot_index_hash=canonical_sha256(indexed_payload),
     )
 
 

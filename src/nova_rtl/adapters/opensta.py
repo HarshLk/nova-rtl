@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from collections.abc import Mapping
 from decimal import Decimal
+from typing import Literal
 
 from nova_rtl.adapters.base import (
     AdapterParseContext,
@@ -40,6 +41,7 @@ _POINT = re.compile(
     r"(?P<object>\S+)\s+\([^)]+\)\s*$",
     re.MULTILINE,
 )
+_MAX_ARITHMETIC_ROUNDING_NS = Decimal("0.000100")
 
 
 class CriticalPathParseError(ValueError):
@@ -127,7 +129,7 @@ def _parse_path(
         else arrival_value - required_value
     )
     arithmetic_error = abs(expected_slack - slack_value)
-    if arithmetic_error > Decimal("0.000010"):
+    if arithmetic_error > _MAX_ARITHMETIC_ROUNDING_NS:
         raise CriticalPathParseError("timing path slack arithmetic is inconsistent")
     arrival = float(arrival_value)
     slack = float(slack_value)
@@ -196,6 +198,7 @@ def parse_critical_paths(
     analysis_view_id: str,
     raw_report_artifact_id: str,
     clock_ids_by_name: Mapping[str, str],
+    expected_path_type: Literal["MAX", "MIN"] | None = None,
 ) -> tuple[CriticalPathRecord, ...]:
     """Parse, validate and canonically order all detailed OpenSTA paths."""
 
@@ -211,6 +214,12 @@ def parse_critical_paths(
     )
     if not records:
         raise CriticalPathParseError("OpenSTA report contains no complete timing paths")
+    if expected_path_type is not None and any(
+        record.path_type != expected_path_type for record in records
+    ):
+        raise CriticalPathParseError(
+            "OpenSTA timing path type does not match analysis view"
+        )
     by_id = {record.path_id: record for record in records}
     if len(by_id) != len(records):
         raise CriticalPathParseError("OpenSTA report contains duplicate timing path identities")

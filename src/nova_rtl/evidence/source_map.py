@@ -9,7 +9,13 @@ from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from typing import Any, Literal, Self
 
-from pydantic import Field, field_validator, model_validator
+from pydantic import (
+    Field,
+    SerializerFunctionWrapHandler,
+    field_validator,
+    model_serializer,
+    model_validator,
+)
 
 from nova_rtl.contracts.analysis import CriticalPathRecord
 from nova_rtl.contracts.base import (
@@ -54,8 +60,18 @@ class MappedObjectRecord(StrictContract):
     fanout: NonNegativeInt
     protected: bool
     protection_kinds: tuple[ProtectionKind, ...]
+    structural_aliases: tuple[NonEmptyString, ...] = ()
 
-    @field_validator("source_span_ids", "protection_kinds")
+    @model_serializer(mode="wrap")
+    def serialize_legacy_compatibly(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        serialized = handler(self)
+        if "structural_aliases" not in self.model_fields_set:
+            serialized.pop("structural_aliases", None)
+        return serialized
+
+    @field_validator("source_span_ids", "protection_kinds", "structural_aliases")
     @classmethod
     def members_are_canonical(cls, value: tuple[str, ...], info: object) -> tuple[str, ...]:
         return _canonical_unique(value, getattr(info, "field_name", "members"))
@@ -69,6 +85,14 @@ class MappedObjectRecord(StrictContract):
         return self
 
 
+class MappedConnectivityEdge(StrictContract):
+    """One directionally verified synthesized-net connection between mapped pins."""
+
+    net_id: EntityId
+    source_object: NonEmptyString
+    destination_object: NonEmptyString
+
+
 class SourceMapSnapshot(StrictContract):
     """Canonical source spans and structural names for one synthesized candidate."""
 
@@ -77,8 +101,18 @@ class SourceMapSnapshot(StrictContract):
     rtl_snapshot_hash: HashRef
     synthesis_structure_hash: HashRef
     mapped_objects: tuple[MappedObjectRecord, ...] = Field(min_length=1)
+    connectivity_edges: tuple[MappedConnectivityEdge, ...] = ()
     source_spans: tuple[SourceSpanRecord, ...] = Field(min_length=1)
     source_map_hash: HashRef
+
+    @model_serializer(mode="wrap")
+    def serialize_legacy_compatibly(
+        self, handler: SerializerFunctionWrapHandler
+    ) -> dict[str, object]:
+        serialized = handler(self)
+        if "connectivity_edges" not in self.model_fields_set:
+            serialized.pop("connectivity_edges", None)
+        return serialized
 
     @model_validator(mode="after")
     def contents_are_canonical_and_self_hashed(self) -> Self:
@@ -89,7 +123,27 @@ class SourceMapSnapshot(StrictContract):
         known_spans = set(span_ids)
         if any(set(item.source_span_ids) - known_spans for item in self.mapped_objects):
             raise ValueError("mapped object references an unknown source span")
-        expected = canonical_sha256(self, exclude=frozenset({"source_map_hash"}))
+        edge_keys = tuple(
+            (item.net_id, item.source_object, item.destination_object)
+            for item in self.connectivity_edges
+        )
+        if edge_keys != tuple(sorted(set(edge_keys))):
+            raise ValueError("connectivity edges must be unique and canonically ordered")
+        known_objects = set(object_names)
+        if any(
+            item.source_object not in known_objects
+            or item.destination_object not in known_objects
+            for item in self.connectivity_edges
+        ):
+            raise ValueError("connectivity edge references an unknown mapped object")
+        if "connectivity_edges" not in self.model_fields_set:
+            expected = canonical_sha256(
+                self.model_dump(
+                    mode="json", exclude={"connectivity_edges", "source_map_hash"}
+                )
+            )
+        else:
+            expected = canonical_sha256(self, exclude=frozenset({"source_map_hash"}))
         if self.source_map_hash != expected:
             raise ValueError("source_map_hash does not match canonical source map")
         return self
@@ -106,9 +160,12 @@ def _identifier(text: str) -> tuple[str, str]:
     return match.group("name"), match.group("rest")
 
 
-def _emitted_cell_names(mapped_netlist: str) -> dict[str, tuple[tuple[str, str], ...]]:
-    modules: dict[str, list[tuple[str, str]]] = {}
+def _emitted_cells(
+    mapped_netlist: str,
+) -> dict[str, tuple[tuple[str, str, dict[str, str]], ...]]:
+    modules: dict[str, list[tuple[str, str, dict[str, str]]]] = {}
     current: str | None = None
+    pending: tuple[str, str, dict[str, str]] | None = None
     for line in mapped_netlist.splitlines():
         if line.startswith("module "):
             current, _ = _identifier(line.removeprefix("module "))
@@ -116,15 +173,146 @@ def _emitted_cell_names(mapped_netlist: str) -> dict[str, tuple[tuple[str, str],
                 raise SourceMapError(f"duplicate mapped netlist module: {current}")
             modules[current] = []
         elif line.startswith("endmodule"):
+            if pending is not None:
+                raise SourceMapError("unterminated mapped netlist cell instance")
             current = None
+        elif pending is not None:
+            if line.strip() == ");":
+                if current is None:
+                    raise SourceMapError("mapped netlist cell is outside a module")
+                modules[current].append(pending)
+                pending = None
+                continue
+            match = re.fullmatch(r"\s*\.(?P<port>\\?\S+)\((?P<signal>.*)\),?\s*", line)
+            if match is None:
+                raise SourceMapError("mapped netlist cell connection is not canonical")
+            port = match.group("port").removeprefix("\\").rstrip()
+            signal = re.sub(r"\s+", "", match.group("signal"))
+            if not signal or port in pending[2]:
+                raise SourceMapError("mapped netlist cell connection is invalid")
+            pending[2][port] = signal
         elif current is not None and line.startswith("  ") and line.rstrip().endswith("("):
             cell_type, rest = _identifier(line)
             cell_name, rest = _identifier(rest)
             if rest.strip() == "(":
-                modules[current].append((cell_type, cell_name))
+                pending = (cell_type, cell_name, {})
+    if pending is not None:
+        raise SourceMapError("unterminated mapped netlist cell instance")
     if not modules:
         raise SourceMapError("mapped netlist contains no modules")
     return {name: tuple(cells) for name, cells in modules.items()}
+
+
+def _normalize_constant(signal: str) -> str:
+    signal = signal.removeprefix("\\")
+    match = re.fullmatch(r"(?:\d+)?'[sS]?[bBoOdDhH]([01xXzZ])", signal)
+    return match.group(1).lower().replace("z", "x") if match is not None else signal
+
+
+def _module_port_aliases(module: Mapping[str, Any]) -> dict[int | str, set[str]]:
+    aliases: dict[int | str, set[str]] = {}
+    raw_ports = module.get("ports", {})
+    if not isinstance(raw_ports, Mapping):
+        return aliases
+    for port_name, raw_port in raw_ports.items():
+        if not isinstance(raw_port, Mapping):
+            continue
+        bits = raw_port.get("bits", [])
+        if not isinstance(bits, list):
+            continue
+        offset = raw_port.get("offset", 0)
+        if not isinstance(offset, int):
+            continue
+        for position, bit in enumerate(bits):
+            if not isinstance(bit, int):
+                continue
+            alias = str(port_name) if len(bits) == 1 else f"{port_name}[{offset + position}]"
+            aliases.setdefault(bit, set()).add(alias)
+    raw_netnames = module.get("netnames", {})
+    if isinstance(raw_netnames, Mapping):
+        for net_name, raw_net in raw_netnames.items():
+            if str(net_name).startswith("$") or not isinstance(raw_net, Mapping):
+                continue
+            bits = raw_net.get("bits", [])
+            if not isinstance(bits, list):
+                continue
+            offset = raw_net.get("offset", 0)
+            if not isinstance(offset, int):
+                continue
+            for position, bit in enumerate(bits):
+                if not isinstance(bit, int):
+                    continue
+                alias = (
+                    str(net_name)
+                    if len(bits) == 1
+                    else f"{net_name}[{offset + position}]"
+                )
+                aliases.setdefault(bit, set()).add(alias)
+    return aliases
+
+
+def _verify_connectivity_alignment(
+    module_name: str,
+    module: Mapping[str, Any],
+    json_cells: tuple[tuple[object, object], ...],
+    emitted_cells: tuple[tuple[str, str, dict[str, str]], ...],
+) -> None:
+    """Prove positional renaming by comparing scalar connectivity equivalence classes."""
+
+    raw_by_endpoint: dict[tuple[int, str], int | str] = {}
+    emitted_by_endpoint: dict[tuple[int, str], str] = {}
+    stable_aliases = _module_port_aliases(module)
+    for index, ((json_name, raw_cell), (_, _, emitted_connections)) in enumerate(
+        zip(json_cells, emitted_cells, strict=True)
+    ):
+        if not isinstance(raw_cell, Mapping):
+            raise SourceMapError(f"invalid cell mapping in module {module_name}")
+        raw_connections = raw_cell.get("connections", {})
+        if not isinstance(raw_connections, Mapping):
+            raise SourceMapError(f"invalid cell connectivity in module {module_name}")
+        if set(raw_connections) != set(emitted_connections):
+            raise SourceMapError(
+                f"cell port set differs for emitted module {module_name}"
+            )
+        for port, bits in raw_connections.items():
+            if not isinstance(bits, list) or len(bits) != 1:
+                continue
+            endpoint = (index, str(port))
+            signal = emitted_connections[str(port)]
+            if signal.startswith("{") or "," in signal:
+                raise SourceMapError(
+                    f"scalar cell connection differs for emitted module {module_name}"
+                )
+            bit = bits[0]
+            normalized_signal = _normalize_constant(signal)
+            normalized_bit = _normalize_constant(str(bit)) if isinstance(bit, str) else bit
+            aliases = stable_aliases.get(bit, set())
+            if aliases and normalized_signal not in aliases:
+                raise SourceMapError(
+                    f"cell connectivity differs for emitted module {module_name}: "
+                    f"{json_name}/{port} expected {sorted(aliases)}, got {normalized_signal}"
+                )
+            if isinstance(bit, str) and normalized_signal != normalized_bit:
+                raise SourceMapError(
+                    f"cell constant connectivity differs for emitted module {module_name}"
+                )
+            raw_by_endpoint[endpoint] = bit
+            emitted_by_endpoint[endpoint] = normalized_signal
+
+    def shared_groups(values: Mapping[tuple[int, str], object]) -> set[tuple[tuple[int, str], ...]]:
+        groups: dict[object, list[tuple[int, str]]] = {}
+        for endpoint, value in values.items():
+            groups.setdefault(value, []).append(endpoint)
+        return {
+            tuple(sorted(endpoints))
+            for endpoints in groups.values()
+            if len(endpoints) > 1
+        }
+
+    if shared_groups(raw_by_endpoint) != shared_groups(emitted_by_endpoint):
+        raise SourceMapError(
+            f"cell connectivity signature differs for emitted module {module_name}"
+        )
 
 
 class _BundleIndex:
@@ -265,6 +453,17 @@ def _object_id(candidate_id: str, semantic_name: str) -> str:
     return f"mapped_{digest[:24]}"
 
 
+def _has_selected_ancestor(value: str, selected: set[str]) -> bool:
+    """Check hierarchical prefixes in bounded depth instead of scanning all selectors."""
+
+    current = value
+    while "/" in current:
+        current = current.rsplit("/", maxsplit=1)[0]
+        if current in selected:
+            return True
+    return False
+
+
 def build_source_map(
     mapped_design: Mapping[str, Any],
     *,
@@ -276,6 +475,7 @@ def build_source_map(
     protected_modules: Sequence[str],
     protected_path_patterns: Sequence[str],
     requested_object_names: Sequence[str] | None = None,
+    requested_endpoint_names: Sequence[str] = (),
 ) -> SourceMapSnapshot:
     """Map emitted Yosys cells and pins to normalized RTL bundle spans."""
 
@@ -283,7 +483,7 @@ def build_source_map(
     if not isinstance(raw_modules, Mapping):
         raise SourceMapError("mapped design contains no module mapping")
     modules = dict(raw_modules)
-    emitted = _emitted_cell_names(mapped_netlist)
+    emitted = _emitted_cells(mapped_netlist)
     top_names = [
         name
         for name, module in modules.items()
@@ -302,22 +502,84 @@ def build_source_map(
         if not isinstance(raw_cells, Mapping):
             raise SourceMapError(f"module {module_name} has invalid cell mapping")
         json_cells = tuple(raw_cells.items())
+        json_cell_names = tuple(str(name) for name, _ in json_cells)
+        if json_cell_names != tuple(sorted(json_cell_names)):
+            raise SourceMapError(
+                f"cell JSON does not use canonical cell order in module {module_name}"
+            )
         netlist_cells = emitted[module_name]
         if len(json_cells) != len(netlist_cells):
             raise SourceMapError(f"cell count differs for emitted module {module_name}")
+        _verify_connectivity_alignment(module_name, module, json_cells, netlist_cells)
         aligned = []
-        for (_, raw_cell), (emitted_type, emitted_name) in zip(
+        renamed_numbers: list[int] = []
+        for (json_name, raw_cell), (emitted_type, emitted_name, _) in zip(
             json_cells, netlist_cells, strict=True
         ):
             if not isinstance(raw_cell, Mapping) or raw_cell.get("type") != emitted_type:
                 raise SourceMapError(f"cell type order differs for emitted module {module_name}")
+            if emitted_name != json_name:
+                match = re.fullmatch(r"_(\d+)_", emitted_name)
+                if match is None:
+                    raise SourceMapError(
+                        f"unexpected emitted cell rename in module {module_name}"
+                    )
+                renamed_numbers.append(int(match.group(1)))
             aligned.append((emitted_name, emitted_type, raw_cell))
+        if renamed_numbers != sorted(set(renamed_numbers)):
+            raise SourceMapError(
+                f"emitted netlist does not use canonical cell order in module {module_name}"
+            )
         renamed_cells[module_name] = tuple(aligned)
 
     requested = set(requested_object_names) if requested_object_names is not None else None
+    if requested is not None and requested_endpoint_names:
+        available_alias_bases: set[str] = set()
+
+        def collect_aliases(module_name: str, hierarchy: str) -> None:
+            raw_module = modules.get(module_name)
+            if not isinstance(raw_module, Mapping):
+                return
+            raw_netnames = raw_module.get("netnames", {})
+            if isinstance(raw_netnames, Mapping):
+                for net_name, raw_net in raw_netnames.items():
+                    if str(net_name).startswith("$") or not isinstance(raw_net, Mapping):
+                        continue
+                    path = f"{hierarchy}/{net_name}" if hierarchy else str(net_name)
+                    available_alias_bases.add(path)
+            for cell_name, cell_type, _ in renamed_cells.get(module_name, ()):
+                if cell_type in renamed_cells:
+                    path = f"{hierarchy}/{cell_name}" if hierarchy else cell_name
+                    collect_aliases(cell_type, path)
+
+        collect_aliases(top_names[0], "")
+        for endpoint in requested_endpoint_names:
+            normalized = endpoint.split(":", maxsplit=1)[-1]
+            selected = normalized
+            if not any(
+                alias == normalized or alias.startswith(f"{normalized}/")
+                for alias in available_alias_bases
+            ):
+                leaf = normalized.rsplit("/", maxsplit=1)[-1]
+                leaf_matches = {
+                    alias
+                    for alias in available_alias_bases
+                    if alias.rsplit("/", maxsplit=1)[-1] == leaf
+                }
+                if len(leaf_matches) != 1:
+                    raise SourceMapError(
+                        f"CDC endpoint alias is unresolved or ambiguous: {endpoint}"
+                    )
+                selected = next(iter(leaf_matches))
+            requested.update(f"{prefix}:{selected}" for prefix in ("cell", "pin", "port"))
     bundle = _BundleIndex(rtl_bundle)
     objects: dict[str, MappedObjectRecord] = {}
     spans: dict[str, SourceSpanRecord] = {}
+    pending_connectivity: set[tuple[str, str, str]] = set()
+    requested_exact = requested or set()
+    normalized_requested = {
+        item.split(":", maxsplit=1)[-1] for item in requested_exact
+    }
 
     def add_object(
         *,
@@ -330,8 +592,21 @@ def build_source_map(
         fanout: int,
         direct_spans: tuple[SourceSpanRecord, ...],
         inherited_kinds: tuple[ProtectionKind, ...],
+        structural_aliases: tuple[str, ...] = (),
     ) -> None:
-        if requested is not None and semantic_name not in requested:
+        requested_base = semantic_name.split("[", maxsplit=1)[0]
+        alias_bases = {item.split("[", maxsplit=1)[0] for item in structural_aliases}
+        if (
+            requested is not None
+            and semantic_name not in requested_exact
+            and requested_base not in requested_exact
+            and not _has_selected_ancestor(requested_base, requested_exact)
+            and not any(
+                alias in normalized_requested
+                or _has_selected_ancestor(alias, normalized_requested)
+                for alias in alias_bases
+            )
+        ):
             return
         for span in direct_spans:
             spans[span.source_span_id] = span
@@ -350,6 +625,7 @@ def build_source_map(
             fanout=fanout,
             protected=bool(kinds),
             protection_kinds=kinds,
+            structural_aliases=tuple(sorted(set(structural_aliases))),
         )
 
     def visit(module_name: str, hierarchy: str, inherited: tuple[ProtectionKind, ...]) -> None:
@@ -372,6 +648,27 @@ def build_source_map(
             )
         )
         owner = hierarchy or module_name
+        aliases_by_bit: dict[int, set[str]] = {}
+        raw_netnames = raw_module.get("netnames", {})
+        if isinstance(raw_netnames, Mapping):
+            for net_name, raw_net in raw_netnames.items():
+                if str(net_name).startswith("$") or not isinstance(raw_net, Mapping):
+                    continue
+                bits = raw_net.get("bits", [])
+                if not isinstance(bits, list):
+                    continue
+                offset = raw_net.get("offset", 0)
+                if not isinstance(offset, int):
+                    continue
+                net_path = f"{hierarchy}/{net_name}" if hierarchy else str(net_name)
+                for position, bit in enumerate(bits):
+                    if isinstance(bit, int):
+                        alias = (
+                            net_path
+                            if len(bits) == 1
+                            else f"{net_path}[{offset + position}]"
+                        )
+                        aliases_by_bit.setdefault(bit, set()).add(alias)
         attributes = raw_module.get("attributes", {})
         module_spans = _source_spans(
             attributes.get("src") if isinstance(attributes, Mapping) else None,
@@ -383,6 +680,7 @@ def build_source_map(
             protected_path_patterns=protected_path_patterns,
         )
         raw_ports = raw_module.get("ports", {})
+        endpoints_by_bit: dict[int, list[tuple[str, str]]] = {}
         if isinstance(raw_ports, Mapping):
             for port_name, raw_port in raw_ports.items():
                 if not isinstance(raw_port, Mapping):
@@ -391,6 +689,18 @@ def build_source_map(
                 direction = raw_port.get("direction")
                 if direction not in {"input", "output", "inout"}:
                     raise SourceMapError(f"invalid direction for port {path}")
+                raw_bits = raw_port.get("bits", [])
+                if isinstance(raw_bits, list):
+                    internal_direction = (
+                        "output"
+                        if direction == "input"
+                        else "input" if direction == "output" else "inout"
+                    )
+                    for bit in raw_bits:
+                        if isinstance(bit, int):
+                            endpoints_by_bit.setdefault(bit, []).append(
+                                (f"pin:{path}", internal_direction)
+                            )
                 for prefix, kind in (("port", "PORT"), ("pin", "PIN")):
                     add_object(
                         semantic_name=f"{prefix}:{path}",
@@ -402,6 +712,16 @@ def build_source_map(
                         fanout=0,
                         direct_spans=module_spans,
                         inherited_kinds=module_kinds,
+                        structural_aliases=tuple(
+                            sorted(
+                                {
+                                    alias
+                                    for bit in raw_bits
+                                    if isinstance(bit, int)
+                                    for alias in aliases_by_bit.get(bit, set())
+                                }
+                            )
+                        ),
                     )
                     bits = raw_port.get("bits", [])
                     if isinstance(bits, list) and len(bits) > 1:
@@ -419,6 +739,11 @@ def build_source_map(
                                 fanout=0,
                                 direct_spans=module_spans,
                                 inherited_kinds=module_kinds,
+                                structural_aliases=tuple(
+                                    sorted(aliases_by_bit.get(bits[index - offset], set()))
+                                )
+                                if isinstance(bits[index - offset], int)
+                                else (),
                             )
 
         aligned_cells = renamed_cells[module_name]
@@ -461,6 +786,14 @@ def build_source_map(
             connections = raw_cell.get("connections", {})
             if not isinstance(directions, Mapping) or not isinstance(connections, Mapping):
                 raise SourceMapError(f"invalid connectivity for cell {cell_path}")
+            for port_name, direction in directions.items():
+                bits = connections.get(port_name, [])
+                if isinstance(bits, list):
+                    for bit in bits:
+                        if isinstance(bit, int):
+                            endpoints_by_bit.setdefault(bit, []).append(
+                                (f"pin:{cell_path}/{port_name}", str(direction))
+                            )
             connected_bits = [
                 bit
                 for bits in connections.values()
@@ -477,6 +810,16 @@ def build_source_map(
                 fanout=max((load_counts[bit] for bit in connected_bits), default=0),
                 direct_spans=direct_spans,
                 inherited_kinds=cell_kinds,
+                structural_aliases=tuple(
+                    sorted(
+                        {
+                            alias
+                            for bit in connected_bits
+                            if isinstance(bit, int)
+                            for alias in aliases_by_bit.get(bit, set())
+                        }
+                    )
+                ),
             )
             for port_name, direction in directions.items():
                 if direction not in {"input", "output", "inout"}:
@@ -497,20 +840,61 @@ def build_source_map(
                     fanout=fanout,
                     direct_spans=direct_spans,
                     inherited_kinds=cell_kinds,
+                    structural_aliases=tuple(
+                        sorted(
+                            {
+                                alias
+                                for bit in bits
+                                if isinstance(bit, int)
+                                for alias in aliases_by_bit.get(bit, set())
+                            }
+                        )
+                    )
+                    if isinstance(bits, list)
+                    else (),
                 )
             if cell_type in renamed_cells:
                 visit(cell_type, cell_path, cell_kinds)
+
+        for bit, endpoints in endpoints_by_bit.items():
+            sources = sorted(
+                name
+                for name, direction in endpoints
+                if direction in {"output", "inout"} and name in objects
+            )
+            destinations = sorted(
+                name
+                for name, direction in endpoints
+                if direction in {"input", "inout"} and name in objects
+            )
+            net_id = "net_" + canonical_sha256(
+                {"bit": bit, "hierarchy": owner, "module_type": module_name}
+            ).removeprefix("sha256:")[:24]
+            for source in sources:
+                for destination in destinations:
+                    if source != destination:
+                        pending_connectivity.add((net_id, source, destination))
 
     visit(top_names[0], "", ())
     if not objects:
         raise SourceMapError("source map contains no requested mapped objects")
     if not spans:
         raise SourceMapError("source map contains no RTL source spans")
+    connectivity_edges = tuple(
+        MappedConnectivityEdge(
+            net_id=net_id,
+            source_object=source,
+            destination_object=destination,
+        )
+        for net_id, source, destination in sorted(pending_connectivity)
+        if source in objects and destination in objects
+    )
     payload = {
         "candidate_id": candidate_id,
         "rtl_snapshot_hash": rtl_snapshot_hash,
         "synthesis_structure_hash": synthesis_structure_hash,
         "mapped_objects": tuple(objects[name] for name in sorted(objects)),
+        "connectivity_edges": connectivity_edges,
         "source_spans": tuple(spans[name] for name in sorted(spans)),
     }
     hash_payload = {
@@ -518,6 +902,9 @@ def build_source_map(
         **payload,
         "mapped_objects": tuple(
             item.model_dump(mode="json") for item in payload["mapped_objects"]
+        ),
+        "connectivity_edges": tuple(
+            item.model_dump(mode="json") for item in connectivity_edges
         ),
         "source_spans": tuple(item.model_dump(mode="json") for item in payload["source_spans"]),
     }

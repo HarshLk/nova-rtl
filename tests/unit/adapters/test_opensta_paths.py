@@ -92,6 +92,19 @@ def test_opensta_paths_accept_six_decimal_report_rounding() -> None:
     assert record.required_ns == record.arrival_ns + record.slack_ns
 
 
+def test_opensta_paths_accept_bounded_long_path_accumulation_rounding() -> None:
+    report = (FIXTURES / "critical_paths_setup.rpt").read_text(encoding="utf-8")
+    _, compute = report.split("Startpoint: u_compute/start_reg", maxsplit=1)
+    compute = compute.replace("0.800000   data arrival time", "0.241317   data arrival time")
+    compute = compute.replace("1.000000   data required time", "479.864014   data required time")
+    compute = compute.replace("-0.800000   data arrival time", "-0.241317   data arrival time")
+    compute = compute.replace("0.200000   slack (MET)", "479.622742   slack (MET)")
+
+    record = parse("Startpoint: u_compute/start_reg" + compute)[0]
+
+    assert record.required_ns == record.arrival_ns + record.slack_ns
+
+
 def test_opensta_paths_accept_inline_port_descriptions() -> None:
     report = (FIXTURES / "critical_paths_setup.rpt").read_text(encoding="utf-8")
     report = report.replace(
@@ -120,6 +133,20 @@ def test_opensta_paths_use_min_delay_arithmetic_for_hold() -> None:
     assert record.path_type == "MIN"
     assert record.required_ns == 0.031710
     assert record.slack_ns == pytest.approx(record.arrival_ns - record.required_ns)
+
+
+def test_opensta_paths_reject_path_type_that_disagrees_with_view() -> None:
+    report = (FIXTURES / "critical_paths_setup.rpt").read_text(encoding="utf-8")
+
+    with pytest.raises(CriticalPathParseError, match="does not match analysis view"):
+        parse_critical_paths(
+            report,
+            candidate_id="baseline",
+            analysis_view_id="asap7_hold",
+            raw_report_artifact_id="stage_opensta_asap7_hold_stdout",
+            clock_ids_by_name=CLOCK_IDS,
+            expected_path_type="MIN",
+        )
 
 
 def test_opensta_paths_require_at_least_one_complete_path() -> None:

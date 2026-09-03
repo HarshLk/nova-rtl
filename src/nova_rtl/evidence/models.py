@@ -15,6 +15,7 @@ from nova_rtl.contracts.base import (
     FiniteFloat,
     HashRef,
     NonEmptyString,
+    NonNegativeFloat,
     NonNegativeInt,
     StrictContract,
     canonical_sha256,
@@ -46,9 +47,11 @@ GraphNodeKind = Literal[
     "REGISTER",
     "MEMORY",
     "CLOCK",
+    "CLOCK_DOMAIN",
     "GENERATED_CLOCK",
     "RESET",
     "ANALYSIS_VIEW",
+    "PHYSICAL_REGION",
     "CONSTRAINT_BINDING",
     "RESOLVED_EXCEPTION",
     "TIMING_PATH",
@@ -127,6 +130,14 @@ class AnalysisViewEvidenceIdentity(StrictContract):
     analysis_view_id: EntityId
     analysis_view_hash: HashRef
     opensta_stage_result_hash: HashRef
+    openroad_stage_result_hash: HashRef
+    openroad_metrics_hash: HashRef
+    physical_area_um2: NonNegativeFloat
+    wirelength_um: NonNegativeFloat
+    congestion_overflow: NonNegativeFloat
+    physical_cell_count: NonNegativeInt
+    physical_register_count: NonNegativeInt
+    physical_buffer_count: NonNegativeInt
 
 
 class EvidenceInputIdentity(StrictContract):

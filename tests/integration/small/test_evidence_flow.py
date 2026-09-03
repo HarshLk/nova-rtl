@@ -4,17 +4,34 @@ from pathlib import Path
 
 import pytest
 
+from nova_rtl.evidence import execution as evidence_execution
 from nova_rtl.evidence.execution import analyze_evidence_run
 
 
 @pytest.mark.integration
 def test_m3_evidence_flow_is_complete_resumable_and_replayable(
     completed_run_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     first = analyze_evidence_run(
         completed_run_path,
         requested_stages=("evidence", "opportunities"),
     )
+
+    def reject_reconstruction(*args: object, **kwargs: object) -> None:
+        del args, kwargs
+        raise AssertionError("a valid M3 cache hit must not reconstruct evidence")
+
+    for name in (
+        "parse_critical_paths",
+        "build_source_map",
+        "enrich_critical_paths",
+        "build_evidence_graph",
+        "cluster_paths",
+        "rank_opportunities",
+    ):
+        monkeypatch.setattr(evidence_execution, name, reject_reconstruction)
+
     second = analyze_evidence_run(
         completed_run_path,
         requested_stages=("opportunities", "evidence"),

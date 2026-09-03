@@ -40,6 +40,14 @@ def view_identity(view_id: str, digit: str) -> AnalysisViewEvidenceIdentity:
         analysis_view_id=view_id,
         analysis_view_hash=hash_ref(digit),
         opensta_stage_result_hash=hash_ref(digit),
+        openroad_stage_result_hash=hash_ref(digit),
+        openroad_metrics_hash=hash_ref(digit),
+        physical_area_um2=100.0,
+        wirelength_um=200.0,
+        congestion_overflow=0.0,
+        physical_cell_count=1000,
+        physical_register_count=100,
+        physical_buffer_count=10,
     )
 
 
@@ -125,7 +133,7 @@ def test_evidence_input_identity_is_order_independent_and_change_sensitive() -> 
         "asap7_setup",
     )
     assert first.identity_hash == (
-        "sha256:ab8d003a95d5b0e798465325af6dc49a9ac4fc7614e0b3d6f08e8f13eb466782"
+        "sha256:99c8f48c0d253d7091f5d7813a504c9de106c1a38c14cab4e9eb9afbe3afed55"
     )
 
     changed = first.model_copy(update={"synthesis_structure_hash": hash_ref("9")})

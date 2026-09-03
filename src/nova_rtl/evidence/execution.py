@@ -16,6 +16,7 @@ from pydantic import Field, model_validator
 from nova_rtl import __version__
 from nova_rtl.adapters.base import AdapterParseContext, metric_set
 from nova_rtl.adapters.opensta import parse_critical_paths
+from nova_rtl.analysis_views.aggregation import is_complete_measured_timing_violation
 from nova_rtl.artifacts.ledger import ExperimentLedger
 from nova_rtl.artifacts.replay import replay_digest, replay_run
 from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
@@ -35,6 +36,7 @@ from nova_rtl.contracts.execution import Stage, StageResult
 from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
 from nova_rtl.contracts.platform import ToolFingerprint
 from nova_rtl.evidence.graph import (
+    CriticalPathCollection,
     EvidenceGraphBuildInputs,
     EvidenceGraphDocument,
     build_evidence_graph,
@@ -47,12 +49,17 @@ from nova_rtl.evidence.models import (
 from nova_rtl.evidence.opportunities import (
     CAUSE_TO_TRANSFORM,
     EvidenceGraphView,
+    OpportunityPolicy,
     RankedOpportunitySet,
-    default_opportunity_policy,
+    opportunity_policy_from_project,
     rank_opportunities,
 )
 from nova_rtl.evidence.paths import cluster_paths
-from nova_rtl.evidence.source_map import build_source_map, enrich_critical_paths
+from nova_rtl.evidence.source_map import (
+    SourceMapSnapshot,
+    build_source_map,
+    enrich_critical_paths,
+)
 from nova_rtl.orchestrator.state import RunOrchestrator
 
 _M3_STAGES = frozenset({"evidence", "opportunities"})
@@ -156,9 +163,8 @@ def _required_result(
     if result.stage_result_id != stage_id:
         raise EvidenceExecutionError(f"stage identity differs for {stage_id}")
     if result.status != "PASS":
-        timing_codes = {item.code for item in result.diagnostics}
-        accepted = allow_timing_violation and bool(
-            timing_codes & {"TIMING_SETUP_VIOLATION", "TIMING_HOLD_VIOLATION"}
+        accepted = allow_timing_violation and is_complete_measured_timing_violation(
+            result
         )
         complete = (
             result.metrics.setup_wns_ns is not None
@@ -195,7 +201,7 @@ def _stage_artifact(
 def _implementation_fingerprint(stage: str, source_paths: Sequence[Path]) -> ToolFingerprint:
     executable = Path(sys.executable).resolve(strict=True)
     sources = {
-        str(path.as_posix()): f"sha256:{sha256(path.read_bytes()).hexdigest()}"
+        path.name: f"sha256:{sha256(path.read_bytes()).hexdigest()}"
         for path in sorted(source_paths, key=lambda item: item.as_posix())
     }
     return ToolFingerprint(
@@ -279,9 +285,147 @@ def _clock_maps(clock_inventory: ClockInventory) -> tuple[dict[str, str], dict[s
     return names, domains
 
 
+def validate_m3_run_boundary(
+    index: BaselineRunIndex,
+    project: ProjectManifest,
+    design: DesignContract,
+) -> None:
+    """Require the mutable run locator to resolve one internally signed M2 identity."""
+
+    if design.contract_hash != index.design_contract_hash or design.run_id != index.run_id:
+        raise EvidenceExecutionError("design contract identity differs from run index")
+    if design.project_manifest_hash != index.project_manifest_artifact.sha256:
+        raise EvidenceExecutionError("project manifest differs from design contract")
+    if (
+        design.platform_lock_hash != index.platform_lock_hash
+        or project.technology.platform_lock_hash != index.platform_lock_hash
+    ):
+        raise EvidenceExecutionError("platform identity differs across M3 inputs")
+    if design.protection_policy_hash != canonical_sha256(project.protection):
+        raise EvidenceExecutionError("protection policy differs from design contract")
+    view_ids = tuple(view.analysis_view_id for view in index.analysis_views)
+    expected_view_hash = canonical_sha256(
+        {"analysis_views": tuple(canonical_sha256(view) for view in index.analysis_views)}
+    )
+    if (
+        design.analysis_view_ids != tuple(sorted(view_ids))
+        or design.analysis_view_set_hash != expected_view_hash
+    ):
+        raise EvidenceExecutionError("analysis view set differs from design contract")
+
+
 def _m3_sources(*names: str) -> tuple[Path, ...]:
     package = Path(__file__).resolve().parent
     return tuple(package / name for name in names)
+
+
+def _evidence_sources() -> tuple[Path, ...]:
+    package = Path(__file__).resolve().parents[1]
+    return (
+        *_m3_sources("execution.py", "graph.py", "source_map.py"),
+        package / "adapters/opensta.py",
+    )
+
+
+def _opportunity_sources() -> tuple[Path, ...]:
+    return _m3_sources("execution.py", "opportunities.py", "paths.py")
+
+
+def _critical_path_report_hash(
+    reports: Sequence[tuple[str, str, str, str]],
+) -> str:
+    """Bind parsed-path inputs without parsing or reconstructing their evidence."""
+
+    ordered = tuple(sorted(reports))
+    if len(ordered) != len({item[0] for item in ordered}):
+        raise EvidenceExecutionError("critical-path report views must be unique")
+    return canonical_sha256(
+        {
+            "critical_path_reports": tuple(
+                {
+                    "analysis_view_id": view_id,
+                    "opensta_stage_result_hash": stage_hash,
+                    "path_type": path_type,
+                    "raw_report_hash": report_hash,
+                }
+                for view_id, stage_hash, path_type, report_hash in ordered
+            )
+        }
+    )
+
+
+def _load_cached_evidence(
+    store: ArtifactStore,
+    result: StageResult,
+    identity_hash: str,
+) -> tuple[
+    EvidenceGraphSnapshot,
+    SourceMapSnapshot,
+    CriticalPathCollection,
+    EvidenceGraphView,
+]:
+    """Load and cross-check every persisted evidence artifact on an exact cache hit."""
+
+    snapshot = _load_contract(store, _raw(result, "_snapshot"), EvidenceGraphSnapshot)
+    if snapshot.evidence_input_hash != identity_hash:
+        raise EvidenceExecutionError("cached evidence snapshot input identity differs")
+    expected_artifacts = (
+        (_raw(result, "evidence_graph_zstd"), snapshot.graph_artifact),
+        (_raw(result, "evidence_source_map"), snapshot.source_map_artifact),
+        (_raw(result, "evidence_critical_paths"), snapshot.path_record_artifact),
+    )
+    if any(stage_ref != snapshot_ref for stage_ref, snapshot_ref in expected_artifacts):
+        raise EvidenceExecutionError("cached evidence artifact index differs from stage result")
+
+    source_map = _load_contract(store, snapshot.source_map_artifact, SourceMapSnapshot)
+    paths = _load_contract(store, snapshot.path_record_artifact, CriticalPathCollection)
+    if paths.evidence_input_hash != identity_hash:
+        raise EvidenceExecutionError("cached critical paths input identity differs")
+    try:
+        document = EvidenceGraphDocument.model_validate_json(
+            zstandard.ZstdDecompressor().decompress(
+                store.open_verified(snapshot.graph_artifact).read(),
+                max_output_size=256 * 1024 * 1024,
+            )
+        )
+        graph = EvidenceGraphView(snapshot=snapshot, document=document)
+    except (ArtifactStoreError, ValueError, zstandard.ZstdError) as error:
+        raise EvidenceExecutionError("compressed cached evidence graph is invalid") from error
+    if document.evidence_input_hash != identity_hash:
+        raise EvidenceExecutionError("cached evidence document input identity differs")
+    return snapshot, source_map, paths, graph
+
+
+def _load_cached_opportunities(
+    store: ArtifactStore,
+    result: StageResult,
+    *,
+    snapshot_hash: str,
+    expected_policy: OpportunityPolicy,
+) -> tuple[PathClusterCollection, RankedOpportunitySet]:
+    """Load and cross-check cached clusters, policy, and ranked opportunities."""
+
+    clusters = _load_contract(
+        store,
+        _raw(result, "_path_clusters"),
+        PathClusterCollection,
+    )
+    policy = _load_contract(store, _raw(result, "_policy"), OpportunityPolicy)
+    ranked = _load_contract(
+        store,
+        _raw(result, "_ranked_opportunities"),
+        RankedOpportunitySet,
+    )
+    if clusters.evidence_snapshot_hash != snapshot_hash:
+        raise EvidenceExecutionError("cached clusters bind a different evidence snapshot")
+    if policy != expected_policy:
+        raise EvidenceExecutionError("cached opportunity policy differs from project policy")
+    if (
+        ranked.evidence_snapshot_hash != snapshot_hash
+        or ranked.policy_hash != expected_policy.policy_hash
+    ):
+        raise EvidenceExecutionError("cached ranking identity differs")
+    return clusters, ranked
 
 
 def analyze_evidence_run(
@@ -299,6 +443,7 @@ def analyze_evidence_run(
     store = ArtifactStore(resolved / "artifacts")
     project = _load_contract(store, index.project_manifest_artifact, ProjectManifest)
     design = _load_contract(store, index.design_contract_artifact, DesignContract)
+    validate_m3_run_boundary(index, project, design)
 
     existing_results = {
         stage_id: _load_contract(store, reference, StageResult)
@@ -327,8 +472,11 @@ def analyze_evidence_run(
     design_json_ref = _raw(yosys, "mapped_design_json")
     mapped_netlist_ref = _raw(yosys, "mapped_netlist_v")
     clock_ids_by_name, clock_domains = _clock_maps(clock_inventory)
-    paths = []
     view_identities = []
+    path_reports: list[tuple[str, str, str, str]] = []
+    path_inputs = []
+    tns_by_view: dict[str, float] = {}
+    wns_by_view: dict[str, float] = {}
     for view in sorted(index.analysis_views, key=lambda item: item.analysis_view_id):
         stage_id = f"stage_opensta_{view.analysis_view_id}"
         sta, sta_ref = _required_result(
@@ -338,51 +486,62 @@ def analyze_evidence_run(
             allow_timing_violation=True,
         )
         stdout = _raw(sta, "_stdout")
-        report = store.open_verified(stdout).read().decode("utf-8")
-        paths.extend(
-            parse_critical_paths(
-                report,
-                candidate_id=index.candidate_id,
-                analysis_view_id=view.analysis_view_id,
-                raw_report_artifact_id=stdout.artifact_id,
-                clock_ids_by_name=clock_ids_by_name,
-            )
+        openroad, openroad_ref = _required_result(
+            index,
+            store,
+            f"stage_openroad_{view.analysis_view_id}",
+            allow_timing_violation=True,
         )
+        physical_metrics = openroad.metrics
+        required_physical = (
+            physical_metrics.physical_area_um2,
+            physical_metrics.wirelength_um,
+            physical_metrics.congestion_overflow,
+            physical_metrics.cell_count,
+            physical_metrics.register_count,
+            physical_metrics.buffer_count,
+        )
+        if any(value is None for value in required_physical):
+            raise EvidenceExecutionError(
+                f"OpenROAD result lacks physical metrics for {view.analysis_view_id}"
+            )
+        path_type = "MAX" if view.check == "SETUP" else "MIN"
+        path_reports.append(
+            (view.analysis_view_id, sta_ref.sha256, path_type, stdout.sha256)
+        )
+        path_inputs.append((view.analysis_view_id, path_type, stdout))
+        measured_tns = (
+            sta.metrics.setup_tns_ns if view.check == "SETUP" else sta.metrics.hold_tns_ns
+        )
+        if measured_tns is None:
+            raise EvidenceExecutionError(
+                f"OpenSTA result lacks measured TNS for {view.analysis_view_id}"
+            )
+        tns_by_view[view.analysis_view_id] = measured_tns
+        measured_wns = (
+            sta.metrics.setup_wns_ns if view.check == "SETUP" else sta.metrics.hold_wns_ns
+        )
+        if measured_wns is None:
+            raise EvidenceExecutionError(
+                f"OpenSTA result lacks measured WNS for {view.analysis_view_id}"
+            )
+        wns_by_view[view.analysis_view_id] = measured_wns
         view_identities.append(
             AnalysisViewEvidenceIdentity(
                 analysis_view_id=view.analysis_view_id,
                 analysis_view_hash=canonical_sha256(view),
                 opensta_stage_result_hash=sta_ref.sha256,
+                openroad_stage_result_hash=openroad_ref.sha256,
+                openroad_metrics_hash=canonical_sha256(physical_metrics),
+                physical_area_um2=physical_metrics.physical_area_um2,
+                wirelength_um=physical_metrics.wirelength_um,
+                congestion_overflow=physical_metrics.congestion_overflow,
+                physical_cell_count=physical_metrics.cell_count,
+                physical_register_count=physical_metrics.register_count,
+                physical_buffer_count=physical_metrics.buffer_count,
             )
         )
 
-    requested_names = tuple(
-        sorted(
-            {
-                name
-                for path in paths
-                for name in (*path.object_sequence, path.startpoint, path.endpoint)
-            }
-        )
-    )
-    try:
-        mapped_design = json.loads(store.open_verified(design_json_ref).read())
-        mapped_netlist = store.open_verified(mapped_netlist_ref).read().decode("utf-8")
-        rtl_bundle = store.open_verified(index.rtl_bundle_artifact).read().decode("utf-8")
-    except (ArtifactStoreError, UnicodeError, json.JSONDecodeError) as error:
-        raise EvidenceExecutionError("synthesis or RTL evidence is malformed") from error
-    source_map = build_source_map(
-        mapped_design,
-        mapped_netlist=mapped_netlist,
-        rtl_bundle=rtl_bundle,
-        candidate_id=index.candidate_id,
-        rtl_snapshot_hash=index.benchmark_snapshot_hash,
-        synthesis_structure_hash=design_json_ref.sha256,
-        protected_modules=project.protection.modules,
-        protected_path_patterns=project.protection.path_patterns,
-        requested_object_names=requested_names,
-    )
-    enriched_paths = enrich_critical_paths(paths, source_map)
     protection_hash = canonical_sha256(project.protection)
     identity = build_evidence_input_identity(
         candidate_id=index.candidate_id,
@@ -408,12 +567,13 @@ def analyze_evidence_run(
         stage_id: result.input_hashes for stage_id, result in existing_results.items()
     }
     reused: list[str] = []
+    policy = opportunity_policy_from_project(project.optimization)
 
     evidence_recipe_payload = {
         "operation": "BUILD_EVIDENCE_GRAPH",
         "implementation": {
             path.name: f"sha256:{sha256(path.read_bytes()).hexdigest()}"
-            for path in _m3_sources("execution.py", "graph.py", "source_map.py")
+            for path in _evidence_sources()
         },
     }
     evidence_recipe = _stage_artifact(
@@ -444,13 +604,7 @@ def analyze_evidence_run(
             ),
             "cdc_inventory": cdc_inventory.inventory_hash,
             "clock_inventory": clock_inventory.clock_graph_hash,
-            "critical_path_records": canonical_sha256(
-                {
-                    "critical_paths": tuple(
-                        item.model_dump(mode="json") for item in enriched_paths
-                    )
-                }
-            ),
+            "critical_path_records": _critical_path_report_hash(path_reports),
             "protection_policy": protection_hash,
             "synthesis_structure": design_json_ref.sha256,
         },
@@ -465,14 +619,63 @@ def analyze_evidence_run(
     if cached_evidence is not None and RunOrchestrator.can_reuse(
         cached_evidence, evidence_hashes
     ):
-        evidence_snapshot = _load_contract(
-            store,
-            _raw(cached_evidence, "_snapshot"),
-            EvidenceGraphSnapshot,
-        )
+        evidence_result = cached_evidence
         reused.append(_EVIDENCE_STAGE_ID)
         evidence_result_ref = cached_evidence_ref
     else:
+        paths = []
+        for view_id, path_type, stdout in path_inputs:
+            try:
+                report = store.open_verified(stdout).read().decode("utf-8")
+            except (ArtifactStoreError, UnicodeError) as error:
+                raise EvidenceExecutionError("OpenSTA path report is malformed") from error
+            paths.extend(
+                parse_critical_paths(
+                    report,
+                    candidate_id=index.candidate_id,
+                    analysis_view_id=view_id,
+                    raw_report_artifact_id=stdout.artifact_id,
+                    clock_ids_by_name=clock_ids_by_name,
+                    expected_path_type=path_type,
+                )
+            )
+        requested_names = tuple(
+            sorted(
+                {
+                    name
+                    for path in paths
+                    for name in (*path.object_sequence, path.startpoint, path.endpoint)
+                }
+            )
+        )
+        cdc_endpoints = tuple(
+            sorted(
+                {
+                    endpoint
+                    for crossing in cdc_inventory.crossings
+                    for endpoint in (crossing.source_object, crossing.destination_object)
+                }
+            )
+        )
+        try:
+            mapped_design = json.loads(store.open_verified(design_json_ref).read())
+            mapped_netlist = store.open_verified(mapped_netlist_ref).read().decode("utf-8")
+            rtl_bundle = store.open_verified(index.rtl_bundle_artifact).read().decode("utf-8")
+        except (ArtifactStoreError, UnicodeError, json.JSONDecodeError) as error:
+            raise EvidenceExecutionError("synthesis or RTL evidence is malformed") from error
+        source_map = build_source_map(
+            mapped_design,
+            mapped_netlist=mapped_netlist,
+            rtl_bundle=rtl_bundle,
+            candidate_id=index.candidate_id,
+            rtl_snapshot_hash=index.benchmark_snapshot_hash,
+            synthesis_structure_hash=design_json_ref.sha256,
+            protected_modules=project.protection.modules,
+            protected_path_patterns=project.protection.path_patterns,
+            requested_object_names=requested_names,
+            requested_endpoint_names=cdc_endpoints,
+        )
+        enriched_paths = enrich_critical_paths(paths, source_map)
         started = datetime.now(UTC)
         evidence_snapshot = build_evidence_graph(
             EvidenceGraphBuildInputs(
@@ -524,7 +727,7 @@ def analyze_evidence_run(
             stage_id=_EVIDENCE_STAGE_ID,
             stage="EVIDENCE_GRAPH",
             fingerprint=_implementation_fingerprint(
-                "evidence", _m3_sources("execution.py", "graph.py", "source_map.py")
+                "evidence", _evidence_sources()
             ),
             input_hashes=evidence_hashes,
             raw_artifacts=(
@@ -551,28 +754,17 @@ def analyze_evidence_run(
             resolved, index, stage_refs, stage_hashes, status="PASS"
         )
 
-    try:
-        graph_bytes = store.open_verified(evidence_snapshot.graph_artifact).read()
-        document = EvidenceGraphDocument.model_validate_json(
-            zstandard.ZstdDecompressor().decompress(graph_bytes)
-        )
-    except (ArtifactStoreError, ValueError, zstandard.ZstdError) as error:
-        raise EvidenceExecutionError("compressed evidence graph is invalid") from error
-    graph = EvidenceGraphView(snapshot=evidence_snapshot, document=document)
-    clusters = cluster_paths(
-        enriched_paths,
-        evidence_snapshot_hash=evidence_snapshot.snapshot_hash,
-        source_map=source_map,
-        clock_domain_by_id=clock_domains,
+    evidence_snapshot, source_map, path_collection, graph = _load_cached_evidence(
+        store,
+        evidence_result,
+        identity.identity_hash,
     )
-    cluster_collection = _cluster_collection(evidence_snapshot.snapshot_hash, clusters)
-    policy = default_opportunity_policy()
 
     opportunity_recipe_payload = {
         "operation": "FORM_AND_RANK_OPPORTUNITIES",
         "implementation": {
             path.name: f"sha256:{sha256(path.read_bytes()).hexdigest()}"
-            for path in _m3_sources("execution.py", "opportunities.py", "paths.py")
+            for path in _opportunity_sources()
         },
     }
     opportunity_recipe = _stage_artifact(
@@ -609,13 +801,27 @@ def analyze_evidence_run(
     if cached_opportunity is not None and RunOrchestrator.can_reuse(
         cached_opportunity, opportunity_hashes
     ):
-        ranked = _load_contract(
+        cluster_collection, ranked = _load_cached_opportunities(
             store,
-            _raw(cached_opportunity, "_ranked_opportunities"),
-            RankedOpportunitySet,
+            cached_opportunity,
+            snapshot_hash=evidence_snapshot.snapshot_hash,
+            expected_policy=policy,
         )
         reused.append(_OPPORTUNITY_STAGE_ID)
     else:
+        clusters = cluster_paths(
+            path_collection.records,
+            evidence_snapshot_hash=evidence_snapshot.snapshot_hash,
+            source_map=source_map,
+            clock_domain_by_id=clock_domains,
+            cdc_inventory=cdc_inventory,
+            tns_by_analysis_view=tns_by_view,
+            wns_by_analysis_view=wns_by_view,
+        )
+        cluster_collection = _cluster_collection(
+            evidence_snapshot.snapshot_hash,
+            clusters,
+        )
         started = datetime.now(UTC)
         ranked = rank_opportunities(clusters, graph, policy)
         cluster_ref = _stage_artifact(
@@ -672,7 +878,7 @@ def analyze_evidence_run(
             stage="OPPORTUNITY_FORMATION",
             fingerprint=_implementation_fingerprint(
                 "opportunity",
-                _m3_sources("execution.py", "opportunities.py", "paths.py"),
+                _opportunity_sources(),
             ),
             input_hashes=opportunity_hashes,
             raw_artifacts=(
@@ -716,8 +922,8 @@ def analyze_evidence_run(
         run_id=index.run_id,
         evidence_snapshot_hash=evidence_snapshot.snapshot_hash,
         ranking_hash=ranked.ranking_hash,
-        path_count=len(enriched_paths),
-        cluster_count=len(clusters),
+        path_count=len(path_collection.records),
+        cluster_count=len(cluster_collection.clusters),
         opportunity_count=len(ranked.opportunities),
         editable_opportunity_count=editable,
         stage_result_ids=(_EVIDENCE_STAGE_ID, _OPPORTUNITY_STAGE_ID),

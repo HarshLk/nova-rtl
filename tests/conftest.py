@@ -30,6 +30,12 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Use this verified M1 packet for M2 sign-off.",
     )
+    parser.addoption(
+        "--m2-packet",
+        action="store",
+        default=None,
+        help="Use this verified M2 report as the M3 dependency.",
+    )
 
 
 @pytest.fixture
@@ -73,4 +79,15 @@ def m1_packet_path(request: pytest.FixtureRequest) -> Path:
     path = Path(configured).resolve()
     if not path.is_dir():
         pytest.fail(f"M1 packet does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def m2_packet_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--m2-packet")
+    if configured is None:
+        pytest.skip("M3 sign-off validation requires --m2-packet")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"M2 packet does not exist: {path}")
     return path

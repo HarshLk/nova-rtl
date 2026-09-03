@@ -46,12 +46,12 @@ module cdc_level_sync(clk, d, q);
 endmodule
 module nebula_top(clk, data, result);
   lane u_lane (
-    .a(data),
+    .a(data[0]),
     .y(result)
   );
   cdc_level_sync u_sync (
     .clk(clk),
-    .d(data),
+    .d(data[0]),
     .q(result)
   );
 endmodule
@@ -199,6 +199,71 @@ def test_source_map_fails_closed_when_json_and_emitted_netlist_diverge() -> None
             synthesis_structure_hash=HASH_B,
             protected_modules=("cdc_level_sync",),
             protected_path_patterns=("rtl/cdc/**",),
+        )
+
+
+def test_source_map_rejects_noncanonical_json_cell_order_even_for_same_type() -> None:
+    design = deepcopy(MAPPED_DESIGN)
+    original = design["modules"]["lane"]["cells"]["$logic$1"]
+    design["modules"]["lane"]["cells"] = {
+        "$logic$2": deepcopy(original),
+        "$logic$1": original,
+    }
+    netlist = MAPPED_NETLIST.replace(
+        "  AND2x2_ASAP7_75t_R _1_ (",
+        "  AND2x2_ASAP7_75t_R _2_ (\n    .A(a),\n    .B(a),\n    .Y(y)\n  );\n"
+        "  AND2x2_ASAP7_75t_R _1_ (",
+    )
+
+    with pytest.raises(SourceMapError, match="canonical cell order"):
+        build_source_map(
+            design,
+            mapped_netlist=netlist,
+            rtl_bundle=RTL_BUNDLE,
+            candidate_id="baseline",
+            rtl_snapshot_hash=HASH_A,
+            synthesis_structure_hash=HASH_B,
+            protected_modules=("cdc_level_sync",),
+            protected_path_patterns=("rtl/cdc/**",),
+        )
+
+
+def test_source_map_rejects_same_type_cell_swap_by_connectivity_signature() -> None:
+    design = deepcopy(MAPPED_DESIGN["modules"]["lane"])
+    design["attributes"]["top"] = "1"
+    design["ports"].update(
+        {
+            "a2": {"direction": "input", "bits": [4]},
+            "y2": {"direction": "output", "bits": [5]},
+        }
+    )
+    second = deepcopy(design["cells"]["$logic$1"])
+    second["connections"] = {"A": [4], "B": [4], "Y": [5]}
+    design["cells"]["$logic$2"] = second
+    netlist = """module lane(a, a2, y, y2);
+  AND2x2_ASAP7_75t_R _1_ (
+    .A(a2),
+    .B(a2),
+    .Y(y2)
+  );
+  AND2x2_ASAP7_75t_R _2_ (
+    .A(a),
+    .B(a),
+    .Y(y)
+  );
+endmodule
+"""
+
+    with pytest.raises(SourceMapError, match="connectivity"):
+        build_source_map(
+            {"modules": {"lane": design}},
+            mapped_netlist=netlist,
+            rtl_bundle=RTL_BUNDLE,
+            candidate_id="baseline",
+            rtl_snapshot_hash=HASH_A,
+            synthesis_structure_hash=HASH_B,
+            protected_modules=(),
+            protected_path_patterns=(),
         )
 
 
