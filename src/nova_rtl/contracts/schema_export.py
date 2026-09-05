@@ -17,6 +17,7 @@ from nova_rtl.contracts.analysis import (
     CriticalPathRecord,
     EvidenceGraphSnapshot,
     FrequencySweepContract,
+    M3SignoffReport,
     PowerActivityContract,
 )
 from nova_rtl.contracts.base import (
@@ -130,6 +131,7 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "clock-inventory": SchemaRegistration(ClockInventory, version=1),
     "cdc-inventory": SchemaRegistration(CDCInventory, version=1),
     "evidence-graph-snapshot": SchemaRegistration(EvidenceGraphSnapshot, version=1),
+    "m3-signoff-report": SchemaRegistration(M3SignoffReport, version=1),
     "metric-set": SchemaRegistration(MetricSet, version=1),
     "stage-result": SchemaRegistration(StageResult, version=2),
     "optimization-opportunity": SchemaRegistration(OptimizationOpportunity, version=1),

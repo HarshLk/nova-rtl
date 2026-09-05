@@ -633,6 +633,59 @@ def test_packet_verifier_accepts_a_complete_self_contained_packet(tmp_path: Path
     assert report.status == "PASS"
 
 
+def test_packet_verifier_accepts_identical_tools_rebound_to_another_root(
+    tmp_path: Path,
+) -> None:
+    packet = build_synthetic_signoff_packet(tmp_path)
+    lock_path = packet / "platform.lock.yaml"
+    lock = load_platform_lock(lock_path)
+    relocated = tuple(
+        fingerprint.model_copy(
+            update={
+                "executable": str(
+                    (tmp_path / "relocated" / fingerprint.tool_id).resolve()
+                )
+            }
+        )
+        for fingerprint in lock.tool_fingerprints
+    )
+    changed = lock.model_copy(update={"tool_fingerprints": relocated})
+    assert changed.content_identity_hash == platform_content_identity_hash(changed)
+    write_contract(lock_path, changed)
+    rebind_packet_to_lock_bytes(packet)
+
+    report = verify_m0_signoff_packet(packet)
+
+    assert report.status == "PASS"
+
+
+def test_packet_verifier_rejects_rebound_tool_with_changed_build_identity(
+    tmp_path: Path,
+) -> None:
+    packet = build_synthetic_signoff_packet(tmp_path)
+    lock_path = packet / "platform.lock.yaml"
+    lock = load_platform_lock(lock_path)
+    changed_fingerprint = lock.tool_fingerprints[0].model_copy(
+        update={"build_hash": hash_ref("f")}
+    )
+    changed = lock.model_copy(
+        update={
+            "tool_fingerprints": (
+                changed_fingerprint,
+                *lock.tool_fingerprints[1:],
+            )
+        }
+    )
+    changed = changed.model_copy(
+        update={"content_identity_hash": platform_content_identity_hash(changed)}
+    )
+    write_contract(lock_path, changed)
+    rebind_packet_to_lock_bytes(packet)
+
+    with pytest.raises(SignoffError, match="platform lock disagrees"):
+        verify_m0_signoff_packet(packet)
+
+
 def test_packet_verifier_rejects_symlinked_evidence_even_when_bytes_match(
     tmp_path: Path,
 ) -> None:

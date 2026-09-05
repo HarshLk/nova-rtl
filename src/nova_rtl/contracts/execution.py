@@ -37,6 +37,8 @@ Stage = Literal[
     "FORMAL_EQUIVALENCE",
     "SIMULATION",
     "POWER_ANALYSIS",
+    "EVIDENCE_GRAPH",
+    "OPPORTUNITY_FORMATION",
 ]
 StageStatus = Literal["PASS", "FAIL", "INCONCLUSIVE", "INFRASTRUCTURE_ERROR"]
 ArtifactNamespace = Annotated[
@@ -61,6 +63,22 @@ FORMAL_STAGES = frozenset({"FORMAL_MODEL_PREFLIGHT", "EQY_SMOKE", "FORMAL_EQUIVA
 TIMING_STAGES = frozenset(
     {"OPENSTA_FULL", "OPENROAD_PHYSICAL", "OPENROAD_PLACED_CTS", "OPENROAD_ROUTED"}
 )
+M3_STAGE_EXTENSION_IDENTITIES = {
+    "EVIDENCE_GRAPH": frozenset(
+        {
+            "analysis_view_set",
+            "cdc_inventory",
+            "clock_inventory",
+            "critical_path_records",
+            "protection_policy",
+            "synthesis_structure",
+        }
+    ),
+    "OPPORTUNITY_FORMATION": frozenset(
+        {"evidence_graph", "protection_policy", "transform_registry"}
+    ),
+}
+M3_EXTENSION_IDENTITIES = frozenset().union(*M3_STAGE_EXTENSION_IDENTITIES.values())
 SECRET_ENVIRONMENT_MARKERS = ("TOKEN", "SECRET", "PASSWORD", "CREDENTIAL", "API_KEY")
 
 
@@ -97,9 +115,36 @@ def _validate_stage_identity(
         required.add("power_activity")
     if stage in FORMAL_STAGES:
         required.add("formal_model")
+    if stage in M3_STAGE_EXTENSION_IDENTITIES:
+        required.update({"constraints", "constraint_binding"})
+    if stage == "OPPORTUNITY_FORMATION":
+        required.add("parent_stage_result")
     missing = sorted(name for name in required if getattr(input_hashes, name) is None)
     if missing:
         raise ValueError(f"stage input identity is missing: {', '.join(missing)}")
+
+    extension_names = set(input_hashes.extensions)
+    if stage in M3_STAGE_EXTENSION_IDENTITIES:
+        expected_extensions = M3_STAGE_EXTENSION_IDENTITIES[stage]
+        missing_extensions = sorted(expected_extensions - extension_names)
+        unexpected_extensions = sorted(extension_names - expected_extensions)
+        if missing_extensions:
+            raise ValueError(
+                "stage input extension identity is missing: "
+                f"{', '.join(missing_extensions)}"
+            )
+        if unexpected_extensions:
+            raise ValueError(
+                f"stage input extension identity is not valid for {stage}: "
+                f"{', '.join(unexpected_extensions)}"
+            )
+    else:
+        invalid_extensions = sorted(extension_names & M3_EXTENSION_IDENTITIES)
+        if invalid_extensions:
+            raise ValueError(
+                f"stage input extension identity is not valid for {stage}: "
+                f"{', '.join(invalid_extensions)}"
+            )
     if design_contract_hash is not None and input_hashes.design_contract != design_contract_hash:
         raise ValueError("design_contract_hash must match input_hashes.design_contract")
 

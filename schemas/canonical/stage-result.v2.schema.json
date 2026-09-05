@@ -637,7 +637,9 @@
         "OPENROAD_ROUTED",
         "FORMAL_EQUIVALENCE",
         "SIMULATION",
-        "POWER_ANALYSIS"
+        "POWER_ANALYSIS",
+        "EVIDENCE_GRAPH",
+        "OPPORTUNITY_FORMATION"
       ],
       "title": "Stage",
       "type": "string"

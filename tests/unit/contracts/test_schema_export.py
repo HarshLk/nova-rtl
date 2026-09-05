@@ -50,6 +50,7 @@ EXPECTED_SCHEMA_FILES = {
     "frequency-sweep-contract.v1.schema.json",
     "metric-set.v1.schema.json",
     "m2-signoff-report.v1.schema.json",
+    "m3-signoff-report.v1.schema.json",
     "optimization-opportunity.v1.schema.json",
     "optimization-proposal.v2.schema.json",
     "pareto-record.v1.schema.json",

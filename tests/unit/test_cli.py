@@ -50,6 +50,7 @@ class CliTests(unittest.TestCase):
         self.assertEqual(analyze_help.exit_code, 0, analyze_help.output)
         self.assertIn("PROJECT", _plain_output(init_help.output))
         self.assertIn("--stages", _plain_output(analyze_help.output))
+        self.assertIn("evidence,opportunities", _plain_output(analyze_help.output))
 
     def test_cli_exposes_full_benchmark_calibration_command(self) -> None:
         result = self.runner.invoke(app, ["benchmark", "calibrate", "--help"])
@@ -75,6 +76,17 @@ class CliTests(unittest.TestCase):
         self.assertIn("REPORT", verify_output)
         self.assertIn("--m1-packet", verify_output)
         self.assertNotIn("full-calibration-final", verify_output)
+
+    def test_cli_exposes_m3_signoff_and_verification_commands(self) -> None:
+        signoff = self.runner.invoke(app, ["m3", "signoff", "--help"])
+        verify = self.runner.invoke(app, ["m3", "verify", "--help"])
+
+        self.assertEqual(signoff.exit_code, 0, signoff.output)
+        self.assertEqual(verify.exit_code, 0, verify.output)
+        self.assertIn("RUN_DIRECTORY", _plain_output(signoff.output))
+        self.assertIn("--m2-packet", _plain_output(signoff.output))
+        self.assertIn("REPORT", _plain_output(verify.output))
+        self.assertIn("--m2-packet", _plain_output(verify.output))
 
     def test_m1_cli_exposes_signoff_and_offline_verification(self) -> None:
         result = self.runner.invoke(app, ["m1", "--help"])

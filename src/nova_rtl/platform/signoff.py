@@ -640,7 +640,8 @@ def verify_m0_signoff_packet(
             raise SignoffError("published doctor platform-lock check has the wrong identity")
         lock_tools = {item.tool_id: item for item in lock.tool_fingerprints}
         if set(lock_tools) != set(receipt_tools) or any(
-            lock_tools[tool_id].model_dump() != receipt_tools[tool_id].model_dump()
+            lock_tools[tool_id].model_dump(exclude={"executable"})
+            != receipt_tools[tool_id].model_dump(exclude={"executable"})
             for tool_id in lock_tools
         ):
             raise SignoffError("published platform lock disagrees with toolchain receipt")
