@@ -28,6 +28,11 @@ from nova_rtl.optimization.flow import (
     optimize_strict_vertical_slice,
     verify_candidate_bundle,
 )
+from nova_rtl.optimization.signoff import (
+    M4SignoffError,
+    run_m4_signoff,
+    verify_m4_signoff,
+)
 from nova_rtl.platform.activation import (
     ToolchainVerificationError,
     create_toolchain_receipt,
@@ -99,6 +104,12 @@ m3_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m3_app, name="m3")
+m4_app = typer.Typer(
+    name="m4",
+    help="Build and verify the strict-equivalence candidate milestone packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m4_app, name="m4")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -228,6 +239,20 @@ def _optimization_failure(error: Exception, json_output: bool) -> None:
     raise typer.Exit(2)
 
 
+def _m4_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M4", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M4 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
 def _candidate_bundle_path(candidate: str, runs_root: Path) -> Path:
     supplied = Path(candidate)
     if supplied.is_file():
@@ -348,6 +373,74 @@ def candidate_verify(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA candidate verification: PASS: {bundle.candidate.candidate_id}"
+    )
+
+
+@m4_app.command("signoff")
+def m4_signoff(
+    candidate_bundle: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="CANDIDATE_BUNDLE"),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create and independently verify the final commit-bound M4 packet."""
+
+    try:
+        path, report = run_m4_signoff(
+            candidate_bundle,
+            m3_packet,
+            repository_root=repository_root,
+        )
+    except (M4SignoffError, OSError, ValidationError, ValueError) as error:
+        _m4_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M4 sign-off: PASS: {path}"
+    )
+
+
+@m4_app.command("verify")
+def m4_verify(
+    report_path: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT"),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Reconstruct and verify every identity in an M4 packet."""
+
+    try:
+        report = verify_m4_signoff(
+            report_path,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M4SignoffError, OSError, ValidationError, ValueError) as error:
+        _m4_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M4 verification: PASS: {report_path.resolve()}"
     )
 
 

@@ -32,6 +32,7 @@ Fingerprint = Annotated[
 ]
 Confidence = Annotated[float, Field(strict=True, ge=0.0, le=1.0, allow_inf_nan=False)]
 Percentage = Annotated[float, Field(strict=True, ge=0.0, le=100.0, allow_inf_nan=False)]
+GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
 TransformFamily = StableUpperString
 TransformOperation = StableUpperString
 SelectionClass = Literal[
@@ -335,8 +336,95 @@ class _CandidateHardGateSummary(StrictContract):
 CandidateRecord.model_rebuild()
 
 
+class M4ViewComparison(StrictContract):
+    """Exact baseline/candidate metrics and result hashes for one required view."""
+
+    analysis_view_id: EntityId
+    baseline_stage_result_hash: HashRef
+    candidate_stage_result_hash: HashRef
+    baseline_metrics: MetricSet
+    candidate_metrics: MetricSet
+
+    @model_validator(mode="after")
+    def metrics_match_view(self) -> Self:
+        if self.baseline_metrics.analysis_view_id != self.analysis_view_id:
+            raise ValueError("baseline metrics do not match comparison view")
+        if self.candidate_metrics.analysis_view_id != self.analysis_view_id:
+            raise ValueError("candidate metrics do not match comparison view")
+        return self
+
+
+class M4SignoffReport(StrictContract):
+    """Commit-bound proof that one M4 candidate passed the complete strict cascade."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: GitCommitSha
+    implementation_tree_hash: GitCommitSha
+    m3_commit_sha: GitCommitSha
+    m3_packet_hash: HashRef
+    m3_report_hash: HashRef
+    parent_run_id: EntityId
+    parent_run_index_hash: HashRef
+    candidate_id: EntityId
+    candidate_run_id: EntityId
+    candidate_run_index_hash: HashRef
+    candidate_bundle_hash: HashRef
+    candidate_source_hash: HashRef
+    patch_hash: HashRef
+    transform_fingerprint: Fingerprint
+    evaluation_hash: HashRef
+    gate_statuses: dict[str, Literal["PASS"]]
+    prephysical_proof_hash: HashRef
+    final_proof_hash: HashRef
+    required_view_comparisons: dict[EntityId, M4ViewComparison]
+    baseline_replay_digest: HashRef
+    candidate_replay_digest: HashRef
+    baseline_ledger_hash: HashRef
+    candidate_ledger_hash: HashRef
+    toolchain_receipt_hash: HashRef
+    platform_lock_hash: HashRef
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def identities_and_hashes_are_canonical(self) -> Self:
+        expected_gates = ("0", "0.5", "1", "2", "3", "4", "5", "6", "7")
+        if tuple(self.gate_statuses) != expected_gates:
+            raise ValueError("M4 gate inventory must contain the complete canonical cascade")
+        if set(self.required_view_comparisons) != {"asap7_setup", "asap7_hold"}:
+            raise ValueError("M4 requires comparable ASAP7 setup and hold views")
+        input_payload = {
+            "commit_sha": self.commit_sha,
+            "implementation_tree_hash": self.implementation_tree_hash,
+            "m3_commit_sha": self.m3_commit_sha,
+            "m3_packet_hash": self.m3_packet_hash,
+            "m3_report_hash": self.m3_report_hash,
+            "parent_run_index_hash": self.parent_run_index_hash,
+            "candidate_run_index_hash": self.candidate_run_index_hash,
+            "candidate_bundle_hash": self.candidate_bundle_hash,
+            "prephysical_proof_hash": self.prephysical_proof_hash,
+            "final_proof_hash": self.final_proof_hash,
+            "baseline_replay_digest": self.baseline_replay_digest,
+            "candidate_replay_digest": self.candidate_replay_digest,
+            "baseline_ledger_hash": self.baseline_ledger_hash,
+            "candidate_ledger_hash": self.candidate_ledger_hash,
+            "toolchain_receipt_hash": self.toolchain_receipt_hash,
+            "platform_lock_hash": self.platform_lock_hash,
+        }
+        if self.input_set_hash != canonical_sha256(input_payload):
+            raise ValueError("input_set_hash does not match the M4 evidence boundary")
+        if self.report_hash != canonical_sha256(
+            self, exclude=frozenset({"report_hash"})
+        ):
+            raise ValueError("report_hash does not match canonical M4 sign-off report")
+        return self
+
+
 __all__ = [
     "CandidateRecord",
+    "M4SignoffReport",
+    "M4ViewComparison",
     "OptimizationOpportunity",
     "OptimizationProposal",
 ]

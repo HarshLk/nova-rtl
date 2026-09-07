@@ -7,11 +7,19 @@ from nova_rtl.optimization.flow import (
     optimize_strict_vertical_slice,
     verify_candidate_bundle,
 )
+from nova_rtl.optimization.signoff import (
+    M4SignoffError,
+    run_m4_signoff,
+    verify_m4_signoff,
+)
 
 __all__ = [
     "M4CandidateBundle",
     "OptimizationFlowError",
+    "M4SignoffError",
     "inspect_candidate",
     "optimize_strict_vertical_slice",
+    "run_m4_signoff",
     "verify_candidate_bundle",
+    "verify_m4_signoff",
 ]

@@ -1,0 +1,458 @@
+{
+  "$defs": {
+    "M4ViewComparison": {
+      "additionalProperties": false,
+      "description": "Exact baseline/candidate metrics and result hashes for one required view.",
+      "properties": {
+        "analysis_view_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Analysis View Id",
+          "type": "string"
+        },
+        "baseline_metrics": {
+          "$ref": "#/$defs/MetricSet"
+        },
+        "baseline_stage_result_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Baseline Stage Result Hash",
+          "type": "string"
+        },
+        "candidate_metrics": {
+          "$ref": "#/$defs/MetricSet"
+        },
+        "candidate_stage_result_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Candidate Stage Result Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "analysis_view_id",
+        "baseline_stage_result_hash",
+        "candidate_stage_result_hash",
+        "baseline_metrics",
+        "candidate_metrics"
+      ],
+      "title": "M4ViewComparison",
+      "type": "object"
+    },
+    "MetricSet": {
+      "additionalProperties": false,
+      "description": "Complete, unit-explicit measured metrics for a stage or comparison.",
+      "properties": {
+        "analysis_view_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Analysis View Id"
+        },
+        "buffer_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Buffer Count"
+        },
+        "cell_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cell Count"
+        },
+        "congestion_overflow": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Congestion Overflow"
+        },
+        "critical_path_delay_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Critical Path Delay Ns"
+        },
+        "estimated_fmax_mhz": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Fmax Mhz"
+        },
+        "failing_endpoints": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failing Endpoints"
+        },
+        "hold_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Tns Ns"
+        },
+        "hold_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Wns Ns"
+        },
+        "mapped_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mapped Area Um2"
+        },
+        "missing_metric_reasons": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Missing Metric Reasons",
+          "type": "object"
+        },
+        "physical_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physical Area Um2"
+        },
+        "power_total_uw": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Power Total Uw"
+        },
+        "register_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Register Count"
+        },
+        "runtime_ms": {
+          "minimum": 0,
+          "title": "Runtime Ms",
+          "type": "integer"
+        },
+        "setup_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Tns Ns"
+        },
+        "setup_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Wns Ns"
+        },
+        "wirelength_um": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Wirelength Um"
+        }
+      },
+      "required": [
+        "analysis_view_id",
+        "setup_wns_ns",
+        "setup_tns_ns",
+        "hold_wns_ns",
+        "hold_tns_ns",
+        "failing_endpoints",
+        "critical_path_delay_ns",
+        "estimated_fmax_mhz",
+        "mapped_area_um2",
+        "physical_area_um2",
+        "cell_count",
+        "register_count",
+        "buffer_count",
+        "power_total_uw",
+        "wirelength_um",
+        "congestion_overflow",
+        "runtime_ms",
+        "missing_metric_reasons"
+      ],
+      "title": "MetricSet",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Commit-bound proof that one M4 candidate passed the complete strict cascade.",
+  "properties": {
+    "baseline_ledger_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Baseline Ledger Hash",
+      "type": "string"
+    },
+    "baseline_replay_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Baseline Replay Digest",
+      "type": "string"
+    },
+    "candidate_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Bundle Hash",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "candidate_ledger_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Ledger Hash",
+      "type": "string"
+    },
+    "candidate_replay_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Replay Digest",
+      "type": "string"
+    },
+    "candidate_run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Run Id",
+      "type": "string"
+    },
+    "candidate_run_index_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Run Index Hash",
+      "type": "string"
+    },
+    "candidate_source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Source Hash",
+      "type": "string"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "evaluation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Evaluation Hash",
+      "type": "string"
+    },
+    "final_proof_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Final Proof Hash",
+      "type": "string"
+    },
+    "gate_statuses": {
+      "additionalProperties": {
+        "const": "PASS",
+        "type": "string"
+      },
+      "title": "Gate Statuses",
+      "type": "object"
+    },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
+    "input_set_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Set Hash",
+      "type": "string"
+    },
+    "m3_commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M3 Commit Sha",
+      "type": "string"
+    },
+    "m3_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M3 Packet Hash",
+      "type": "string"
+    },
+    "m3_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M3 Report Hash",
+      "type": "string"
+    },
+    "parent_run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Parent Run Id",
+      "type": "string"
+    },
+    "parent_run_index_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Parent Run Index Hash",
+      "type": "string"
+    },
+    "patch_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Patch Hash",
+      "type": "string"
+    },
+    "platform_lock_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Platform Lock Hash",
+      "type": "string"
+    },
+    "prephysical_proof_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Prephysical Proof Hash",
+      "type": "string"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "required_view_comparisons": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "$ref": "#/$defs/M4ViewComparison"
+        }
+      },
+      "title": "Required View Comparisons",
+      "type": "object"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    },
+    "toolchain_receipt_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Toolchain Receipt Hash",
+      "type": "string"
+    },
+    "transform_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Transform Fingerprint",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "implementation_tree_hash",
+    "m3_commit_sha",
+    "m3_packet_hash",
+    "m3_report_hash",
+    "parent_run_id",
+    "parent_run_index_hash",
+    "candidate_id",
+    "candidate_run_id",
+    "candidate_run_index_hash",
+    "candidate_bundle_hash",
+    "candidate_source_hash",
+    "patch_hash",
+    "transform_fingerprint",
+    "evaluation_hash",
+    "gate_statuses",
+    "prephysical_proof_hash",
+    "final_proof_hash",
+    "required_view_comparisons",
+    "baseline_replay_digest",
+    "candidate_replay_digest",
+    "baseline_ledger_hash",
+    "candidate_ledger_hash",
+    "toolchain_receipt_hash",
+    "platform_lock_hash",
+    "input_set_hash",
+    "report_hash"
+  ],
+  "title": "M4SignoffReport",
+  "type": "object"
+}

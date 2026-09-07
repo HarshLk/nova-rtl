@@ -44,6 +44,8 @@ from nova_rtl.contracts.execution import PreparedCommand, RawToolResult, StageRe
 from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
 from nova_rtl.contracts.optimization import (
     CandidateRecord,
+    M4SignoffReport,
+    M4ViewComparison,
     OptimizationOpportunity,
     OptimizationProposal,
 )
@@ -137,6 +139,8 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "optimization-opportunity": SchemaRegistration(OptimizationOpportunity, version=1),
     "optimization-proposal": SchemaRegistration(OptimizationProposal, version=2),
     "candidate-record": SchemaRegistration(CandidateRecord, version=1),
+    "m4-signoff-report": SchemaRegistration(M4SignoffReport, version=1),
+    "m4-view-comparison": SchemaRegistration(M4ViewComparison, version=1),
     "constraint-binding-manifest": SchemaRegistration(
         ConstraintBindingManifest, version=1
     ),
