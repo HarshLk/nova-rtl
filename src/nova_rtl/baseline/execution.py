@@ -6,7 +6,7 @@ import os
 import resource
 import subprocess
 import time
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from datetime import UTC, datetime, timedelta
 from hashlib import sha256
 from pathlib import Path
@@ -797,7 +797,12 @@ def _resumable_stage_ids(
     return tuple(sorted(stage_refs.keys() & hashes.keys()))
 
 
-def analyze_run(run_directory: Path, *, requested_stages: Iterable[str]) -> BaselineRunIndex:
+def analyze_run(
+    run_directory: Path,
+    *,
+    requested_stages: Iterable[str],
+    pre_timing_hook: Callable[[BaselineRunIndex], None] | None = None,
+) -> BaselineRunIndex:
     """Execute or safely reuse the complete tiny baseline evidence graph."""
 
     resolved = run_directory.resolve(strict=True)
@@ -907,6 +912,7 @@ def analyze_run(run_directory: Path, *, requested_stages: Iterable[str]) -> Base
         raise BaselineFlowError("Yosys result lacks a valid sequential-cell inventory")
 
     preflights = construct_baseline_preflights(
+        candidate_id=index.candidate_id,
         rtl_snapshot_hash=snapshot.source_hash,
         config_hash=snapshot.config_hash,
         netlist_hash=netlist_ref.sha256,
@@ -1049,6 +1055,9 @@ def analyze_run(run_directory: Path, *, requested_stages: Iterable[str]) -> Base
         ),
         sby_job,
     )
+
+    if pre_timing_hook is not None:
+        pre_timing_hook(index)
 
     setup_checkpoint: ArtifactRef | None = None
     setup_road_result_ref: ArtifactRef | None = None

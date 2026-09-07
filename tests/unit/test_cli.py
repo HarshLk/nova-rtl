@@ -88,6 +88,19 @@ class CliTests(unittest.TestCase):
         self.assertIn("REPORT", _plain_output(verify.output))
         self.assertIn("--m2-packet", _plain_output(verify.output))
 
+    def test_cli_exposes_m4_optimization_and_candidate_commands(self) -> None:
+        optimize = self.runner.invoke(app, ["optimize", "--help"])
+        inspect = self.runner.invoke(app, ["candidate", "inspect", "--help"])
+        verify = self.runner.invoke(app, ["verify", "--help"])
+
+        self.assertEqual(optimize.exit_code, 0, optimize.output)
+        self.assertIn("--planner", _plain_output(optimize.output))
+        self.assertIn("--max-candidates", _plain_output(optimize.output))
+        self.assertIn("--operations", _plain_output(optimize.output))
+        self.assertEqual(inspect.exit_code, 0, inspect.output)
+        self.assertIn("CANDIDATE_ID_OR_BUNDLE", _plain_output(inspect.output))
+        self.assertEqual(verify.exit_code, 0, verify.output)
+
     def test_m1_cli_exposes_signoff_and_offline_verification(self) -> None:
         result = self.runner.invoke(app, ["m1", "--help"])
 

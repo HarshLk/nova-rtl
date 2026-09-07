@@ -276,6 +276,7 @@ def run_strict_equivalence(
     yosys_fingerprint: ToolFingerprint,
     run_id: str,
     candidate_id: str,
+    proof_label: str = "strict",
     timeout_seconds: int = 120,
 ) -> ProofResult:
     """Execute the exact plan without a shell and preserve all raw EQY products."""
@@ -305,6 +306,7 @@ def run_strict_equivalence(
             "PATH": os.pathsep.join(
                 (str(eqy.parent), str(yosys.parent), os.environ.get("PATH", "/usr/bin:/bin"))
             ),
+            "PYTHONDONTWRITEBYTECODE": "1",
             "TZ": "UTC",
         }
         Path(environment["HOME"]).mkdir()
@@ -347,7 +349,9 @@ def run_strict_equivalence(
         returncode,
         has_counterexample=counterexample_data is not None,
     )
-    prefix = "proof_" + plan.plan_hash.removeprefix("sha256:")[:16]
+    if not re.fullmatch(r"[a-z][a-z0-9_]{2,31}", proof_label):
+        raise FormalCompositionError("proof label is not a stable identifier")
+    prefix = f"proof_{proof_label}_" + plan.plan_hash.removeprefix("sha256:")[:12]
     stdout_ref = artifact_store.put_named_bytes(
         stdout.encode("utf-8"),
         artifact_id=f"{prefix}_stdout",
@@ -393,7 +397,7 @@ def run_strict_equivalence(
         else (recipe_ref, stderr_ref, stdout_ref, work_ref)
     )
     partition = ProofPartition(
-        partition_id=f"partition_{candidate_id}",
+        partition_id=f"partition_{proof_label}_{candidate_id}",
         status=outcome,
         runtime_ms=runtime_ms,
         strategy="EQY_STRICT_SAT",
@@ -402,7 +406,7 @@ def run_strict_equivalence(
         else (work_ref,),
     )
     return ProofResult(
-        proof_result_id=f"proof_{candidate_id}",
+        proof_result_id=f"proof_{proof_label}_{candidate_id}",
         run_id=run_id,
         candidate_id=candidate_id,
         contract="STRICT_SEQ_EQUIV",

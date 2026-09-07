@@ -52,6 +52,7 @@ def _ast(path: str = "rtl/priority_mux.sv") -> dict[str, object]:
                     "source_column_end": 18,
                     "addr": 987654,
                     "symbol": "987654 grant",
+                    "loopVariable": "987654 clock_index",
                 }
             ],
         }
@@ -64,6 +65,9 @@ def test_slang_ast_normalization_is_address_independent_and_source_located() -> 
     changed_addresses["design"]["addr"] = 9  # type: ignore[index]
     changed_addresses["design"]["members"][0]["addr"] = 10  # type: ignore[index]
     changed_addresses["design"]["members"][0]["symbol"] = "10 grant"  # type: ignore[index]
+    changed_addresses["design"]["members"][0]["loopVariable"] = (  # type: ignore[index]
+        "10 clock_index"
+    )
     second = parse_slang_ast(changed_addresses)
 
     assert first.ast_hash == second.ast_hash
@@ -71,6 +75,15 @@ def test_slang_ast_normalization_is_address_independent_and_source_located() -> 
     assert first.nodes[0].relative_path == "rtl/priority_mux.sv"
     assert first.nodes[0].start_line == 3
     assert first.nodes[0].end_column == 18
+
+
+def test_slang_conditional_kind_is_normalized_to_registry_vocabulary() -> None:
+    payload = _ast()
+    payload["design"]["members"][0]["kind"] = "Conditional"  # type: ignore[index]
+
+    parsed = parse_slang_ast(payload)
+
+    assert parsed.nodes[0].kind == "ConditionalStatement"
 
 
 def test_authorized_edit_changes_only_exact_slang_node(tmp_path: Path) -> None:

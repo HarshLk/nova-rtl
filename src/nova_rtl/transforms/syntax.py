@@ -28,6 +28,11 @@ class SyntaxBackendError(ValueError):
     """Syntax evidence or a requested source edit fails closed."""
 
 
+_SLANG_KIND_VOCABULARY = {
+    "Conditional": "ConditionalStatement",
+}
+
+
 def _normalized_path(value: str) -> str:
     path = PurePosixPath(value)
     if (
@@ -139,14 +144,12 @@ def _without_process_addresses(value: object) -> object:
         for key, item in sorted(value.items(), key=lambda pair: str(pair[0])):
             if key == "addr":
                 continue
-            if key in {"defaultNetType", "definition", "internalSymbol", "symbol"} and isinstance(
-                item, str
-            ):
-                item = re.sub(r"^[0-9]+(?=\s|$)", "<address>", item)
             normalized[str(key)] = _without_process_addresses(item)
         return normalized
     if isinstance(value, list):
         return [_without_process_addresses(item) for item in value]
+    if isinstance(value, str):
+        return re.sub(r"^[0-9]+(?=\s+[A-Za-z_$])", "<address>", value)
     return value
 
 
@@ -189,7 +192,7 @@ def parse_slang_ast(payload: object) -> ParsedSlangAst:
                 try:
                     normalized = _normalized_path(start_path)
                     node = SyntaxNodeRange(
-                        kind=kind,
+                        kind=_SLANG_KIND_VOCABULARY.get(kind, kind),
                         relative_path=normalized,
                         start_line=coordinates[0],
                         start_column=coordinates[1],
@@ -351,6 +354,7 @@ class SlangSyntaxBackend:
         repository_root: Path,
         source_paths: Sequence[str],
         top: str,
+        include_directories: Sequence[str] = (),
         timeout_seconds: int = 60,
     ) -> ParsedSlangAst:
         root = repository_root.resolve()
@@ -361,6 +365,9 @@ class SlangSyntaxBackend:
         if actual_hash != self._expected_sha256:
             raise SyntaxBackendError("pinned Slang executable hash does not match")
         normalized_paths = tuple(_normalized_path(path) for path in source_paths)
+        normalized_includes = tuple(
+            _normalized_path(path) for path in include_directories
+        )
         if not normalized_paths or len(normalized_paths) != len(set(normalized_paths)):
             raise SyntaxBackendError("source paths must be nonempty and unique")
         for relative_path in normalized_paths:
@@ -379,6 +386,7 @@ class SlangSyntaxBackend:
                 "--single-unit",
                 "--top",
                 top,
+                *(item for path in normalized_includes for item in ("-I", path)),
                 "--ast-json",
                 str(ast_path),
                 "--ast-json-source-info",

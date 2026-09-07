@@ -160,6 +160,7 @@ def _cdc_observation(inventory: CDCInventory) -> StructuralCDCObservation:
 
 def construct_baseline_preflights(
     *,
+    candidate_id: str = "baseline",
     rtl_snapshot_hash: str,
     config_hash: str,
     netlist_hash: str,
@@ -173,8 +174,8 @@ def construct_baseline_preflights(
     commands = _constraint_resolutions(constraint)
     endpoints = tuple(f"pin:sequential_{index:06d}" for index in range(register_count))
     binding = audit_constraint_binding(
-        binding_manifest_id="binding_baseline",
-        candidate_id="baseline",
+        binding_manifest_id=f"binding_{candidate_id}",
+        candidate_id=candidate_id,
         sdc_hash=constraint.sdc_hash,
         netlist_snapshot_hash=netlist_hash,
         analysis_view_hashes=analysis_view_hashes,
@@ -187,13 +188,13 @@ def construct_baseline_preflights(
         baseline=None,
     )
     clocks = construct_clock_inventory(
-        candidate_id="baseline",
+        candidate_id=candidate_id,
         expected=expected_clocks,
         post_elaboration=_clock_observation("POST_ELABORATION", expected_clocks),
         post_synthesis=_clock_observation("POST_SYNTHESIS", expected_clocks),
     )
     cdc = construct_cdc_inventory(
-        candidate_id="baseline",
+        candidate_id=candidate_id,
         approved_registry=expected_cdc,
         observation=_cdc_observation(expected_cdc),
     )
@@ -218,8 +219,8 @@ def construct_baseline_preflights(
     )
     formal_identity = identity.model_copy(update={"property_only_defines": (property_define,)})
     formal_model = preflight_formal_model(
-        formal_model_contract_id="formal_model_baseline",
-        candidate_id="baseline",
+        formal_model_contract_id=f"formal_model_{candidate_id}",
+        candidate_id=candidate_id,
         synthesis=identity,
         formal=formal_identity,
         allowed_property_only_defines=(property_define,),
