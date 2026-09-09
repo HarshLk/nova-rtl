@@ -52,9 +52,7 @@ CandidateClassification = Literal[
     "SELECTED",
 ]
 
-FEASIBLE_CLASSIFICATIONS = frozenset(
-    {"FEASIBLE_DOMINATED", "FEASIBLE_PARETO", "SELECTED"}
-)
+FEASIBLE_CLASSIFICATIONS = frozenset({"FEASIBLE_DOMINATED", "FEASIBLE_PARETO", "SELECTED"})
 
 
 def _require_unique(values: tuple[str, ...], label: str) -> None:
@@ -121,9 +119,7 @@ class OptimizationOpportunity(StrictContract):
 
         if self.editability == "RTL_EDITABLE":
             if not (
-                self.source_spans
-                and self.eligible_transform_families
-                and self.proof_contracts
+                self.source_spans and self.eligible_transform_families and self.proof_contracts
             ):
                 raise ValueError(
                     "editable opportunity requires source spans, transform families, "
@@ -273,10 +269,7 @@ class CandidateRecord(StrictContract):
             if self.hard_gate_summary is None:
                 raise ValueError("feasible candidate requires a hard-gate summary")
             gate = self.hard_gate_summary
-            if (
-                gate.candidate_id != self.candidate_id
-                or gate.source_hash != self.source_hash
-            ):
+            if gate.candidate_id != self.candidate_id or gate.source_hash != self.source_hash:
                 raise ValueError("hard-gate source hash must bind the candidate RTL snapshot")
             if set(gate.required_analysis_view_ids) != set(self.per_view_metrics):
                 raise ValueError("hard-gate required-view metrics must be complete")
@@ -293,7 +286,7 @@ class CandidateRecord(StrictContract):
                 raise ValueError("hard-gate proof contract must match candidate contract")
             if (
                 gate.proof_outcome != "PASS"
-                or gate.binding_status != "EQUIVALENT"
+                or gate.binding_status not in {"EQUIVALENT", "APPROVED_SEMANTIC_REMAP"}
                 or gate.clock_inventory_status != "COMPLETE"
                 or gate.cdc_inventory_status != "UNCHANGED"
             ):
@@ -314,9 +307,7 @@ class _CandidateHardGateSummary(StrictContract):
     proof_outcome: Literal["PASS", "FAIL", "INCONCLUSIVE", "INFRASTRUCTURE_ERROR"]
     proof_contract: CorrectnessContract
     binding_manifest_id: EntityId
-    binding_status: Literal[
-        "EQUIVALENT", "APPROVED_SEMANTIC_REMAP", "FORBIDDEN_DELTA"
-    ]
+    binding_status: Literal["EQUIVALENT", "APPROVED_SEMANTIC_REMAP", "FORBIDDEN_DELTA"]
     clock_inventory_id: EntityId
     clock_inventory_status: Literal["COMPLETE", "INCOMPLETE", "MISMATCH"]
     cdc_inventory_id: EntityId
@@ -414,9 +405,7 @@ class M4SignoffReport(StrictContract):
         }
         if self.input_set_hash != canonical_sha256(input_payload):
             raise ValueError("input_set_hash does not match the M4 evidence boundary")
-        if self.report_hash != canonical_sha256(
-            self, exclude=frozenset({"report_hash"})
-        ):
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
             raise ValueError("report_hash does not match canonical M4 sign-off report")
         return self
 

@@ -13,11 +13,17 @@ from typing import Literal, Self
 import yaml
 from pydantic import field_validator, model_validator
 
+from nova_rtl.analysis_views.comparability import (
+    ApprovedIdentityRemap,
+    ComparabilityResult,
+    IncomparableResultsError,
+    assert_comparable,
+)
 from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
 from nova_rtl.baseline.execution import analyze_run
 from nova_rtl.baseline.flow import BaselineRunIndex, initialize_run, load_run_index
 from nova_rtl.benchmark.validate import validate_benchmark
-from nova_rtl.contracts.analysis import ClockInventory
+from nova_rtl.contracts.analysis import CDCInventory, ClockInventory
 from nova_rtl.contracts.base import (
     ArtifactRef,
     HashRef,
@@ -30,7 +36,11 @@ from nova_rtl.contracts.execution import StageResult
 from nova_rtl.contracts.manifest import ProjectManifest
 from nova_rtl.contracts.optimization import CandidateRecord, OptimizationProposal
 from nova_rtl.contracts.platform import ToolchainReceipt, ToolFingerprint
-from nova_rtl.contracts.verification import FormalModelContract, ProofResult
+from nova_rtl.contracts.verification import (
+    ConstraintBindingManifest,
+    FormalModelContract,
+    ProofResult,
+)
 from nova_rtl.evaluation.cascade import (
     EVALUATION_GATE_ORDER,
     EvaluationCascade,
@@ -53,6 +63,10 @@ from nova_rtl.formal.compose import (
 from nova_rtl.optimization.authority import (
     PriorityMuxAuthorization,
     select_priority_mux_authority,
+)
+from nova_rtl.optimization.comparison import (
+    M4StructuralComparison,
+    compare_structural_invariants,
 )
 from nova_rtl.search.dag import replace_candidate
 from nova_rtl.transforms.executor import MaterializationRequest, TransformExecutor
@@ -85,6 +99,8 @@ class M4CandidateBundle(StrictContract):
     feasibility_evidence: CandidateFeasibilityEvidence
     prephysical_proof: ProofResult
     final_proof: ProofResult
+    structural_comparison: M4StructuralComparison
+    view_comparisons: dict[str, ComparabilityResult]
     candidate_stage_result_artifacts: dict[str, ArtifactRef]
     status: Literal["PASS", "FAIL"]
     bundle_hash: HashRef
@@ -92,6 +108,13 @@ class M4CandidateBundle(StrictContract):
     @field_validator("candidate_stage_result_artifacts")
     @classmethod
     def stage_map_is_canonical(cls, value: dict[str, ArtifactRef]) -> dict[str, ArtifactRef]:
+        return dict(sorted(value.items()))
+
+    @field_validator("view_comparisons")
+    @classmethod
+    def comparisons_are_canonical(
+        cls, value: dict[str, ComparabilityResult]
+    ) -> dict[str, ComparabilityResult]:
         return dict(sorted(value.items()))
 
     @model_validator(mode="after")
@@ -106,6 +129,15 @@ class M4CandidateBundle(StrictContract):
             raise ValueError("prephysical proof candidate identity does not match bundle")
         if self.final_proof.candidate_id != self.candidate.candidate_id:
             raise ValueError("final proof candidate identity does not match bundle")
+        if not self.structural_comparison.safe:
+            raise ValueError("candidate bundle contains a forbidden structural delta")
+        expected_comparisons = {
+            f"{tool}_{view_id}"
+            for view_id in self.feasibility_policy.required_analysis_view_ids
+            for tool in ("openroad", "opensta")
+        }
+        if set(self.view_comparisons) != expected_comparisons:
+            raise ValueError("candidate bundle has an incomplete view comparison set")
         expected_status = (
             "PASS"
             if self.evaluation.status == "PASS"
@@ -146,6 +178,29 @@ def _load_stage_results(index: BaselineRunIndex, run_directory: Path) -> dict[st
             raise OptimizationFlowError(f"stage result identity mismatch: {stage_id}")
         results[stage_id] = result
     return results
+
+
+def _stage_contract(
+    *,
+    run_directory: Path,
+    result: StageResult,
+    contract_type: type[ConstraintBindingManifest | ClockInventory | CDCInventory],
+) -> ConstraintBindingManifest | ClockInventory | CDCInventory:
+    store = ArtifactStore.open_existing(run_directory / "artifacts")
+    reference = next(
+        (item for item in result.raw_artifacts if item.artifact_id.endswith("_contract")),
+        None,
+    )
+    if reference is None:
+        raise OptimizationFlowError(
+            f"{result.stage_result_id} lacks its canonical structural contract"
+        )
+    try:
+        return contract_type.model_validate_json(store.open_verified(reference).read())
+    except (ArtifactStoreError, ValueError) as error:
+        raise OptimizationFlowError(
+            f"{result.stage_result_id} structural contract is invalid: {error}"
+        ) from error
 
 
 def _load_m3_authority(
@@ -385,31 +440,128 @@ def _view_evidence(
     candidate_index: BaselineRunIndex,
     parent_results: dict[str, StageResult],
     candidate_results: dict[str, StageResult],
-) -> tuple[FeasibilityPolicy, dict[str, object]]:
+    *,
+    parent_run_directory: Path,
+    candidate_run_directory: Path,
+) -> tuple[
+    FeasibilityPolicy,
+    dict[str, object],
+    M4StructuralComparison,
+    dict[str, ComparabilityResult],
+]:
     required = tuple(sorted(view.analysis_view_id for view in candidate_index.analysis_views))
-    view_set_hash = canonical_sha256(
+    candidate_view_set_hash = canonical_sha256(
         {"views": tuple(canonical_sha256(view) for view in candidate_index.analysis_views)}
     )
-    clocks = ClockInventory.model_validate_json(
-        (candidate_index.project_root / "expected/clock_inventory.json").read_bytes()
+    baseline_view_set_hash = canonical_sha256(
+        {"views": tuple(canonical_sha256(view) for view in parent_index.analysis_views)}
+    )
+    if baseline_view_set_hash != candidate_view_set_hash:
+        raise OptimizationFlowError("candidate analysis-view set differs from baseline")
+
+    baseline_binding = _stage_contract(
+        run_directory=parent_run_directory,
+        result=parent_results["stage_binding"],
+        contract_type=ConstraintBindingManifest,
+    )
+    candidate_binding = _stage_contract(
+        run_directory=candidate_run_directory,
+        result=candidate_results["stage_binding"],
+        contract_type=ConstraintBindingManifest,
+    )
+    baseline_clocks = _stage_contract(
+        run_directory=parent_run_directory,
+        result=parent_results["stage_clock"],
+        contract_type=ClockInventory,
+    )
+    candidate_clocks = _stage_contract(
+        run_directory=candidate_run_directory,
+        result=candidate_results["stage_clock"],
+        contract_type=ClockInventory,
+    )
+    baseline_cdc = _stage_contract(
+        run_directory=parent_run_directory,
+        result=parent_results["stage_cdc"],
+        contract_type=CDCInventory,
+    )
+    candidate_cdc = _stage_contract(
+        run_directory=candidate_run_directory,
+        result=candidate_results["stage_cdc"],
+        contract_type=CDCInventory,
+    )
+    assert isinstance(baseline_binding, ConstraintBindingManifest)
+    assert isinstance(candidate_binding, ConstraintBindingManifest)
+    assert isinstance(baseline_clocks, ClockInventory)
+    assert isinstance(candidate_clocks, ClockInventory)
+    assert isinstance(baseline_cdc, CDCInventory)
+    assert isinstance(candidate_cdc, CDCInventory)
+    structural = compare_structural_invariants(
+        baseline_binding=baseline_binding,
+        candidate_binding=candidate_binding,
+        baseline_clocks=baseline_clocks,
+        candidate_clocks=candidate_clocks,
+        baseline_cdc=baseline_cdc,
+        candidate_cdc=candidate_cdc,
     )
     project = _load_project(candidate_index.project_root)
     policy = FeasibilityPolicy.build(
         required_analysis_view_ids=required,
-        baseline_analysis_view_set_hash=view_set_hash,
+        baseline_analysis_view_set_hash=baseline_view_set_hash,
         baseline_constraint_source_hash=parent_index.constraint_contract_artifact.sha256,
-        baseline_generated_clock_graph_hash=clocks.clock_graph_hash,
+        baseline_generated_clock_graph_hash=structural.clock_semantic_hash,
         max_area_growth_percent=project.optimization.max_area_growth_percent,
     )
     complete: dict[str, bool] = {}
     hard_pass: dict[str, bool] = {}
     metrics_present: dict[str, bool] = {}
     metrics: dict[str, object] = {}
+    comparisons: dict[str, ComparabilityResult] = {}
     for view in candidate_index.analysis_views:
         view_id = view.analysis_view_id
         sta = candidate_results[f"stage_opensta_{view_id}"]
         road = candidate_results[f"stage_openroad_{view_id}"]
-        complete[view_id] = sta.status == "PASS" and road.status == "PASS"
+        for stage_name, baseline_result, candidate_result in (
+            (f"opensta_{view_id}", parent_results[f"stage_opensta_{view_id}"], sta),
+            (
+                f"openroad_{view_id}",
+                parent_results[f"stage_openroad_{view_id}"],
+                road,
+            ),
+        ):
+            baseline_binding_hash = baseline_result.input_hashes.constraint_binding
+            candidate_binding_hash = candidate_result.input_hashes.constraint_binding
+            if baseline_binding_hash is None or candidate_binding_hash is None:
+                raise OptimizationFlowError(
+                    f"candidate view {view_id} has incomplete binding identity"
+                )
+            remaps = ()
+            if baseline_binding_hash != candidate_binding_hash:
+                remaps = (
+                    ApprovedIdentityRemap.build(
+                        identity_name="constraint_binding",
+                        baseline_identity_hash=baseline_binding_hash,
+                        candidate_identity_hash=candidate_binding_hash,
+                        semantic_identity_hash=structural.binding_semantic_hash,
+                        justification=("IDENTICAL_RESOLVED_SELECTORS_AND_ENDPOINT_COVERAGE"),
+                    ),
+                )
+            try:
+                comparisons[stage_name] = assert_comparable(
+                    baseline_result,
+                    candidate_result,
+                    "TIMING",
+                    approved_remaps=remaps,
+                )
+            except IncomparableResultsError as error:
+                raise OptimizationFlowError(
+                    f"candidate view {view_id} is not comparable: {error}"
+                ) from error
+        complete[view_id] = (
+            sta.status == "PASS"
+            and road.status == "PASS"
+            and f"opensta_{view_id}" in comparisons
+            and f"openroad_{view_id}" in comparisons
+        )
         if view.check == "SETUP":
             limit = view.hard_limits["setup_wns_ns"]
             value = road.metrics.setup_wns_ns
@@ -451,16 +603,23 @@ def _view_evidence(
         0.0 if baseline_area == 0 else 100.0 * (candidate_area - baseline_area) / baseline_area
     )
     facts: dict[str, object] = {
-        "analysis_view_set_hash": view_set_hash,
+        "analysis_view_set_hash": candidate_view_set_hash,
         "constraint_source_hash": candidate_index.constraint_contract_artifact.sha256,
-        "generated_clock_graph_hash": clocks.clock_graph_hash,
+        "generated_clock_graph_hash": structural.clock_semantic_hash,
+        "effective_constraint_binding": structural.binding_status,
+        "unresolved_constraint_selectors": structural.unresolved_constraint_selectors,
+        "new_or_unapproved_cdc_crossings": (structural.new_or_unapproved_cdc_crossings),
+        "changed_approved_cdc_structures": (
+            structural.changed_approved_cdc_structures + structural.removed_approved_cdc_structures
+        ),
+        "unconstrained_endpoints": structural.unconstrained_endpoints,
         "area_growth_percent": area_growth,
         "view_complete": complete,
         "view_hard_limits_pass": hard_pass,
         "view_metrics_present": metrics_present,
         "per_view_metrics": metrics,
     }
-    return policy, facts
+    return policy, facts, structural, dict(sorted(comparisons.items()))
 
 
 def _assessment(
@@ -640,7 +799,14 @@ def optimize_strict_vertical_slice(
     )
     parent_results = _load_stage_results(parent_index, resolved)
     candidate_results = _load_stage_results(candidate_index, initialized.run_directory)
-    policy, facts = _view_evidence(parent_index, candidate_index, parent_results, candidate_results)
+    policy, facts, structural, view_comparisons = _view_evidence(
+        parent_index,
+        candidate_index,
+        parent_results,
+        candidate_results,
+        parent_run_directory=resolved,
+        candidate_run_directory=initialized.run_directory,
+    )
     evidence = CandidateFeasibilityEvidence.build(
         candidate_id=candidate_id,
         source_hash=materialized.candidate.source_hash,
@@ -648,12 +814,12 @@ def optimize_strict_vertical_slice(
         proof_contract=final_proof.contract,
         analysis_view_set_hash=facts["analysis_view_set_hash"],
         constraint_source_hash=facts["constraint_source_hash"],
-        effective_constraint_binding="EQUIVALENT",
-        unresolved_constraint_selectors=0,
+        effective_constraint_binding=facts["effective_constraint_binding"],
+        unresolved_constraint_selectors=facts["unresolved_constraint_selectors"],
         generated_clock_graph_hash=facts["generated_clock_graph_hash"],
-        new_or_unapproved_cdc_crossings=0,
-        changed_approved_cdc_structures=0,
-        unconstrained_endpoints=0,
+        new_or_unapproved_cdc_crossings=facts["new_or_unapproved_cdc_crossings"],
+        changed_approved_cdc_structures=facts["changed_approved_cdc_structures"],
+        unconstrained_endpoints=facts["unconstrained_endpoints"],
         area_growth_percent=facts["area_growth_percent"],
         view_complete=facts["view_complete"],
         view_hard_limits_pass=facts["view_hard_limits_pass"],
@@ -681,7 +847,7 @@ def optimize_strict_vertical_slice(
         "proof_outcome": final_proof.outcome,
         "proof_contract": final_proof.contract,
         "binding_manifest_id": f"binding_{candidate_id}",
-        "binding_status": "EQUIVALENT",
+        "binding_status": structural.binding_status,
         "clock_inventory_id": "stage_clock",
         "clock_inventory_status": "COMPLETE",
         "cdc_inventory_id": "stage_cdc",
@@ -721,7 +887,8 @@ def optimize_strict_vertical_slice(
         ),
         "2": _assessment(
             "2",
-            all(candidate_results[item].status == "PASS" for item in structural_stages),
+            all(candidate_results[item].status == "PASS" for item in structural_stages)
+            and structural.safe,
             structural_stages,
             "STRUCTURAL_INVARIANT_FAIL",
         ),
@@ -780,6 +947,8 @@ def optimize_strict_vertical_slice(
         "feasibility_evidence": evidence,
         "prephysical_proof": prephysical_proof,
         "final_proof": final_proof,
+        "structural_comparison": structural,
+        "view_comparisons": view_comparisons,
         "candidate_stage_result_artifacts": dict(candidate_index.stage_result_artifacts),
         "status": "PASS" if evaluation.status == "PASS" and feasible else "FAIL",
     }
