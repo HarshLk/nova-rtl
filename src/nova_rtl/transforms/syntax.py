@@ -244,11 +244,19 @@ def _position_to_offset(source: str, line: int, column: int) -> int:
     return sum(len(item) for item in lines[: line - 1]) + column - 1
 
 
-def _line_span_text(source: str, span: SourceSpanRecord) -> str:
+def _source_span_text(source: str, span: SourceSpanRecord) -> str:
     lines = source.splitlines()
     if span.end_line > len(lines):
         raise SyntaxBackendError("authorized source span exceeds file length")
-    return "\n".join(lines[span.start_line - 1 : span.end_line])
+    selected = lines[span.start_line - 1 : span.end_line]
+    if not selected:
+        raise SyntaxBackendError("authorized source span selects no RTL text")
+    selected[0] = selected[0][span.start_column - 1 :]
+    if len(selected) == 1:
+        selected[0] = selected[0][: max(span.end_column - span.start_column + 1, 0)]
+    else:
+        selected[-1] = selected[-1][: span.end_column]
+    return "\n".join(selected)
 
 
 def _ranges_overlap(first: SourceSpanRecord, edit: SourceEdit) -> bool:
@@ -306,7 +314,7 @@ def apply_authorized_edit(
         source = source_path.read_text(encoding="utf-8")
     except (OSError, UnicodeError) as error:
         raise SyntaxBackendError(f"cannot read authorized UTF-8 source: {error}") from error
-    if _hash_text(_line_span_text(source, authorized_span)) != authorized_span.source_text_hash:
+    if _hash_text(_source_span_text(source, authorized_span)) != authorized_span.source_text_hash:
         raise SyntaxBackendError("authorized source span hash no longer matches")
     start_offset = _position_to_offset(source, edit.start_line, edit.start_column)
     end_offset = _position_to_offset(source, edit.end_line, edit.end_column)
@@ -365,9 +373,7 @@ class SlangSyntaxBackend:
         if actual_hash != self._expected_sha256:
             raise SyntaxBackendError("pinned Slang executable hash does not match")
         normalized_paths = tuple(_normalized_path(path) for path in source_paths)
-        normalized_includes = tuple(
-            _normalized_path(path) for path in include_directories
-        )
+        normalized_includes = tuple(_normalized_path(path) for path in include_directories)
         if not normalized_paths or len(normalized_paths) != len(set(normalized_paths)):
             raise SyntaxBackendError("source paths must be nonempty and unique")
         for relative_path in normalized_paths:

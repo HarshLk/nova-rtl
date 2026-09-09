@@ -20,6 +20,9 @@ def _hash(text: str) -> str:
 
 
 def _span(source: str, *, protected: bool = False) -> SourceSpanRecord:
+    selected = source.splitlines()[2:6]
+    selected[0] = selected[0][2:]
+    selected[-1] = selected[-1][:18]
     return SourceSpanRecord(
         source_span_id="span_priority_mux",
         rtl_snapshot_hash="sha256:" + "1" * 64,
@@ -29,7 +32,7 @@ def _span(source: str, *, protected: bool = False) -> SourceSpanRecord:
         end_line=6,
         end_column=18,
         owner_hierarchy="priority_mux",
-        source_text_hash=_hash("\n".join(source.splitlines()[2:6])),
+        source_text_hash=_hash("\n".join(selected)),
         mapping_confidence=1.0,
         protected=protected,
         protection_kinds=("CLOCK",) if protected else (),

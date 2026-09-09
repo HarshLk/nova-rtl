@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import fnmatch
 import os
-import re
 import shutil
 from datetime import UTC, datetime
 from hashlib import sha256
@@ -22,7 +20,6 @@ from nova_rtl.benchmark.validate import validate_benchmark
 from nova_rtl.contracts.analysis import ClockInventory
 from nova_rtl.contracts.base import (
     ArtifactRef,
-    EvidenceRef,
     HashRef,
     StrictContract,
     canonical_json_bytes,
@@ -46,22 +43,22 @@ from nova_rtl.evaluation.feasibility import (
     is_feasible,
 )
 from nova_rtl.evidence.execution import analyze_evidence_run
-from nova_rtl.evidence.models import SourceSpanRecord
 from nova_rtl.evidence.opportunities import RankedOpportunitySet
+from nova_rtl.evidence.source_map import SourceMapSnapshot
 from nova_rtl.formal.compose import (
     compose_strict_equivalence,
     run_strict_equivalence,
     source_snapshot_hash,
 )
+from nova_rtl.optimization.authority import (
+    PriorityMuxAuthorization,
+    select_priority_mux_authority,
+)
 from nova_rtl.search.dag import replace_candidate
 from nova_rtl.transforms.executor import MaterializationRequest, TransformExecutor
-from nova_rtl.transforms.priority_mux import (
-    PriorityMuxContext,
-    PriorityMuxError,
-    RestructurePriorityMux,
-)
+from nova_rtl.transforms.priority_mux import RestructurePriorityMux
 from nova_rtl.transforms.registry import TransformRegistry
-from nova_rtl.transforms.syntax import ParsedSlangAst, SlangSyntaxBackend, SyntaxNodeRange
+from nova_rtl.transforms.syntax import ParsedSlangAst, SlangSyntaxBackend
 
 _BASELINE_STAGES = ("yosys", "opensta", "binding", "clock", "cdc", "formal-smoke", "openroad")
 
@@ -73,11 +70,13 @@ class OptimizationFlowError(RuntimeError):
 class M4CandidateBundle(StrictContract):
     """Self-hashed candidate, evaluation, proof, and candidate-run evidence packet."""
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     parent_run_id: str
     parent_run_index_hash: HashRef
     candidate_run_id: str
     candidate_run_index_hash: HashRef
+    m3_source_map_artifact: ArtifactRef
+    m3_ranked_opportunities_artifact: ArtifactRef
     syntax_span_artifact: ArtifactRef
     proposal_artifact: ArtifactRef
     candidate: CandidateRecord
@@ -133,9 +132,7 @@ def _load_project(root: Path) -> ProjectManifest:
         raise OptimizationFlowError(f"candidate project manifest is invalid: {error}") from error
 
 
-def _load_stage_results(
-    index: BaselineRunIndex, run_directory: Path
-) -> dict[str, StageResult]:
+def _load_stage_results(index: BaselineRunIndex, run_directory: Path) -> dict[str, StageResult]:
     store = ArtifactStore.open_existing(run_directory / "artifacts")
     results: dict[str, StageResult] = {}
     for stage_id, reference in index.stage_result_artifacts.items():
@@ -151,9 +148,9 @@ def _load_stage_results(
     return results
 
 
-def _load_ranked_opportunities(
+def _load_m3_authority(
     index: BaselineRunIndex, run_directory: Path
-) -> RankedOpportunitySet:
+) -> tuple[RankedOpportunitySet, ArtifactRef, SourceMapSnapshot, ArtifactRef]:
     reference = index.stage_result_artifacts.get("stage_opportunity_formation")
     if reference is None:
         analyze_evidence_run(run_directory, requested_stages=("evidence", "opportunities"))
@@ -173,148 +170,40 @@ def _load_ranked_opportunities(
     )
     if ranked is None:
         raise OptimizationFlowError("M3 opportunity stage lacks ranked opportunity evidence")
-    return RankedOpportunitySet.model_validate_json(store.open_verified(ranked).read())
-
-
-def _offset(source: str, line: int, column: int) -> int:
-    lines = source.splitlines(keepends=True)
-    if line > len(lines):
-        raise OptimizationFlowError("Slang source range exceeds source line count")
-    content = lines[line - 1].removesuffix("\n").removesuffix("\r")
-    if column > len(content) + 1:
-        raise OptimizationFlowError("Slang source range exceeds source column count")
-    return sum(len(item) for item in lines[: line - 1]) + column - 1
-
-
-def _source_slice(source: str, node: SyntaxNodeRange) -> str:
-    return source[
-        _offset(source, node.start_line, node.start_column) : _offset(
-            source, node.end_line, node.end_column
-        )
-    ]
-
-
-def _module_name(source: str) -> str:
-    match = re.search(r"\bmodule\s+([a-zA-Z_][a-zA-Z0-9_$]*)", source)
-    if match is None:
-        raise OptimizationFlowError("editable source has no module declaration")
-    return match.group(1)
-
-
-def _find_priority_target(
-    *,
-    project_root: Path,
-    project: ProjectManifest,
-    parsed: ParsedSlangAst,
-    capability: RestructurePriorityMux,
-    rtl_snapshot_hash: str,
-) -> tuple[SourceSpanRecord, PriorityMuxContext]:
-    editable = project.optimization.editable_path_patterns
-    protected = project.protection.path_patterns
-    nodes = sorted(
-        (node for node in parsed.nodes if node.kind == "ConditionalStatement"),
-        key=lambda node: (
-            node.relative_path,
-            node.start_line,
-            node.start_column,
-            -node.end_line,
-            -node.end_column,
-        ),
+    ranked_set = RankedOpportunitySet.model_validate_json(store.open_verified(ranked).read())
+    source_stage = index.stage_result_artifacts.get("stage_evidence_graph")
+    if source_stage is None:
+        raise OptimizationFlowError("M3 source-map evidence is unavailable")
+    source_result = StageResult.model_validate_json(store.open_verified(source_stage).read())
+    source_ref = next(
+        (item for item in source_result.raw_artifacts if item.artifact_id == "evidence_source_map"),
+        None,
     )
-    for node in nodes:
-        if not any(fnmatch.fnmatch(node.relative_path, pattern) for pattern in editable):
-            continue
-        if any(fnmatch.fnmatch(node.relative_path, pattern) for pattern in protected):
-            continue
-        source = (project_root / node.relative_path).read_text(encoding="utf-8")
-        selected = _source_slice(source, node)
-        owner = _module_name(source)
-        context = PriorityMuxContext(
-            relative_path=node.relative_path,
-            source_text=selected,
-            start_line=node.start_line,
-            start_column=node.start_column,
-            end_line=node.end_line,
-            end_column=node.end_column,
-            owner_hierarchy=owner,
-            expected_owner_hierarchy=owner,
-            clock_domain_ids=("domain_local",),
-            protected_neighbor_ids=(),
-        )
-        try:
-            capability.match(context)
-        except PriorityMuxError:
-            continue
-        lines = source.splitlines()
-        line_text = "\n".join(lines[node.start_line - 1 : node.end_line])
-        span_digest = canonical_sha256(
-            {
-                "path": node.relative_path,
-                "range": (
-                    node.start_line,
-                    node.start_column,
-                    node.end_line,
-                    node.end_column,
-                ),
-                "ast_hash": parsed.ast_hash,
-            }
-        ).removeprefix("sha256:")
-        span = SourceSpanRecord(
-            source_span_id=f"source_{span_digest[:24]}",
-            rtl_snapshot_hash=rtl_snapshot_hash,
-            relative_path=node.relative_path,
-            start_line=node.start_line,
-            start_column=node.start_column,
-            end_line=node.end_line,
-            end_column=node.end_column,
-            owner_hierarchy=owner,
-            source_text_hash=_hash_bytes(line_text.encode("utf-8")),
-            mapping_confidence=1.0,
-            protected=False,
-            protection_kinds=(),
-        )
-        return span, context
-    raise OptimizationFlowError("no safe bounded priority mux matches the M4 registry")
+    if source_ref is None:
+        raise OptimizationFlowError("M3 source-map stage lacks canonical source-map evidence")
+    source_map = SourceMapSnapshot.model_validate_json(store.open_verified(source_ref).read())
+    if ranked_set.evidence_snapshot_hash not in {
+        item.snapshot_hash
+        for opportunity in ranked_set.opportunities
+        for item in opportunity.evidence_refs
+    }:
+        raise OptimizationFlowError("M3 opportunity and source-map evidence are unbound")
+    return ranked_set, ranked, source_map, source_ref
 
 
 def _proposal(
     *,
-    ranked: RankedOpportunitySet,
-    span: SourceSpanRecord,
-    syntax_artifact: ArtifactRef,
+    authorization: PriorityMuxAuthorization,
     parsed: ParsedSlangAst,
     parent_candidate_id: str,
 ) -> OptimizationProposal:
-    opportunity = next(
-        (
-            item
-            for item in ranked.opportunities
-            if "RESTRUCTURE_PRIORITY_MUX" in item.eligible_transform_families
-        ),
-        None,
-    )
-    if opportunity is None:
-        raise OptimizationFlowError(
-            "M3 evidence authorizes no RESTRUCTURE_PRIORITY_MUX opportunity"
-        )
-    syntax_snapshot = canonical_sha256(
-        {
-            "m3_evidence_snapshot": ranked.evidence_snapshot_hash,
-            "slang_ast": parsed.ast_hash,
-            "source_span": span.model_dump(mode="json"),
-        }
-    )
-    evidence = EvidenceRef(
-        evidence_id=span.source_span_id,
-        kind="SOURCE_SPAN",
-        artifact_id=syntax_artifact.artifact_id,
-        json_pointer="/source_span",
-        snapshot_hash=syntax_snapshot,
-    )
+    opportunity = authorization.opportunity
+    span = authorization.source_span
     proposal_digest = canonical_sha256(
         {
             "opportunity_id": opportunity.opportunity_id,
             "span": span.model_dump(mode="json"),
+            "slang_ast": parsed.ast_hash,
             "operation": "RESTRUCTURE_PRIORITY_MUX",
         }
     ).removeprefix("sha256:")
@@ -344,7 +233,7 @@ def _proposal(
             "area_direction": "SMALL_INCREASE",
             "confidence": 0.8,
         },
-        evidence_refs=(evidence,),
+        evidence_refs=(authorization.evidence_ref,),
         abort_conditions=("FORMAL_NON_PASS", "PROTECTED_INVARIANT_DELTA"),
     )
 
@@ -444,9 +333,13 @@ def _prepare_formal_inputs(
             (source_root / target_path).read_bytes()
         )
         root.joinpath("m4_priority_mux_composition.sv").write_text(wrapper, encoding="utf-8")
-    return gold, gate, (
-        "m4_priority_mux_composition.sv",
-        "timing_opportunity_lane.sv",
+    return (
+        gold,
+        gate,
+        (
+            "m4_priority_mux_composition.sv",
+            "timing_opportunity_lane.sv",
+        ),
     )
 
 
@@ -596,7 +489,7 @@ def optimize_strict_vertical_slice(
     parent_index = load_run_index(resolved)
     if parent_index.status != "PASS":
         raise OptimizationFlowError("M4 optimization requires a completed baseline run")
-    ranked = _load_ranked_opportunities(parent_index, resolved)
+    ranked, ranked_ref, source_map, source_map_ref = _load_m3_authority(parent_index, resolved)
     parent_index = load_run_index(resolved)
     project = _load_project(parent_index.project_root)
     tools = _toolchain(repository_root)
@@ -614,17 +507,29 @@ def optimize_strict_vertical_slice(
         timeout_seconds=120,
     )
     capability = RestructurePriorityMux()
-    span, context = _find_priority_target(
+    authorization = select_priority_mux_authority(
         project_root=parent_index.project_root,
-        project=project,
+        editable_path_patterns=project.optimization.editable_path_patterns,
+        protected_path_patterns=project.protection.path_patterns,
         parsed=parsed,
         capability=capability,
-        rtl_snapshot_hash=parent_index.benchmark_snapshot_hash,
+        ranked=ranked,
+        source_map=source_map,
     )
+    span = authorization.source_span
+    context = authorization.context
     parent_store = ArtifactStore(resolved / "artifacts")
     syntax_ref = parent_store.put_named_bytes(
         canonical_json_bytes(
-            {"source_span": span.model_dump(mode="json"), "ast_hash": parsed.ast_hash}
+            {
+                "source_span": span.model_dump(mode="json"),
+                "ast_hash": parsed.ast_hash,
+                "opportunity_id": authorization.opportunity.opportunity_id,
+                "target_domain": authorization.opportunity.target_domain,
+                "protected_neighbor_ids": authorization.opportunity.protected_neighbors,
+                "m3_evidence_ref": authorization.evidence_ref.model_dump(mode="json"),
+                "m3_source_map_hash": source_map.source_map_hash,
+            }
         ),
         artifact_id="m4_syntax_span",
         media_type="application/json",
@@ -632,9 +537,7 @@ def optimize_strict_vertical_slice(
         producer_stage_result_id=None,
     )
     proposal = _proposal(
-        ranked=ranked,
-        span=span,
-        syntax_artifact=syntax_ref,
+        authorization=authorization,
         parsed=parsed,
         parent_candidate_id=parent_index.candidate_id,
     )
@@ -658,7 +561,7 @@ def optimize_strict_vertical_slice(
             source_paths=tuple(project.rtl.files),
             proposal=proposal,
             authorized_span=span,
-            protected_spans=(),
+            protected_spans=authorization.protected_spans,
             parsed_ast=parsed,
             transform_context=context,
             lineage_depth=1,
@@ -737,9 +640,7 @@ def optimize_strict_vertical_slice(
     )
     parent_results = _load_stage_results(parent_index, resolved)
     candidate_results = _load_stage_results(candidate_index, initialized.run_directory)
-    policy, facts = _view_evidence(
-        parent_index, candidate_index, parent_results, candidate_results
-    )
+    policy, facts = _view_evidence(parent_index, candidate_index, parent_results, candidate_results)
     evidence = CandidateFeasibilityEvidence.build(
         candidate_id=candidate_id,
         source_hash=materialized.candidate.source_hash,
@@ -845,8 +746,7 @@ def optimize_strict_vertical_slice(
         ),
         "6": _assessment(
             "6",
-            all_candidate_pass
-            and evidence.area_growth_percent <= policy.max_area_growth_percent,
+            all_candidate_pass and evidence.area_growth_percent <= policy.max_area_growth_percent,
             physical_stages,
             "PHYSICAL_POLICY_NONPASS",
         ),
@@ -865,11 +765,13 @@ def optimize_strict_vertical_slice(
     )
     evaluation = cascade.evaluate(candidate)
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "parent_run_id": parent_index.run_id,
         "parent_run_index_hash": parent_index.index_hash,
         "candidate_run_id": candidate_index.run_id,
         "candidate_run_index_hash": candidate_index.index_hash,
+        "m3_source_map_artifact": source_map_ref,
+        "m3_ranked_opportunities_artifact": ranked_ref,
         "syntax_span_artifact": syntax_ref,
         "proposal_artifact": proposal_ref,
         "candidate": candidate,
@@ -881,9 +783,7 @@ def optimize_strict_vertical_slice(
         "candidate_stage_result_artifacts": dict(candidate_index.stage_result_artifacts),
         "status": "PASS" if evaluation.status == "PASS" and feasible else "FAIL",
     }
-    provisional = M4CandidateBundle.model_construct(
-        **payload, bundle_hash="sha256:" + "0" * 64
-    )
+    provisional = M4CandidateBundle.model_construct(**payload, bundle_hash="sha256:" + "0" * 64)
     bundle = M4CandidateBundle(
         **payload,
         bundle_hash=canonical_sha256(provisional, exclude=frozenset({"bundle_hash"})),
@@ -894,9 +794,7 @@ def optimize_strict_vertical_slice(
     return bundle_path, bundle
 
 
-def verify_candidate_bundle(
-    bundle_path: Path, *, repository_root: Path
-) -> M4CandidateBundle:
+def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4CandidateBundle:
     """Verify a stored candidate packet and every referenced immutable artifact."""
 
     try:
@@ -911,6 +809,8 @@ def verify_candidate_bundle(
         raise OptimizationFlowError("candidate bundle parent run identity changed")
     parent_store = ArtifactStore.open_existing(parent_run / "artifacts")
     for reference in (
+        bundle.m3_source_map_artifact,
+        bundle.m3_ranked_opportunities_artifact,
         bundle.syntax_span_artifact,
         bundle.proposal_artifact,
         bundle.candidate.rtl_snapshot_artifact,
@@ -937,9 +837,7 @@ def verify_candidate_bundle(
             raise OptimizationFlowError(f"candidate stage identity mismatch: {stage_id}")
         for raw in result.raw_artifacts:
             candidate_store.open_verified(raw).close()
-    if not is_feasible(
-        bundle.candidate, bundle.feasibility_evidence, bundle.feasibility_policy
-    ):
+    if not is_feasible(bundle.candidate, bundle.feasibility_evidence, bundle.feasibility_policy):
         raise OptimizationFlowError("candidate no longer satisfies hard feasibility")
     if bundle.evaluation.status != "PASS" or bundle.status != "PASS":
         raise OptimizationFlowError("candidate evaluation is not passing")

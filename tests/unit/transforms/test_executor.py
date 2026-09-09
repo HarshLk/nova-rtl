@@ -19,10 +19,7 @@ from nova_rtl.transforms.priority_mux import PriorityMuxContext, RestructurePrio
 from nova_rtl.transforms.registry import TransformRegistry
 from nova_rtl.transforms.syntax import SourceEdit, parse_slang_ast
 
-SOURCE = (
-    "if (req[0]) grant = value[0]; "
-    "else if (req[1]) grant = value[1]; else grant = fallback;"
-)
+SOURCE = "if (req[0]) grant = value[0]; else if (req[1]) grant = value[1]; else grant = fallback;"
 FILE_TEXT = f"""module priority_mux;
   always_comb begin
     {SOURCE}
@@ -93,7 +90,7 @@ def _span() -> SourceSpanRecord:
         end_line=3,
         end_column=END_COLUMN,
         owner_hierarchy="priority_mux",
-        source_text_hash=_hash("    " + SOURCE),
+        source_text_hash=_hash(SOURCE),
         mapping_confidence=1.0,
         protected=False,
         protection_kinds=(),
