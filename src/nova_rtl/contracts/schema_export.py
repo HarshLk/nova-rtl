@@ -143,7 +143,7 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "optimization-opportunity": SchemaRegistration(OptimizationOpportunity, version=1),
     "optimization-proposal": SchemaRegistration(OptimizationProposal, version=2),
     "candidate-record": SchemaRegistration(CandidateRecord, version=1),
-    "m4-signoff-report": SchemaRegistration(M4SignoffReport, version=1),
+    "m4-signoff-report": SchemaRegistration(M4SignoffReport, version=2),
     "m4-view-comparison": SchemaRegistration(M4ViewComparison, version=1),
     "mapped-structural-effect": SchemaRegistration(MappedStructuralEffect, version=1),
     "composition-closure-manifest": SchemaRegistration(

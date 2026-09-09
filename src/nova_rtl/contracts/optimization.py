@@ -391,7 +391,7 @@ class MappedStructuralEffect(StrictContract):
 class M4SignoffReport(StrictContract):
     """Commit-bound proof that one M4 candidate passed the complete strict cascade."""
 
-    schema_version: Literal[1] = 1
+    schema_version: Literal[2] = 2
     status: Literal["PASS"]
     commit_sha: GitCommitSha
     implementation_tree_hash: GitCommitSha
@@ -407,10 +407,18 @@ class M4SignoffReport(StrictContract):
     candidate_source_hash: HashRef
     patch_hash: HashRef
     transform_fingerprint: Fingerprint
+    candidate_classification: CandidateClassification
     evaluation_hash: HashRef
     gate_statuses: dict[str, Literal["PASS"]]
+    gate_event_ids: tuple[EntityId, ...]
+    replay_event_sequence_range: tuple[NonNegativeInt, NonNegativeInt]
+    replay_prefix_digest: HashRef
     prephysical_proof_hash: HashRef
     final_proof_hash: HashRef
+    formal_stage_result_hashes: dict[EntityId, HashRef]
+    mapped_structural_effect_hash: HashRef
+    objective_improvements: tuple[StableUpperString, ...]
+    experiment_record_hash: HashRef
     required_view_comparisons: dict[EntityId, M4ViewComparison]
     baseline_replay_digest: HashRef
     candidate_replay_digest: HashRef
@@ -426,6 +434,25 @@ class M4SignoffReport(StrictContract):
         expected_gates = ("0", "0.5", "1", "2", "3", "4", "5", "6", "7")
         if tuple(self.gate_statuses) != expected_gates:
             raise ValueError("M4 gate inventory must contain the complete canonical cascade")
+        if len(self.gate_event_ids) != 2 * len(expected_gates) or len(
+            set(self.gate_event_ids)
+        ) != len(self.gate_event_ids):
+            raise ValueError("M4 sign-off must bind every unique gate journal event")
+        if self.replay_event_sequence_range[1] < self.replay_event_sequence_range[0]:
+            raise ValueError("M4 replay sequence range is invalid")
+        if set(self.formal_stage_result_hashes) != {
+            "stage_m4_strict_final",
+            "stage_m4_strict_prephysical",
+        }:
+            raise ValueError("M4 sign-off requires both strict formal stage results")
+        if self.candidate_classification == "VALID_NEGATIVE_RESULT":
+            if self.objective_improvements:
+                raise ValueError("valid negative M4 result cannot claim an improvement")
+        elif self.candidate_classification in {"FEASIBLE_PARETO", "SELECTED"}:
+            if not self.objective_improvements:
+                raise ValueError("Pareto M4 result requires a measured improvement")
+        else:
+            raise ValueError("M4 sign-off cannot bind a rejected candidate classification")
         if set(self.required_view_comparisons) != {"asap7_setup", "asap7_hold"}:
             raise ValueError("M4 requires comparable ASAP7 setup and hold views")
         input_payload = {
@@ -437,8 +464,17 @@ class M4SignoffReport(StrictContract):
             "parent_run_index_hash": self.parent_run_index_hash,
             "candidate_run_index_hash": self.candidate_run_index_hash,
             "candidate_bundle_hash": self.candidate_bundle_hash,
+            "candidate_classification": self.candidate_classification,
+            "evaluation_hash": self.evaluation_hash,
+            "gate_event_ids": self.gate_event_ids,
+            "replay_event_sequence_range": self.replay_event_sequence_range,
+            "replay_prefix_digest": self.replay_prefix_digest,
             "prephysical_proof_hash": self.prephysical_proof_hash,
             "final_proof_hash": self.final_proof_hash,
+            "formal_stage_result_hashes": self.formal_stage_result_hashes,
+            "mapped_structural_effect_hash": self.mapped_structural_effect_hash,
+            "objective_improvements": self.objective_improvements,
+            "experiment_record_hash": self.experiment_record_hash,
             "baseline_replay_digest": self.baseline_replay_digest,
             "candidate_replay_digest": self.candidate_replay_digest,
             "baseline_ledger_hash": self.baseline_ledger_hash,

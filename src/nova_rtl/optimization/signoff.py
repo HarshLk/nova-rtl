@@ -11,12 +11,13 @@ from pathlib import Path
 
 from nova_rtl.artifacts.ledger import ExperimentLedger
 from nova_rtl.artifacts.replay import replay_digest, replay_run
-from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
+from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.baseline.flow import load_run_index
 from nova_rtl.contracts.analysis import M3SignoffReport
 from nova_rtl.contracts.base import canonical_json_bytes, canonical_sha256
 from nova_rtl.contracts.execution import StageResult
 from nova_rtl.contracts.optimization import M4SignoffReport, M4ViewComparison
+from nova_rtl.evidence.signoff import M3SignoffError, verify_m3_dependency_snapshot
 from nova_rtl.optimization.flow import (
     M4CandidateBundle,
     OptimizationFlowError,
@@ -72,50 +73,17 @@ def _clean_checkpoint(repository_root: Path) -> tuple[str, str]:
     return commit, tree
 
 
-def _require_ancestor(repository_root: Path, ancestor: str, descendant: str) -> None:
-    executable = shutil.which("git")
-    if executable is None:
-        raise M4SignoffError("Git is required for M4 sign-off")
-    completed = subprocess.run(
-        (
-            str(Path(executable).resolve()),
-            "-C",
-            str(repository_root),
-            "merge-base",
-            "--is-ancestor",
-            ancestor,
-            descendant,
-        ),
-        env={
-            "GIT_NO_REPLACE_OBJECTS": "1",
-            "LANG": "C",
-            "LC_ALL": "C",
-            "PATH": f"{Path(executable).resolve().parent}:/usr/bin:/bin",
-        },
-        shell=False,
-        check=False,
-        capture_output=True,
-        timeout=30,
-    )
-    if completed.returncode != 0:
-        raise M4SignoffError("signed M3 checkpoint is not an ancestor of M4")
-
-
 def _m3_dependency(
     path: Path, repository_root: Path, current_commit: str
 ) -> tuple[M3SignoffReport, str]:
     try:
-        content = path.resolve(strict=True).read_bytes()
-        report = M3SignoffReport.model_validate_json(content)
-    except (ArtifactStoreError, OSError, ValueError) as error:
-        raise M4SignoffError("M3 sign-off packet is missing or invalid") from error
-    _require_ancestor(repository_root, report.commit_sha, current_commit)
-    recorded_tree = _git_output(
-        repository_root, "rev-parse", "--verify", f"{report.commit_sha}^{{tree}}"
-    )
-    if recorded_tree != report.implementation_tree_hash:
-        raise M4SignoffError("M3 packet does not match its recorded Git checkpoint")
-    return report, _hash_bytes(content)
+        return verify_m3_dependency_snapshot(
+            path,
+            repository_root=repository_root,
+            descendant_commit=current_commit,
+        )
+    except (M3SignoffError, OSError, ValueError) as error:
+        raise M4SignoffError("M3 dependency reconstruction failed") from error
 
 
 def _stage_result(
@@ -206,6 +174,13 @@ def _build_report(
     }
     if any(status != "PASS" for status in gate_statuses.values()):
         raise M4SignoffError("M4 candidate did not pass the complete gate cascade")
+    formal_stage_hashes = dict(
+        sorted(
+            (stage_id, reference.sha256)
+            for stage_id, reference in bundle.formal_stage_result_artifacts.items()
+        )
+    )
+    mapped_effect_hash = canonical_sha256(bundle.mapped_structural_effect)
     input_payload = {
         "commit_sha": commit_sha,
         "implementation_tree_hash": implementation_tree_hash,
@@ -215,8 +190,17 @@ def _build_report(
         "parent_run_index_hash": parent_index.index_hash,
         "candidate_run_index_hash": candidate_index.index_hash,
         "candidate_bundle_hash": bundle.bundle_hash,
+        "candidate_classification": bundle.candidate.classification,
+        "evaluation_hash": canonical_sha256(bundle.evaluation),
+        "gate_event_ids": bundle.gate_event_ids,
+        "replay_event_sequence_range": bundle.replay_event_sequence_range,
+        "replay_prefix_digest": bundle.replay_prefix_digest,
         "prephysical_proof_hash": canonical_sha256(bundle.prephysical_proof),
         "final_proof_hash": canonical_sha256(bundle.final_proof),
+        "formal_stage_result_hashes": formal_stage_hashes,
+        "mapped_structural_effect_hash": mapped_effect_hash,
+        "objective_improvements": bundle.objective_improvements,
+        "experiment_record_hash": bundle.experiment_record_artifact.sha256,
         "baseline_replay_digest": baseline_replay,
         "candidate_replay_digest": candidate_replay,
         "baseline_ledger_hash": baseline_ledger,
@@ -225,7 +209,7 @@ def _build_report(
         "platform_lock_hash": candidate_index.platform_lock_hash,
     }
     payload = {
-        "schema_version": 1,
+        "schema_version": 2,
         "status": "PASS",
         "commit_sha": commit_sha,
         "implementation_tree_hash": implementation_tree_hash,
@@ -241,10 +225,18 @@ def _build_report(
         "candidate_source_hash": bundle.candidate.source_hash,
         "patch_hash": bundle.candidate.patch_artifact.sha256,
         "transform_fingerprint": bundle.candidate.transform_fingerprint,
+        "candidate_classification": bundle.candidate.classification,
         "evaluation_hash": canonical_sha256(bundle.evaluation),
         "gate_statuses": gate_statuses,
+        "gate_event_ids": bundle.gate_event_ids,
+        "replay_event_sequence_range": bundle.replay_event_sequence_range,
+        "replay_prefix_digest": bundle.replay_prefix_digest,
         "prephysical_proof_hash": input_payload["prephysical_proof_hash"],
         "final_proof_hash": input_payload["final_proof_hash"],
+        "formal_stage_result_hashes": formal_stage_hashes,
+        "mapped_structural_effect_hash": mapped_effect_hash,
+        "objective_improvements": bundle.objective_improvements,
+        "experiment_record_hash": bundle.experiment_record_artifact.sha256,
         "required_view_comparisons": dict(sorted(comparisons.items())),
         "baseline_replay_digest": baseline_replay,
         "candidate_replay_digest": candidate_replay,

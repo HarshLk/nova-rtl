@@ -284,6 +284,21 @@
       "title": "Candidate Bundle Hash",
       "type": "string"
     },
+    "candidate_classification": {
+      "enum": [
+        "REJECTED_SAFETY",
+        "REJECTED_CORRECTNESS",
+        "REJECTED_POLICY",
+        "INCONCLUSIVE",
+        "INFRASTRUCTURE_ERROR",
+        "VALID_NEGATIVE_RESULT",
+        "FEASIBLE_DOMINATED",
+        "FEASIBLE_PARETO",
+        "SELECTED"
+      ],
+      "title": "Candidate Classification",
+      "type": "string"
+    },
     "candidate_id": {
       "pattern": "^[a-z][a-z0-9_]{2,95}$",
       "title": "Candidate Id",
@@ -324,10 +339,33 @@
       "title": "Evaluation Hash",
       "type": "string"
     },
+    "experiment_record_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Experiment Record Hash",
+      "type": "string"
+    },
     "final_proof_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Final Proof Hash",
       "type": "string"
+    },
+    "formal_stage_result_hashes": {
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Formal Stage Result Hashes",
+      "type": "object"
+    },
+    "gate_event_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Gate Event Ids",
+      "type": "array"
     },
     "gate_statuses": {
       "additionalProperties": {
@@ -362,6 +400,19 @@
       "title": "M3 Report Hash",
       "type": "string"
     },
+    "mapped_structural_effect_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Mapped Structural Effect Hash",
+      "type": "string"
+    },
+    "objective_improvements": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "title": "Objective Improvements",
+      "type": "array"
+    },
     "parent_run_id": {
       "pattern": "^[a-z][a-z0-9_]{2,95}$",
       "title": "Parent Run Id",
@@ -387,6 +438,27 @@
       "title": "Prephysical Proof Hash",
       "type": "string"
     },
+    "replay_event_sequence_range": {
+      "maxItems": 2,
+      "minItems": 2,
+      "prefixItems": [
+        {
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "minimum": 0,
+          "type": "integer"
+        }
+      ],
+      "title": "Replay Event Sequence Range",
+      "type": "array"
+    },
+    "replay_prefix_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Replay Prefix Digest",
+      "type": "string"
+    },
     "report_hash": {
       "pattern": "^sha256:[0-9a-f]{64}$",
       "title": "Report Hash",
@@ -402,8 +474,8 @@
       "type": "object"
     },
     "schema_version": {
-      "const": 1,
-      "default": 1,
+      "const": 2,
+      "default": 2,
       "title": "Schema Version",
       "type": "integer"
     },
@@ -439,10 +511,18 @@
     "candidate_source_hash",
     "patch_hash",
     "transform_fingerprint",
+    "candidate_classification",
     "evaluation_hash",
     "gate_statuses",
+    "gate_event_ids",
+    "replay_event_sequence_range",
+    "replay_prefix_digest",
     "prephysical_proof_hash",
     "final_proof_hash",
+    "formal_stage_result_hashes",
+    "mapped_structural_effect_hash",
+    "objective_improvements",
+    "experiment_record_hash",
     "required_view_comparisons",
     "baseline_replay_digest",
     "candidate_replay_digest",
