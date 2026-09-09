@@ -19,6 +19,8 @@ from nova_rtl.analysis_views.comparability import (
     IncomparableResultsError,
     assert_comparable,
 )
+from nova_rtl.artifacts.ledger import ExperimentLedger
+from nova_rtl.artifacts.replay import replay_digest, replay_run
 from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
 from nova_rtl.baseline.execution import analyze_run
 from nova_rtl.baseline.flow import BaselineRunIndex, initialize_run, load_run_index
@@ -26,16 +28,20 @@ from nova_rtl.benchmark.validate import validate_benchmark
 from nova_rtl.contracts.analysis import CDCInventory, ClockInventory
 from nova_rtl.contracts.base import (
     ArtifactRef,
+    Diagnostic,
     HashRef,
+    MetricSet,
+    StageInputHashes,
     StrictContract,
     canonical_json_bytes,
     canonical_sha256,
 )
 from nova_rtl.contracts.benchmark import BenchmarkFile, BenchmarkSnapshot
 from nova_rtl.contracts.execution import StageResult
-from nova_rtl.contracts.manifest import ProjectManifest
+from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
 from nova_rtl.contracts.optimization import CandidateRecord, OptimizationProposal
 from nova_rtl.contracts.platform import ToolchainReceipt, ToolFingerprint
+from nova_rtl.contracts.reporting import ExperimentRecord
 from nova_rtl.contracts.verification import (
     ConstraintBindingManifest,
     FormalModelContract,
@@ -46,6 +52,7 @@ from nova_rtl.evaluation.cascade import (
     EvaluationCascade,
     EvaluationResult,
     GateAssessment,
+    GateEvent,
 )
 from nova_rtl.evaluation.feasibility import (
     CandidateFeasibilityEvidence,
@@ -69,6 +76,7 @@ from nova_rtl.optimization.comparison import (
     M4StructuralComparison,
     compare_structural_invariants,
 )
+from nova_rtl.orchestrator.state import RunOrchestrator
 from nova_rtl.search.dag import replace_candidate
 from nova_rtl.transforms.executor import MaterializationRequest, TransformExecutor
 from nova_rtl.transforms.priority_mux import RestructurePriorityMux
@@ -85,7 +93,7 @@ class OptimizationFlowError(RuntimeError):
 class M4CandidateBundle(StrictContract):
     """Self-hashed candidate, evaluation, proof, and candidate-run evidence packet."""
 
-    schema_version: Literal[2] = 2
+    schema_version: Literal[3] = 3
     parent_run_id: str
     parent_run_index_hash: HashRef
     candidate_run_id: str
@@ -103,10 +111,15 @@ class M4CandidateBundle(StrictContract):
     structural_comparison: M4StructuralComparison
     view_comparisons: dict[str, ComparabilityResult]
     candidate_stage_result_artifacts: dict[str, ArtifactRef]
+    formal_stage_result_artifacts: dict[str, ArtifactRef]
+    experiment_record_artifact: ArtifactRef
+    replay_event_sequence_range: tuple[int, int]
+    gate_event_ids: tuple[str, ...]
+    replay_prefix_digest: HashRef
     status: Literal["PASS", "FAIL"]
     bundle_hash: HashRef
 
-    @field_validator("candidate_stage_result_artifacts")
+    @field_validator("candidate_stage_result_artifacts", "formal_stage_result_artifacts")
     @classmethod
     def stage_map_is_canonical(cls, value: dict[str, ArtifactRef]) -> dict[str, ArtifactRef]:
         return dict(sorted(value.items()))
@@ -139,6 +152,15 @@ class M4CandidateBundle(StrictContract):
         }
         if set(self.view_comparisons) != expected_comparisons:
             raise ValueError("candidate bundle has an incomplete view comparison set")
+        if set(self.formal_stage_result_artifacts) != {
+            "stage_m4_strict_prephysical",
+            "stage_m4_strict_final",
+        }:
+            raise ValueError("candidate bundle has an incomplete formal stage result set")
+        if self.replay_event_sequence_range[1] < self.replay_event_sequence_range[0]:
+            raise ValueError("candidate replay sequence range is invalid")
+        if len(self.gate_event_ids) != 2 * len(EVALUATION_GATE_ORDER):
+            raise ValueError("candidate bundle must reference every gate start and terminal event")
         expected_status = (
             "PASS"
             if self.evaluation.status == "PASS"
@@ -637,6 +659,106 @@ def _assessment(
     )
 
 
+def _formal_stage_result(
+    *,
+    stage_id: str,
+    proof: ProofResult,
+    candidate: CandidateRecord,
+    index: BaselineRunIndex,
+    formal_model: FormalModelContract,
+    proof_plan_hash: str,
+    fingerprint: ToolFingerprint,
+    store: ArtifactStore,
+) -> tuple[StageResult, ArtifactRef]:
+    ended_at = max(item.created_at for item in proof.raw_artifacts)
+    missing = {
+        name: "not produced by formal equivalence"
+        for name in (
+            "setup_wns_ns",
+            "setup_tns_ns",
+            "hold_wns_ns",
+            "hold_tns_ns",
+            "failing_endpoints",
+            "critical_path_delay_ns",
+            "estimated_fmax_mhz",
+            "mapped_area_um2",
+            "physical_area_um2",
+            "cell_count",
+            "register_count",
+            "buffer_count",
+            "power_total_uw",
+            "wirelength_um",
+            "congestion_overflow",
+        )
+    }
+    diagnostics = (
+        ()
+        if proof.outcome == "PASS"
+        else (
+            Diagnostic(
+                code="FORMAL_EQUIVALENCE_NONPASS",
+                severity="ERROR",
+                message=f"strict equivalence completed as {proof.outcome}",
+                evidence_refs=tuple(item.artifact_id for item in proof.raw_artifacts),
+            ),
+        )
+    )
+    result = StageResult(
+        stage_result_id=stage_id,
+        run_id=index.run_id,
+        candidate_id=candidate.candidate_id,
+        stage="FORMAL_EQUIVALENCE",
+        analysis_view_id=None,
+        status=proof.outcome,
+        tool_fingerprint=fingerprint,
+        input_hashes=StageInputHashes(
+            rtl_snapshot=candidate.source_hash,
+            design_contract=index.design_contract_hash,
+            constraints=None,
+            constraint_binding=None,
+            analysis_view=None,
+            power_activity=None,
+            platform_lock=index.platform_lock_hash,
+            tool_recipe=proof_plan_hash,
+            formal_model=canonical_sha256(formal_model),
+            parent_stage_result=None,
+            extensions={},
+        ),
+        metrics=MetricSet(
+            analysis_view_id=None,
+            setup_wns_ns=None,
+            setup_tns_ns=None,
+            hold_wns_ns=None,
+            hold_tns_ns=None,
+            failing_endpoints=None,
+            critical_path_delay_ns=None,
+            estimated_fmax_mhz=None,
+            mapped_area_um2=None,
+            physical_area_um2=None,
+            cell_count=None,
+            register_count=None,
+            buffer_count=None,
+            power_total_uw=None,
+            wirelength_um=None,
+            congestion_overflow=None,
+            runtime_ms=proof.runtime_ms,
+            missing_metric_reasons=missing,
+        ),
+        diagnostics=diagnostics,
+        raw_artifacts=proof.raw_artifacts,
+        started_at=ended_at,
+        ended_at=ended_at,
+    )
+    reference = store.put_named_bytes(
+        canonical_json_bytes(result),
+        artifact_id=f"{stage_id}_stage_result",
+        media_type="application/json",
+        classification="INTERNAL",
+        producer_stage_result_id=stage_id,
+    )
+    return result, reference
+
+
 def optimize_strict_vertical_slice(
     run_directory: Path,
     *,
@@ -798,6 +920,7 @@ def optimize_strict_vertical_slice(
             run_id=parent_index.run_id,
             candidate_id=candidate_id,
             composition_manifest=composition_manifest,
+            producer_stage_result_id="stage_m4_strict_prephysical",
             proof_label="prephysical",
         )
         if prephysical_proof.outcome != "PASS":
@@ -824,10 +947,39 @@ def optimize_strict_vertical_slice(
         run_id=parent_index.run_id,
         candidate_id=candidate_id,
         composition_manifest=final_composition_manifest,
+        producer_stage_result_id="stage_m4_strict_final",
         proof_label="final",
     )
     parent_results = _load_stage_results(parent_index, resolved)
     candidate_results = _load_stage_results(candidate_index, initialized.run_directory)
+    prephysical_stage, prephysical_stage_ref = _formal_stage_result(
+        stage_id="stage_m4_strict_prephysical",
+        proof=prephysical_proof,
+        candidate=materialized.candidate,
+        index=parent_index,
+        formal_model=formal_model,
+        proof_plan_hash=proof_plan.plan_hash,
+        fingerprint=eqy,  # type: ignore[arg-type]
+        store=parent_store,
+    )
+    final_stage, final_stage_ref = _formal_stage_result(
+        stage_id="stage_m4_strict_final",
+        proof=final_proof,
+        candidate=materialized.candidate,
+        index=parent_index,
+        formal_model=formal_model,
+        proof_plan_hash=proof_plan.plan_hash,
+        fingerprint=eqy,  # type: ignore[arg-type]
+        store=parent_store,
+    )
+    formal_stage_results = {
+        prephysical_stage.stage_result_id: prephysical_stage,
+        final_stage.stage_result_id: final_stage,
+    }
+    formal_stage_refs = {
+        prephysical_stage.stage_result_id: prephysical_stage_ref,
+        final_stage.stage_result_id: final_stage_ref,
+    }
     policy, facts, structural, view_comparisons = _view_evidence(
         parent_index,
         candidate_index,
@@ -953,15 +1105,164 @@ def optimize_strict_vertical_slice(
             "FINAL_FEASIBILITY_NONPASS",
         ),
     }
+    gate_events: list[GateEvent] = []
     cascade = EvaluationCascade(
         {
             gate: (lambda _candidate, selected=gate: gate_inputs[selected])
             for gate in EVALUATION_GATE_ORDER
-        }
+        },
+        event_sink=gate_events.append,
     )
     evaluation = cascade.evaluate(candidate)
+    design = DesignContract.model_validate_json(
+        parent_store.open_verified(parent_index.design_contract_artifact).read()
+    )
+    ledger = ExperimentLedger(
+        resolved / "experiment-ledger.sqlite3", artifact_store=parent_store
+    )
+    orchestrator = RunOrchestrator(
+        ledger=ledger,
+        artifact_store=parent_store,
+        policy_hash=design.effective_policy_hash,
+    )
+    if orchestrator.get_candidate_state(candidate_id) is not None:
+        raise OptimizationFlowError("candidate journal exists without a reusable bundle")
+    first_state = orchestrator.create_candidate(
+        parent_index.run_id, candidate_id, proposal
+    )
+    orchestrator.transition_candidate(
+        parent_index.run_id, candidate_id, "PROPOSED", "VALIDATED", proposal
+    )
+    orchestrator.transition_candidate(
+        parent_index.run_id,
+        candidate_id,
+        "VALIDATED",
+        "MATERIALIZED",
+        materialized.candidate,
+    )
+    state_after_gate = {
+        "1": ("MATERIALIZED", "PREFLIGHT"),
+        "3": ("PREFLIGHT", "FAST_SYNTH"),
+        "4": ("FAST_SYNTH", "FORMAL"),
+        "5": ("FORMAL", "FULL_STA"),
+        "6": ("FULL_STA", "PHYSICAL"),
+        "7": ("PHYSICAL", "FEASIBLE"),
+    }
+    gate_event_ids: list[str] = []
+    for gate_event in gate_events:
+        persisted = orchestrator.record_event(
+            run_id=parent_index.run_id,
+            event_type=gate_event.event_type,
+            entity_type="CANDIDATE_GATE",
+            entity_id=candidate_id,
+            payload=gate_event,
+            status=gate_event.status or "PASS",
+            error_code=(
+                gate_event.diagnostic_codes[0]
+                if gate_event.status is not None and gate_event.status != "PASS"
+                else None
+            ),
+        )
+        gate_event_ids.append(persisted.event_id)
+        transition = state_after_gate.get(gate_event.gate_id)
+        if gate_event.event_type == "GATE_COMPLETED" and transition is not None:
+            orchestrator.transition_candidate(
+                parent_index.run_id,
+                candidate_id,
+                transition[0],  # type: ignore[arg-type]
+                transition[1],  # type: ignore[arg-type]
+                candidate,
+            )
+    if evaluation.status != "PASS":
+        current = orchestrator.get_candidate_state(candidate_id)
+        assert current is not None
+        terminal = {
+            "INCONCLUSIVE": "INCONCLUSIVE",
+            "INFRASTRUCTURE_ERROR": "INFRASTRUCTURE_ERROR",
+        }.get(evaluation.status, "REJECTED")
+        orchestrator.transition_candidate(
+            parent_index.run_id,
+            candidate_id,
+            current.state,
+            terminal,  # type: ignore[arg-type]
+            candidate,
+        )
+    else:
+        orchestrator.transition_candidate(
+            parent_index.run_id,
+            candidate_id,
+            "FEASIBLE",
+            "PARETO",
+            candidate,
+        )
+    baseline_metrics = {
+        view.analysis_view_id: parent_results[
+            f"stage_openroad_{view.analysis_view_id}"
+        ].metrics
+        for view in parent_index.analysis_views
+    }
+    comparison_hashes = {
+        "analysis_view_set": facts["analysis_view_set_hash"],
+        "constraint_binding": structural.binding_semantic_hash,
+        "clock_graph": structural.clock_semantic_hash,
+        "cdc_inventory": structural.cdc_semantic_hash,
+        "formal_model": canonical_sha256(formal_model),
+    }
+    experiment = ExperimentRecord(
+        experiment_record_id=f"experiment_{candidate_id.removeprefix('cand_')}",
+        run_id=parent_index.run_id,
+        planner_result_id=None,
+        council_result_id=None,
+        opportunity_id=proposal.opportunity_id,
+        cone_fingerprint=proposal.target.cone_fingerprint,
+        proposal_id=proposal.proposal_id,
+        operation=proposal.transformation.operation,
+        parameters=proposal.transformation.parameters,
+        parent_candidate_id=candidate.parent_candidate_id,
+        candidate_id=candidate_id,
+        source_hash=candidate.source_hash,
+        patch_hash=candidate.patch_artifact.sha256,
+        transform_fingerprint=candidate.transform_fingerprint,
+        stage_result_ids=candidate.stage_result_ids,
+        comparison_identity_hashes=comparison_hashes,  # type: ignore[arg-type]
+        proof_result_id=final_proof.proof_result_id,
+        proof_outcome=final_proof.outcome,
+        counterexample_artifact_id=final_proof.counterexample_artifact_id,
+        before_metrics=baseline_metrics,
+        after_metrics=candidate.per_view_metrics,
+        failure_event_id=None,
+        repair_directive_id=None,
+        candidate_failure_fingerprint_id=None,
+        recovery_decision_id=None,
+        descendant_outcome=None,
+        role_ids=(),
+        model_configuration_hashes=(),
+        prompt_hashes=(),
+        context_pack_hashes=(),
+        input_tokens=0,
+        output_tokens=0,
+        planner_latency_ms=0,
+        eda_runtime_ms=sum(
+            result.metrics.runtime_ms
+            for result in (*candidate_results.values(), *formal_stage_results.values())
+        ),
+        terminal_disposition=candidate.terminal_disposition,
+        human_review=None,
+        created_at=candidate.created_at,
+    )
+    experiment_ref = parent_store.put_named_bytes(
+        canonical_json_bytes(experiment),
+        artifact_id=f"{experiment.experiment_record_id}_record",
+        media_type="application/json",
+        classification="INTERNAL",
+        producer_stage_result_id=None,
+    )
+    ledger.append_record(experiment)
+    replayed = replay_run(ledger, parent_index.run_id)
+    replay_range = (first_state.sequence, replayed[-1].sequence)
+    replay_prefix = replay_digest(replayed[: replay_range[1]])
     payload = {
-        "schema_version": 2,
+        "schema_version": 3,
         "parent_run_id": parent_index.run_id,
         "parent_run_index_hash": parent_index.index_hash,
         "candidate_run_id": candidate_index.run_id,
@@ -979,6 +1280,11 @@ def optimize_strict_vertical_slice(
         "structural_comparison": structural,
         "view_comparisons": view_comparisons,
         "candidate_stage_result_artifacts": dict(candidate_index.stage_result_artifacts),
+        "formal_stage_result_artifacts": formal_stage_refs,
+        "experiment_record_artifact": experiment_ref,
+        "replay_event_sequence_range": replay_range,
+        "gate_event_ids": tuple(gate_event_ids),
+        "replay_prefix_digest": replay_prefix,
         "status": "PASS" if evaluation.status == "PASS" and feasible else "FAIL",
     }
     provisional = M4CandidateBundle.model_construct(**payload, bundle_hash="sha256:" + "0" * 64)
@@ -1015,8 +1321,64 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
         bundle.candidate.patch_artifact,
         *bundle.prephysical_proof.raw_artifacts,
         *bundle.final_proof.raw_artifacts,
+        *bundle.formal_stage_result_artifacts.values(),
+        bundle.experiment_record_artifact,
     ):
         parent_store.open_verified(reference).close()
+    for stage_id, reference in bundle.formal_stage_result_artifacts.items():
+        result = StageResult.model_validate_json(parent_store.open_verified(reference).read())
+        if (
+            result.stage_result_id != stage_id
+            or result.candidate_id != bundle.candidate.candidate_id
+            or result.stage != "FORMAL_EQUIVALENCE"
+        ):
+            raise OptimizationFlowError(f"formal stage identity mismatch: {stage_id}")
+        for raw in result.raw_artifacts:
+            parent_store.open_verified(raw).close()
+    experiment = ExperimentRecord.model_validate_json(
+        parent_store.open_verified(bundle.experiment_record_artifact).read()
+    )
+    ledger = ExperimentLedger.open_existing(
+        parent_run / "experiment-ledger.sqlite3", artifact_store=parent_store
+    )
+    stored_experiments = {
+        item.experiment_record_id: item
+        for item in ledger.iter_records(bundle.parent_run_id)
+    }
+    if stored_experiments.get(experiment.experiment_record_id) != experiment:
+        raise OptimizationFlowError("candidate experiment ledger record changed")
+    replayed = replay_run(ledger, bundle.parent_run_id)
+    start, end = bundle.replay_event_sequence_range
+    prefix = tuple(item for item in replayed if item.sequence <= end)
+    if not prefix or prefix[-1].sequence != end or replay_digest(prefix) != (
+        bundle.replay_prefix_digest
+    ):
+        raise OptimizationFlowError("candidate replay prefix changed")
+    journal_events = tuple(item for item in replayed if start <= item.sequence <= end)
+    gate_run_events = tuple(
+        item for item in journal_events if item.event_id in set(bundle.gate_event_ids)
+    )
+    if tuple(item.event_id for item in gate_run_events) != bundle.gate_event_ids:
+        raise OptimizationFlowError("candidate gate event journal is incomplete")
+    gate_payloads = tuple(
+        GateEvent.model_validate_json(parent_store.open_verified(item.payload_artifact).read())
+        for item in gate_run_events
+    )
+    if tuple(item.event_hash for item in gate_payloads) != bundle.evaluation.event_hashes:
+        raise OptimizationFlowError("candidate gate event hashes changed")
+    design = DesignContract.model_validate_json(
+        parent_store.open_verified(parent_index.design_contract_artifact).read()
+    )
+    orchestrator = RunOrchestrator(
+        ledger=ExperimentLedger(
+            parent_run / "experiment-ledger.sqlite3", artifact_store=parent_store
+        ),
+        artifact_store=parent_store,
+        policy_hash=design.effective_policy_hash,
+    )
+    candidate_state = orchestrator.get_candidate_state(bundle.candidate.candidate_id)
+    if candidate_state is None or candidate_state.state not in {"PARETO", "DOMINATED"}:
+        raise OptimizationFlowError("candidate terminal state is not durable")
     candidate_run = parent_run / "m4" / "candidate-runs" / bundle.candidate_run_id
     candidate_index = load_run_index(candidate_run)
     if candidate_index.index_hash != bundle.candidate_run_index_hash:

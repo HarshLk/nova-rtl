@@ -175,6 +175,7 @@ def test_strict_execution_prevents_toolchain_bytecode_writes(tmp_path: Path) -> 
         run_id="run_test",
         candidate_id="cand_priority_mux",
         composition_manifest=composition,
+        producer_stage_result_id="stage_m4_strict_final",
     )
 
     assert result.outcome == "PASS"
@@ -183,6 +184,9 @@ def test_strict_execution_prevents_toolchain_bytecode_writes(tmp_path: Path) -> 
     assert result.composition_manifest_artifact_id in {
         item.artifact_id for item in result.raw_artifacts
     }
+    assert {
+        item.producer_stage_result_id for item in result.raw_artifacts
+    } == {"stage_m4_strict_final"}
 
 
 def test_composition_manifest_binds_full_snapshot_and_exact_closed_scope(

@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from nova_rtl.artifacts.ledger import ExperimentLedger
+from nova_rtl.artifacts.replay import replay_run
 from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.contracts.base import StageInputHashes
 from nova_rtl.orchestrator.state import (
@@ -207,3 +208,29 @@ def test_candidate_indexed_run_identity_is_verified(
         orchestrator.transition_candidate(
             "run_001", "cand_001", "PROPOSED", "VALIDATED", payload()
         )
+
+
+def test_observation_event_is_atomic_replayable_and_does_not_change_candidate_state(
+    orchestrator: RunOrchestrator,
+    persistence: tuple[ArtifactStore, ExperimentLedger],
+) -> None:
+    _store, ledger = persistence
+    orchestrator.transition("run_001", "CREATED", "INGESTING", payload())
+    proposed = orchestrator.create_candidate("run_001", "cand_001", payload("7"))
+
+    event = orchestrator.record_event(
+        run_id="run_001",
+        event_type="GATE_STARTED",
+        entity_type="CANDIDATE_GATE",
+        entity_id="cand_001",
+        payload=payload("8"),
+        status="PASS",
+        error_code=None,
+    )
+
+    assert event.sequence == proposed.sequence + 1
+    assert event.prior_state is None
+    assert event.new_state is None
+    assert orchestrator.get_candidate_state("cand_001") == proposed
+    replayed = replay_run(ledger, "run_001")
+    assert replayed[-1] == event

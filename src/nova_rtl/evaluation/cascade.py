@@ -65,13 +65,14 @@ class GateAssessment(StrictContract):
 class GateEvent(StrictContract):
     """Replayable start or terminal event for one attempted evaluation gate."""
 
+    schema_version: Literal[1] = 1
     candidate_id: EntityId
     sequence: int
     gate_id: GateId
     gate_name: str
     event_type: Literal[
         "GATE_STARTED",
-        "GATE_PASSED",
+        "GATE_COMPLETED",
         "GATE_FAILED",
         "GATE_INCONCLUSIVE",
         "GATE_INFRASTRUCTURE_ERROR",
@@ -140,7 +141,7 @@ def _event(
         diagnostics: tuple[str, ...] = ()
     else:
         event_type = {
-            "PASS": "GATE_PASSED",
+            "PASS": "GATE_COMPLETED",
             "FAIL": "GATE_FAILED",
             "INCONCLUSIVE": "GATE_INCONCLUSIVE",
             "INFRASTRUCTURE_ERROR": "GATE_INFRASTRUCTURE_ERROR",
@@ -149,6 +150,7 @@ def _event(
         stage_ids = assessment.stage_result_ids
         diagnostics = assessment.diagnostic_codes
     payload = {
+        "schema_version": 1,
         "candidate_id": candidate_id,
         "sequence": sequence,
         "gate_id": gate_id,

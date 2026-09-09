@@ -49,6 +49,7 @@ EXPECTED_SCHEMA_FILES = {
     "failure-event.v1.schema.json",
     "formal-model-contract.v1.schema.json",
     "frequency-sweep-contract.v1.schema.json",
+    "gate-event.v1.schema.json",
     "metric-set.v1.schema.json",
     "m2-signoff-report.v1.schema.json",
     "m3-signoff-report.v1.schema.json",

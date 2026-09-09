@@ -157,7 +157,7 @@ def test_cascade_runs_gates_in_order_and_emits_started_and_terminal_events() -> 
     assert len(events) == 2 * len(EVALUATION_GATE_ORDER)
     assert tuple(event.sequence for event in events) == tuple(range(len(events)))
     assert events[0].event_type == "GATE_STARTED"
-    assert events[-1].event_type == "GATE_PASSED"
+    assert events[-1].event_type == "GATE_COMPLETED"
 
 
 def test_cascade_stops_on_first_hard_nonpass_without_skipping_invariants() -> None:

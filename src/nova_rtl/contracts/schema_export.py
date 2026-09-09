@@ -92,6 +92,7 @@ from nova_rtl.contracts.verification import (
     FormalModelContract,
     ProofResult,
 )
+from nova_rtl.evaluation.cascade import GateEvent
 
 
 @dataclass(frozen=True)
@@ -125,6 +126,7 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "analysis-view-contract": SchemaRegistration(AnalysisViewContract, version=1),
     "power-activity-contract": SchemaRegistration(PowerActivityContract, version=1),
     "frequency-sweep-contract": SchemaRegistration(FrequencySweepContract, version=1),
+    "gate-event": SchemaRegistration(GateEvent, version=1),
     "tool-fingerprint": SchemaRegistration(ToolFingerprint, version=1),
     "doctor-report": SchemaRegistration(DoctorReport, version=1),
     "tool-job": SchemaRegistration(ToolJob, version=1),

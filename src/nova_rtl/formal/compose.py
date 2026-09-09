@@ -370,6 +370,7 @@ def run_strict_equivalence(
     run_id: str,
     candidate_id: str,
     composition_manifest: CompositionClosureManifest | None = None,
+    producer_stage_result_id: str | None = None,
     proof_label: str = "strict",
     timeout_seconds: int = 120,
 ) -> ProofResult:
@@ -462,28 +463,28 @@ def run_strict_equivalence(
         artifact_id=f"{prefix}_stdout",
         media_type="text/plain",
         classification="RESTRICTED_RTL",
-        producer_stage_result_id=None,
+        producer_stage_result_id=producer_stage_result_id,
     )
     stderr_ref = artifact_store.put_named_bytes(
         stderr.encode("utf-8"),
         artifact_id=f"{prefix}_stderr",
         media_type="text/plain",
         classification="RESTRICTED_RTL",
-        producer_stage_result_id=None,
+        producer_stage_result_id=producer_stage_result_id,
     )
     recipe_ref = artifact_store.put_named_bytes(
         plan.recipe.encode("utf-8"),
         artifact_id=f"{prefix}_recipe",
         media_type="text/plain",
         classification="RESTRICTED_RTL",
-        producer_stage_result_id=None,
+        producer_stage_result_id=producer_stage_result_id,
     )
     work_ref = artifact_store.put_named_bytes(
         archive,
         artifact_id=f"{prefix}_work_products",
         media_type="application/x-tar",
         classification="RESTRICTED_RTL",
-        producer_stage_result_id=None,
+        producer_stage_result_id=producer_stage_result_id,
     )
     composition_ref = (
         artifact_store.put_named_bytes(
@@ -491,7 +492,7 @@ def run_strict_equivalence(
             artifact_id=f"{prefix}_composition_manifest",
             media_type="application/json",
             classification="RESTRICTED_RTL",
-            producer_stage_result_id=None,
+            producer_stage_result_id=producer_stage_result_id,
         )
         if composition_manifest is not None
         else None
@@ -502,7 +503,7 @@ def run_strict_equivalence(
             artifact_id=f"{prefix}_counterexample",
             media_type="application/vnd.nova-rtl.vcd",
             classification="RESTRICTED_RTL",
-            producer_stage_result_id=None,
+            producer_stage_result_id=producer_stage_result_id,
         )
         if outcome == "FAIL" and counterexample_data is not None
         else None
