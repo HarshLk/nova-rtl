@@ -106,6 +106,7 @@ from nova_rtl.contracts.reporting import (
     SearchResult,
 )
 from nova_rtl.contracts.verification import (
+    CompositionClosureManifest,
     ConstraintBindingManifest,
     FormalModelContract,
     ProofResult,
@@ -135,6 +136,7 @@ __all__ = [
     "CalibrationSample",
     "ComponentInventoryEntry",
     "ClockInventory",
+    "CompositionClosureManifest",
     "ConstraintBindingManifest",
     "ContextRequest",
     "CouncilRequest",

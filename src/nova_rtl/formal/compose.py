@@ -22,10 +22,16 @@ from nova_rtl.contracts.base import (
     HashRef,
     NonEmptyString,
     StrictContract,
+    canonical_json_bytes,
     canonical_sha256,
 )
 from nova_rtl.contracts.platform import ToolFingerprint
-from nova_rtl.contracts.verification import FormalModelContract, ProofPartition, ProofResult
+from nova_rtl.contracts.verification import (
+    CompositionClosureManifest,
+    FormalModelContract,
+    ProofPartition,
+    ProofResult,
+)
 
 
 class FormalCompositionError(RuntimeError):
@@ -194,6 +200,93 @@ def compose_strict_equivalence(
     return StrictEquivalencePlan(**payload, plan_hash=canonical_sha256(payload))
 
 
+def build_composition_manifest(
+    *,
+    candidate_id: str,
+    parent_root: Path,
+    candidate_root: Path,
+    full_source_paths: Sequence[str],
+    changed_source_paths: Sequence[str],
+    changed_span_ids: Sequence[str],
+    proof_plan: StrictEquivalencePlan,
+    parameterizations: Sequence[str],
+    boundary_inputs: Sequence[str],
+    boundary_outputs: Sequence[str],
+    state_elements: Sequence[str],
+    assumption_hashes: Sequence[str],
+    discharge_obligations: Sequence[str],
+) -> CompositionClosureManifest:
+    """Prove that a local EQY scope covers every byte changed in the full snapshot."""
+
+    parent = _source_identities(parent_root, full_source_paths)
+    candidate = _source_identities(candidate_root, full_source_paths)
+    parent_by_path = {item.relative_path: item.sha256 for item in parent}
+    candidate_by_path = {item.relative_path: item.sha256 for item in candidate}
+    actual_changed = tuple(
+        path for path in sorted(parent_by_path) if parent_by_path[path] != candidate_by_path[path]
+    )
+    declared_changed = tuple(sorted(set(changed_source_paths)))
+    if not declared_changed or actual_changed != declared_changed:
+        raise FormalCompositionError(
+            "full RTL snapshot contains a change outside compositional scope"
+        )
+    if not changed_span_ids or len(changed_span_ids) != len(set(changed_span_ids)):
+        raise FormalCompositionError("composition changed-span set must be nonempty and unique")
+    proof_gold_hashes = {item.sha256 for item in proof_plan.gold_sources}
+    proof_gate_hashes = {item.sha256 for item in proof_plan.gate_sources}
+    if any(parent_by_path[path] not in proof_gold_hashes for path in declared_changed) or any(
+        candidate_by_path[path] not in proof_gate_hashes for path in declared_changed
+    ):
+        raise FormalCompositionError(
+            "strict proof sources do not contain every changed RTL implementation"
+        )
+    expected_assumptions = {
+        proof_plan.reset_assumption_hash,
+        proof_plan.environment_assumption_hash,
+    }
+    if set(assumption_hashes) != expected_assumptions:
+        raise FormalCompositionError("composition assumptions do not match the proof plan")
+    required_discharges = {
+        "ALL_INSTANTIATIONS_COVERED",
+        "NO_STATE_IN_SCOPE",
+        "UNCHANGED_FILES_BYTE_IDENTICAL",
+    }
+    if not required_discharges.issubset(discharge_obligations):
+        raise FormalCompositionError("composition closure obligations are incomplete")
+    parent_full_hash = canonical_sha256(
+        {"files": tuple(item.model_dump(mode="json") for item in parent)}
+    )
+    candidate_full_hash = canonical_sha256(
+        {"files": tuple(item.model_dump(mode="json") for item in candidate)}
+    )
+    payload = {
+        "schema_version": 1,
+        "candidate_id": candidate_id,
+        "parent_full_snapshot_hash": parent_full_hash,
+        "candidate_full_snapshot_hash": candidate_full_hash,
+        "changed_source_paths": declared_changed,
+        "changed_span_ids": tuple(sorted(changed_span_ids)),
+        "changed_parent_hashes": {path: parent_by_path[path] for path in declared_changed},
+        "changed_candidate_hashes": {path: candidate_by_path[path] for path in declared_changed},
+        "unchanged_source_hashes": {
+            path: parent_by_path[path]
+            for path in sorted(parent_by_path)
+            if path not in declared_changed
+        },
+        "proof_plan_hash": proof_plan.plan_hash,
+        "proof_gold_hash": proof_plan.gold_snapshot_hash,
+        "proof_gate_hash": proof_plan.gate_snapshot_hash,
+        "proof_top": proof_plan.top,
+        "parameterizations": tuple(sorted(parameterizations)),
+        "boundary_inputs": tuple(sorted(boundary_inputs)),
+        "boundary_outputs": tuple(sorted(boundary_outputs)),
+        "state_elements": tuple(sorted(state_elements)),
+        "assumption_hashes": tuple(sorted(assumption_hashes)),
+        "discharge_obligations": tuple(sorted(discharge_obligations)),
+    }
+    return CompositionClosureManifest(**payload, manifest_hash=canonical_sha256(payload))
+
+
 def _verify_tool(fingerprint: ToolFingerprint, expected_id: str) -> Path:
     if fingerprint.tool_id != expected_id:
         raise FormalCompositionError(f"expected {expected_id} tool fingerprint")
@@ -276,6 +369,7 @@ def run_strict_equivalence(
     yosys_fingerprint: ToolFingerprint,
     run_id: str,
     candidate_id: str,
+    composition_manifest: CompositionClosureManifest | None = None,
     proof_label: str = "strict",
     timeout_seconds: int = 120,
 ) -> ProofResult:
@@ -283,6 +377,17 @@ def run_strict_equivalence(
 
     eqy = _verify_tool(eqy_fingerprint, "eqy")
     yosys = _verify_tool(yosys_fingerprint, "yosys")
+    if composition_manifest is not None and (
+        composition_manifest.candidate_id != candidate_id
+        or composition_manifest.proof_plan_hash != plan.plan_hash
+        or composition_manifest.proof_gold_hash != plan.gold_snapshot_hash
+        or composition_manifest.proof_gate_hash != plan.gate_snapshot_hash
+        or set(composition_manifest.assumption_hashes)
+        != {plan.reset_assumption_hash, plan.environment_assumption_hash}
+    ):
+        raise FormalCompositionError(
+            "composition manifest does not bind the exact strict proof invocation"
+        )
     if source_snapshot_hash(gold_root, tuple(x.relative_path for x in plan.gold_sources)) != (
         plan.gold_snapshot_hash
     ):
@@ -380,6 +485,17 @@ def run_strict_equivalence(
         classification="RESTRICTED_RTL",
         producer_stage_result_id=None,
     )
+    composition_ref = (
+        artifact_store.put_named_bytes(
+            canonical_json_bytes(composition_manifest),
+            artifact_id=f"{prefix}_composition_manifest",
+            media_type="application/json",
+            classification="RESTRICTED_RTL",
+            producer_stage_result_id=None,
+        )
+        if composition_manifest is not None
+        else None
+    )
     counterexample_ref = (
         artifact_store.put_named_bytes(
             counterexample_data,
@@ -391,10 +507,17 @@ def run_strict_equivalence(
         if outcome == "FAIL" and counterexample_data is not None
         else None
     )
-    raw_artifacts = (
-        (recipe_ref, stderr_ref, stdout_ref, work_ref, counterexample_ref)
-        if counterexample_ref is not None
-        else (recipe_ref, stderr_ref, stdout_ref, work_ref)
+    raw_artifacts = tuple(
+        item
+        for item in (
+            composition_ref,
+            recipe_ref,
+            stderr_ref,
+            stdout_ref,
+            work_ref,
+            counterexample_ref,
+        )
+        if item is not None
     )
     partition = ProofPartition(
         partition_id=f"partition_{proof_label}_{candidate_id}",
@@ -414,9 +537,13 @@ def run_strict_equivalence(
         formal_model_contract_id=plan.formal_model_contract_id,
         gold_hash=plan.gold_snapshot_hash,
         gate_hash=plan.gate_snapshot_hash,
-        proof_scope="WHOLE_DESIGN",
+        proof_scope=(
+            "COMPOSITIONALLY_CLOSED" if composition_manifest is not None else "WHOLE_DESIGN"
+        ),
         partitions=(partition,),
-        composition_manifest_artifact_id=None,
+        composition_manifest_artifact_id=(
+            composition_ref.artifact_id if composition_ref is not None else None
+        ),
         assumption_hashes=tuple(
             sorted({plan.reset_assumption_hash, plan.environment_assumption_hash})
         ),
@@ -432,6 +559,7 @@ __all__ = [
     "FormalCompositionError",
     "FormalSourceIdentity",
     "StrictEquivalencePlan",
+    "build_composition_manifest",
     "compose_strict_equivalence",
     "run_strict_equivalence",
     "source_snapshot_hash",

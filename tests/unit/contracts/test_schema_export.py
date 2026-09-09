@@ -29,6 +29,7 @@ EXPECTED_SCHEMA_FILES = {
     "candidate-record.v1.schema.json",
     "cdc-inventory.v1.schema.json",
     "clock-inventory.v1.schema.json",
+    "composition-closure-manifest.v1.schema.json",
     "constraint-binding-manifest.v1.schema.json",
     "context-request.v1.schema.json",
     "council-request.v1.schema.json",

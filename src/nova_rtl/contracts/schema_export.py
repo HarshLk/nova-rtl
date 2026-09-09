@@ -87,6 +87,7 @@ from nova_rtl.contracts.reporting import (
     SearchResult,
 )
 from nova_rtl.contracts.verification import (
+    CompositionClosureManifest,
     ConstraintBindingManifest,
     FormalModelContract,
     ProofResult,
@@ -141,6 +142,9 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "candidate-record": SchemaRegistration(CandidateRecord, version=1),
     "m4-signoff-report": SchemaRegistration(M4SignoffReport, version=1),
     "m4-view-comparison": SchemaRegistration(M4ViewComparison, version=1),
+    "composition-closure-manifest": SchemaRegistration(
+        CompositionClosureManifest, version=1
+    ),
     "constraint-binding-manifest": SchemaRegistration(
         ConstraintBindingManifest, version=1
     ),

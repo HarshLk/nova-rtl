@@ -56,6 +56,7 @@ from nova_rtl.evidence.execution import analyze_evidence_run
 from nova_rtl.evidence.opportunities import RankedOpportunitySet
 from nova_rtl.evidence.source_map import SourceMapSnapshot
 from nova_rtl.formal.compose import (
+    build_composition_manifest,
     compose_strict_equivalence,
     run_strict_equivalence,
     source_snapshot_hash,
@@ -759,6 +760,29 @@ def optimize_strict_vertical_slice(
         top="m4_priority_mux_composition",
         formal_model=formal_model,
     )
+    composition_inputs = {
+        "candidate_id": candidate_id,
+        "parent_root": parent_index.project_root,
+        "candidate_root": candidate_project,
+        "full_source_paths": tuple(project.rtl.files),
+        "changed_source_paths": (span.relative_path,),
+        "changed_span_ids": (span.source_span_id,),
+        "proof_plan": proof_plan,
+        "parameterizations": tuple(f"FAMILY={index}" for index in range(5)),
+        "boundary_inputs": ("lane_input",),
+        "boundary_outputs": tuple(f"lane_output_{index}" for index in range(5)),
+        "state_elements": (),
+        "assumption_hashes": (
+            proof_plan.reset_assumption_hash,
+            proof_plan.environment_assumption_hash,
+        ),
+        "discharge_obligations": (
+            "ALL_INSTANTIATIONS_COVERED",
+            "NO_STATE_IN_SCOPE",
+            "UNCHANGED_FILES_BYTE_IDENTICAL",
+        ),
+    }
+    composition_manifest = build_composition_manifest(**composition_inputs)
     prephysical_proof: ProofResult | None = None
 
     def strict_pre_timing(_: BaselineRunIndex) -> None:
@@ -773,6 +797,7 @@ def optimize_strict_vertical_slice(
             yosys_fingerprint=yosys,  # type: ignore[arg-type]
             run_id=parent_index.run_id,
             candidate_id=candidate_id,
+            composition_manifest=composition_manifest,
             proof_label="prephysical",
         )
         if prephysical_proof.outcome != "PASS":
@@ -785,6 +810,9 @@ def optimize_strict_vertical_slice(
     )
     if prephysical_proof is None:
         raise OptimizationFlowError("strict prephysical proof was not executed")
+    final_composition_manifest = build_composition_manifest(**composition_inputs)
+    if final_composition_manifest != composition_manifest:
+        raise OptimizationFlowError("candidate RTL snapshot changed during physical implementation")
     final_proof = run_strict_equivalence(
         plan=proof_plan,
         gold_root=gold,
@@ -795,6 +823,7 @@ def optimize_strict_vertical_slice(
         yosys_fingerprint=yosys,  # type: ignore[arg-type]
         run_id=parent_index.run_id,
         candidate_id=candidate_id,
+        composition_manifest=final_composition_manifest,
         proof_label="final",
     )
     parent_results = _load_stage_results(parent_index, resolved)
