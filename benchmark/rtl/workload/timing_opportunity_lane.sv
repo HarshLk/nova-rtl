@@ -10,6 +10,7 @@ module timing_opportunity_lane #(
   logic [31:0] arithmetic_mix;
   logic [31:0] reduction_mix;
   logic [31:0] selected_mix;
+  logic [31:0] priority_mix;
 
   always_comb begin
     compare_mix = lane_input ^ SEED;
@@ -33,6 +34,14 @@ module timing_opportunity_lane #(
                             ? reduction_mix ^ 32'hc3c3_3c3c
                             : reduction_mix + 32'h3141_5927;
     endcase
-    lane_output = selected_mix ^ {selected_mix[0], selected_mix[31:1]};
+    if (lane_input[1:0] == 2'b11)
+      priority_mix = selected_mix ^ 32'hc001_cafe;
+    else if (lane_input[1:0] == 2'b10)
+      priority_mix = selected_mix + 32'h1020_4080;
+    else if (lane_input[1:0] == 2'b01)
+      priority_mix = {selected_mix[7:0], selected_mix[31:8]};
+    else
+      priority_mix = selected_mix;
+    lane_output = priority_mix ^ {priority_mix[0], priority_mix[31:1]};
   end
 endmodule

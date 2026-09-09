@@ -333,7 +333,12 @@ def _write_index(run_directory: Path, payload: dict[str, object]) -> BaselineRun
     return index
 
 
-def initialize_run(project_path: Path, *, runs_root: Path = Path("runs")) -> InitializedRun:
+def initialize_run(
+    project_path: Path,
+    *,
+    runs_root: Path = Path("runs"),
+    candidate_id: str = "baseline",
+) -> InitializedRun:
     """Normalize and snapshot a generated project into M1 persistence authorities."""
 
     project_root, project, project_bytes = _read_project(project_path)
@@ -343,12 +348,13 @@ def initialize_run(project_path: Path, *, runs_root: Path = Path("runs")) -> Ini
     ):
         raise BaselineFlowError("project and benchmark generated-clock counts differ")
     project_hash = _hash_bytes(project_bytes)
-    run_digest = canonical_sha256(
-        {
-            "project_manifest_hash": project_hash,
-            "benchmark_snapshot_hash": snapshot.snapshot_hash,
-        }
-    ).removeprefix("sha256:")
+    run_identity = {
+        "project_manifest_hash": project_hash,
+        "benchmark_snapshot_hash": snapshot.snapshot_hash,
+    }
+    if candidate_id != "baseline":
+        run_identity["candidate_id"] = candidate_id
+    run_digest = canonical_sha256(run_identity).removeprefix("sha256:")
     run_id = f"run_{run_digest[:24]}"
     root = runs_root.absolute()
     run_directory = root / run_id
@@ -357,6 +363,7 @@ def initialize_run(project_path: Path, *, runs_root: Path = Path("runs")) -> Ini
         if (
             existing.benchmark_snapshot_hash != snapshot.snapshot_hash
             or existing.project_manifest_artifact.sha256 != project_hash
+            or existing.candidate_id != candidate_id
         ):
             raise BaselineFlowError(f"existing run identity conflicts: {run_directory}")
         _publish_latest(root, run_directory)
@@ -489,7 +496,7 @@ def initialize_run(project_path: Path, *, runs_root: Path = Path("runs")) -> Ini
         payload = {
             "schema_version": 1,
             "run_id": run_id,
-            "candidate_id": "baseline",
+            "candidate_id": candidate_id,
             "profile": snapshot.profile,
             "project_root": project_root,
             "status": "INITIALIZED",

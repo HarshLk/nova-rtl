@@ -1,0 +1,101 @@
+{
+  "additionalProperties": false,
+  "description": "Replayable start or terminal event for one attempted evaluation gate.",
+  "properties": {
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "diagnostic_codes": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Diagnostic Codes",
+      "type": "array"
+    },
+    "event_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Event Hash",
+      "type": "string"
+    },
+    "event_type": {
+      "enum": [
+        "GATE_STARTED",
+        "GATE_COMPLETED",
+        "GATE_FAILED",
+        "GATE_INCONCLUSIVE",
+        "GATE_INFRASTRUCTURE_ERROR"
+      ],
+      "title": "Event Type",
+      "type": "string"
+    },
+    "gate_id": {
+      "enum": [
+        "0",
+        "0.5",
+        "1",
+        "2",
+        "3",
+        "4",
+        "5",
+        "6",
+        "7"
+      ],
+      "title": "Gate Id",
+      "type": "string"
+    },
+    "gate_name": {
+      "title": "Gate Name",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sequence": {
+      "title": "Sequence",
+      "type": "integer"
+    },
+    "stage_result_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Stage Result Ids",
+      "type": "array"
+    },
+    "status": {
+      "anyOf": [
+        {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INCONCLUSIVE",
+            "INFRASTRUCTURE_ERROR"
+          ],
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Status"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "sequence",
+    "gate_id",
+    "gate_name",
+    "event_type",
+    "status",
+    "stage_result_ids",
+    "diagnostic_codes",
+    "event_hash"
+  ],
+  "title": "GateEvent",
+  "type": "object"
+}

@@ -32,6 +32,7 @@ Fingerprint = Annotated[
 ]
 Confidence = Annotated[float, Field(strict=True, ge=0.0, le=1.0, allow_inf_nan=False)]
 Percentage = Annotated[float, Field(strict=True, ge=0.0, le=100.0, allow_inf_nan=False)]
+GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
 TransformFamily = StableUpperString
 TransformOperation = StableUpperString
 SelectionClass = Literal[
@@ -51,9 +52,7 @@ CandidateClassification = Literal[
     "SELECTED",
 ]
 
-FEASIBLE_CLASSIFICATIONS = frozenset(
-    {"FEASIBLE_DOMINATED", "FEASIBLE_PARETO", "SELECTED"}
-)
+FEASIBLE_CLASSIFICATIONS = frozenset({"FEASIBLE_DOMINATED", "FEASIBLE_PARETO", "SELECTED"})
 
 
 def _require_unique(values: tuple[str, ...], label: str) -> None:
@@ -120,9 +119,7 @@ class OptimizationOpportunity(StrictContract):
 
         if self.editability == "RTL_EDITABLE":
             if not (
-                self.source_spans
-                and self.eligible_transform_families
-                and self.proof_contracts
+                self.source_spans and self.eligible_transform_families and self.proof_contracts
             ):
                 raise ValueError(
                     "editable opportunity requires source spans, transform families, "
@@ -272,10 +269,7 @@ class CandidateRecord(StrictContract):
             if self.hard_gate_summary is None:
                 raise ValueError("feasible candidate requires a hard-gate summary")
             gate = self.hard_gate_summary
-            if (
-                gate.candidate_id != self.candidate_id
-                or gate.source_hash != self.source_hash
-            ):
+            if gate.candidate_id != self.candidate_id or gate.source_hash != self.source_hash:
                 raise ValueError("hard-gate source hash must bind the candidate RTL snapshot")
             if set(gate.required_analysis_view_ids) != set(self.per_view_metrics):
                 raise ValueError("hard-gate required-view metrics must be complete")
@@ -292,7 +286,7 @@ class CandidateRecord(StrictContract):
                 raise ValueError("hard-gate proof contract must match candidate contract")
             if (
                 gate.proof_outcome != "PASS"
-                or gate.binding_status != "EQUIVALENT"
+                or gate.binding_status not in {"EQUIVALENT", "APPROVED_SEMANTIC_REMAP"}
                 or gate.clock_inventory_status != "COMPLETE"
                 or gate.cdc_inventory_status != "UNCHANGED"
             ):
@@ -313,9 +307,7 @@ class _CandidateHardGateSummary(StrictContract):
     proof_outcome: Literal["PASS", "FAIL", "INCONCLUSIVE", "INFRASTRUCTURE_ERROR"]
     proof_contract: CorrectnessContract
     binding_manifest_id: EntityId
-    binding_status: Literal[
-        "EQUIVALENT", "APPROVED_SEMANTIC_REMAP", "FORBIDDEN_DELTA"
-    ]
+    binding_status: Literal["EQUIVALENT", "APPROVED_SEMANTIC_REMAP", "FORBIDDEN_DELTA"]
     clock_inventory_id: EntityId
     clock_inventory_status: Literal["COMPLETE", "INCOMPLETE", "MISMATCH"]
     cdc_inventory_id: EntityId
@@ -335,8 +327,173 @@ class _CandidateHardGateSummary(StrictContract):
 CandidateRecord.model_rebuild()
 
 
+class M4ViewComparison(StrictContract):
+    """Exact baseline/candidate metrics and result hashes for one required view."""
+
+    analysis_view_id: EntityId
+    baseline_stage_result_hash: HashRef
+    candidate_stage_result_hash: HashRef
+    baseline_metrics: MetricSet
+    candidate_metrics: MetricSet
+
+    @model_validator(mode="after")
+    def metrics_match_view(self) -> Self:
+        if self.baseline_metrics.analysis_view_id != self.analysis_view_id:
+            raise ValueError("baseline metrics do not match comparison view")
+        if self.candidate_metrics.analysis_view_id != self.analysis_view_id:
+            raise ValueError("candidate metrics do not match comparison view")
+        return self
+
+
+class MappedStructuralEffect(StrictContract):
+    """Measured target-module cell and combinational-depth response after mapping."""
+
+    schema_version: Literal[1] = 1
+    baseline_artifact_hash: HashRef
+    candidate_artifact_hash: HashRef
+    target_module: str
+    module_names: tuple[str, ...]
+    baseline_cell_counts: dict[str, NonNegativeInt]
+    candidate_cell_counts: dict[str, NonNegativeInt]
+    baseline_max_depths: dict[str, NonNegativeInt]
+    candidate_max_depths: dict[str, NonNegativeInt]
+    baseline_total_cells: NonNegativeInt
+    candidate_total_cells: NonNegativeInt
+    cell_delta: int
+    reduced_depth_instance_count: NonNegativeInt
+    status: Literal["DEPTH_REDUCED", "CHANGED_NO_DEPTH_REDUCTION", "NO_MAPPED_CHANGE"]
+    effect_hash: HashRef
+
+    @model_validator(mode="after")
+    def identities_are_complete_and_hashed(self) -> Self:
+        names = set(self.module_names)
+        if not names or any(
+            set(values) != names
+            for values in (
+                self.baseline_cell_counts,
+                self.candidate_cell_counts,
+                self.baseline_max_depths,
+                self.candidate_max_depths,
+            )
+        ):
+            raise ValueError("mapped structural effect must cover the same target modules")
+        if self.baseline_total_cells != sum(self.baseline_cell_counts.values()):
+            raise ValueError("baseline target cell total is inconsistent")
+        if self.candidate_total_cells != sum(self.candidate_cell_counts.values()):
+            raise ValueError("candidate target cell total is inconsistent")
+        if self.cell_delta != self.candidate_total_cells - self.baseline_total_cells:
+            raise ValueError("mapped target cell delta is inconsistent")
+        if self.effect_hash != canonical_sha256(self, exclude=frozenset({"effect_hash"})):
+            raise ValueError("mapped structural effect hash is not canonical")
+        return self
+
+
+class M4SignoffReport(StrictContract):
+    """Commit-bound proof that one M4 candidate passed the complete strict cascade."""
+
+    schema_version: Literal[2] = 2
+    status: Literal["PASS"]
+    commit_sha: GitCommitSha
+    implementation_tree_hash: GitCommitSha
+    m3_commit_sha: GitCommitSha
+    m3_packet_hash: HashRef
+    m3_report_hash: HashRef
+    parent_run_id: EntityId
+    parent_run_index_hash: HashRef
+    candidate_id: EntityId
+    candidate_run_id: EntityId
+    candidate_run_index_hash: HashRef
+    candidate_bundle_hash: HashRef
+    candidate_source_hash: HashRef
+    patch_hash: HashRef
+    transform_fingerprint: Fingerprint
+    candidate_classification: CandidateClassification
+    evaluation_hash: HashRef
+    gate_statuses: dict[str, Literal["PASS"]]
+    gate_event_ids: tuple[EntityId, ...]
+    replay_event_sequence_range: tuple[NonNegativeInt, NonNegativeInt]
+    replay_prefix_digest: HashRef
+    prephysical_proof_hash: HashRef
+    final_proof_hash: HashRef
+    formal_stage_result_hashes: dict[EntityId, HashRef]
+    mapped_structural_effect_hash: HashRef
+    objective_improvements: tuple[StableUpperString, ...]
+    experiment_record_hash: HashRef
+    required_view_comparisons: dict[EntityId, M4ViewComparison]
+    baseline_replay_digest: HashRef
+    candidate_replay_digest: HashRef
+    baseline_ledger_hash: HashRef
+    candidate_ledger_hash: HashRef
+    toolchain_receipt_hash: HashRef
+    platform_lock_hash: HashRef
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def identities_and_hashes_are_canonical(self) -> Self:
+        expected_gates = ("0", "0.5", "1", "2", "3", "4", "5", "6", "7")
+        if tuple(self.gate_statuses) != expected_gates:
+            raise ValueError("M4 gate inventory must contain the complete canonical cascade")
+        if len(self.gate_event_ids) != 2 * len(expected_gates) or len(
+            set(self.gate_event_ids)
+        ) != len(self.gate_event_ids):
+            raise ValueError("M4 sign-off must bind every unique gate journal event")
+        if self.replay_event_sequence_range[1] < self.replay_event_sequence_range[0]:
+            raise ValueError("M4 replay sequence range is invalid")
+        if set(self.formal_stage_result_hashes) != {
+            "stage_m4_strict_final",
+            "stage_m4_strict_prephysical",
+        }:
+            raise ValueError("M4 sign-off requires both strict formal stage results")
+        if self.candidate_classification == "VALID_NEGATIVE_RESULT":
+            if self.objective_improvements:
+                raise ValueError("valid negative M4 result cannot claim an improvement")
+        elif self.candidate_classification in {"FEASIBLE_PARETO", "SELECTED"}:
+            if not self.objective_improvements:
+                raise ValueError("Pareto M4 result requires a measured improvement")
+        else:
+            raise ValueError("M4 sign-off cannot bind a rejected candidate classification")
+        if set(self.required_view_comparisons) != {"asap7_setup", "asap7_hold"}:
+            raise ValueError("M4 requires comparable ASAP7 setup and hold views")
+        input_payload = {
+            "commit_sha": self.commit_sha,
+            "implementation_tree_hash": self.implementation_tree_hash,
+            "m3_commit_sha": self.m3_commit_sha,
+            "m3_packet_hash": self.m3_packet_hash,
+            "m3_report_hash": self.m3_report_hash,
+            "parent_run_index_hash": self.parent_run_index_hash,
+            "candidate_run_index_hash": self.candidate_run_index_hash,
+            "candidate_bundle_hash": self.candidate_bundle_hash,
+            "candidate_classification": self.candidate_classification,
+            "evaluation_hash": self.evaluation_hash,
+            "gate_event_ids": self.gate_event_ids,
+            "replay_event_sequence_range": self.replay_event_sequence_range,
+            "replay_prefix_digest": self.replay_prefix_digest,
+            "prephysical_proof_hash": self.prephysical_proof_hash,
+            "final_proof_hash": self.final_proof_hash,
+            "formal_stage_result_hashes": self.formal_stage_result_hashes,
+            "mapped_structural_effect_hash": self.mapped_structural_effect_hash,
+            "objective_improvements": self.objective_improvements,
+            "experiment_record_hash": self.experiment_record_hash,
+            "baseline_replay_digest": self.baseline_replay_digest,
+            "candidate_replay_digest": self.candidate_replay_digest,
+            "baseline_ledger_hash": self.baseline_ledger_hash,
+            "candidate_ledger_hash": self.candidate_ledger_hash,
+            "toolchain_receipt_hash": self.toolchain_receipt_hash,
+            "platform_lock_hash": self.platform_lock_hash,
+        }
+        if self.input_set_hash != canonical_sha256(input_payload):
+            raise ValueError("input_set_hash does not match the M4 evidence boundary")
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
+            raise ValueError("report_hash does not match canonical M4 sign-off report")
+        return self
+
+
 __all__ = [
     "CandidateRecord",
+    "M4SignoffReport",
+    "M4ViewComparison",
+    "MappedStructuralEffect",
     "OptimizationOpportunity",
     "OptimizationProposal",
 ]

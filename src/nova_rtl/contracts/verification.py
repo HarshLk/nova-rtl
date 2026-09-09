@@ -10,6 +10,7 @@ from nova_rtl.contracts.base import (
     ArtifactRef,
     EntityId,
     HashRef,
+    NonEmptyString,
     NonNegativeInt,
     StrictContract,
     canonical_sha256,
@@ -148,6 +149,75 @@ class ProofPartition(StrictContract):
         return self
 
 
+class CompositionClosureManifest(StrictContract):
+    """Evidence that a local proof closes over the exact delivered RTL snapshot."""
+
+    schema_version: Literal[1] = 1
+    candidate_id: EntityId
+    parent_full_snapshot_hash: HashRef
+    candidate_full_snapshot_hash: HashRef
+    changed_source_paths: tuple[str, ...] = Field(min_length=1)
+    changed_span_ids: tuple[EntityId, ...] = Field(min_length=1)
+    changed_parent_hashes: dict[str, HashRef]
+    changed_candidate_hashes: dict[str, HashRef]
+    unchanged_source_hashes: dict[str, HashRef]
+    proof_plan_hash: HashRef
+    proof_gold_hash: HashRef
+    proof_gate_hash: HashRef
+    proof_top: NonEmptyString
+    parameterizations: tuple[NonEmptyString, ...] = Field(min_length=1)
+    boundary_inputs: tuple[NonEmptyString, ...] = Field(min_length=1)
+    boundary_outputs: tuple[NonEmptyString, ...] = Field(min_length=1)
+    state_elements: tuple[NonEmptyString, ...]
+    assumption_hashes: tuple[HashRef, ...]
+    discharge_obligations: tuple[NonEmptyString, ...] = Field(min_length=1)
+    manifest_hash: HashRef
+
+    @field_validator(
+        "changed_source_paths",
+        "changed_span_ids",
+        "parameterizations",
+        "boundary_inputs",
+        "boundary_outputs",
+        "state_elements",
+        "assumption_hashes",
+        "discharge_obligations",
+    )
+    @classmethod
+    def sequences_are_canonical(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if value != tuple(sorted(set(value))):
+            raise ValueError("composition manifest sequences must be sorted and unique")
+        return value
+
+    @field_validator(
+        "changed_parent_hashes",
+        "changed_candidate_hashes",
+        "unchanged_source_hashes",
+    )
+    @classmethod
+    def source_maps_are_canonical(cls, value: dict[str, str]) -> dict[str, str]:
+        return dict(sorted(value.items()))
+
+    @model_validator(mode="after")
+    def closure_and_hash_are_coherent(self) -> Self:
+        changed = set(self.changed_source_paths)
+        if (
+            set(self.changed_parent_hashes) != changed
+            or set(self.changed_candidate_hashes) != changed
+        ):
+            raise ValueError("composition changed-source maps must cover the exact edit set")
+        if changed & set(self.unchanged_source_hashes):
+            raise ValueError("changed and unchanged composition sources must be disjoint")
+        if any(
+            self.changed_parent_hashes[path] == self.changed_candidate_hashes[path]
+            for path in changed
+        ):
+            raise ValueError("composition changed-source hashes must differ")
+        if self.manifest_hash != canonical_sha256(self, exclude=frozenset({"manifest_hash"})):
+            raise ValueError("composition manifest hash is not canonical")
+        return self
+
+
 class ProofResult(StrictContract):
     """Formal outcome, scope, partition evidence, and exact proved identities."""
 
@@ -229,4 +299,9 @@ class ProofResult(StrictContract):
         return self
 
 
-__all__ = ["ConstraintBindingManifest", "FormalModelContract", "ProofResult"]
+__all__ = [
+    "CompositionClosureManifest",
+    "ConstraintBindingManifest",
+    "FormalModelContract",
+    "ProofResult",
+]

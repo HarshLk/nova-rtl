@@ -6,12 +6,14 @@ from nova_rtl.analysis_views.aggregation import (
     aggregate_required_views,
 )
 from nova_rtl.analysis_views.comparability import (
+    ApprovedIdentityRemap,
     ComparabilityResult,
     IncomparableResultsError,
     assert_comparable,
 )
 
 __all__ = [
+    "ApprovedIdentityRemap",
     "AggregatedMetrics",
     "ComparabilityResult",
     "IncomparableResultsError",

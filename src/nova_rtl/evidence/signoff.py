@@ -755,8 +755,46 @@ def verify_m3_signoff(
     )
 
 
+def verify_m3_dependency_snapshot(
+    report_path: Path,
+    *,
+    repository_root: Path,
+    descendant_commit: str,
+) -> tuple[M3SignoffReport, str]:
+    """Reconstruct immutable M3 evidence for a trusted descendant milestone."""
+
+    try:
+        path = report_path.resolve(strict=True)
+        content = path.read_bytes()
+        observed = M3SignoffReport.model_validate_json(content)
+    except (OSError, ValueError) as error:
+        raise M3SignoffError("M3 sign-off packet is missing or invalid") from error
+    _require_git_ancestor(repository_root, observed.commit_sha, descendant_commit)
+    tree = _git_output(
+        repository_root, "rev-parse", "--verify", f"{observed.commit_sha}^{{tree}}"
+    )
+    if tree != observed.implementation_tree_hash:
+        raise M3SignoffError("M3 packet does not match its recorded Git checkpoint")
+    m2_report, m2_packet_hash = _m2_dependency(
+        path.parent / "m2-signoff.json",
+        repository_root=repository_root,
+        current_commit=observed.commit_sha,
+    )
+    expected = _build_report(
+        path.parent,
+        m2_report,
+        m2_packet_hash,
+        commit_sha=observed.commit_sha,
+        implementation_tree_hash=observed.implementation_tree_hash,
+    )
+    if observed != expected:
+        raise M3SignoffError("M3 dependency differs from reconstructed evidence")
+    return observed, _hash_bytes(content)
+
+
 __all__ = [
     "M3SignoffError",
     "run_m3_signoff",
+    "verify_m3_dependency_snapshot",
     "verify_m3_signoff",
 ]

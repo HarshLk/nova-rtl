@@ -5,6 +5,7 @@ from types import SimpleNamespace
 import pytest
 
 from nova_rtl.analysis_views.comparability import (
+    ApprovedIdentityRemap,
     IncomparableResultsError,
     assert_comparable,
 )
@@ -71,9 +72,7 @@ def test_power_comparability_additionally_requires_identical_activity() -> None:
     with pytest.raises(IncomparableResultsError, match="power_activity"):
         assert_comparable(baseline, candidate, "POWER")
 
-    comparison = assert_comparable(
-        baseline, result(hashes(power="8"), "func_power"), "POWER"
-    )
+    comparison = assert_comparable(baseline, result(hashes(power="8"), "func_power"), "POWER")
     assert comparison.identity_hashes["power_activity"] == hash_ref("8")
 
 
@@ -83,4 +82,46 @@ def test_view_label_mismatch_is_incomparable_even_when_hashes_match() -> None:
             result(hashes(), "func_setup"),
             result(hashes(), "func_hold"),
             "TIMING",
+        )
+
+
+def test_reviewed_semantic_binding_remap_allows_candidate_comparison() -> None:
+    baseline_hashes = hashes()
+    candidate_hashes = baseline_hashes.model_copy(update={"constraint_binding": hash_ref("8")})
+    remap = ApprovedIdentityRemap.build(
+        identity_name="constraint_binding",
+        baseline_identity_hash=hash_ref("4"),
+        candidate_identity_hash=hash_ref("8"),
+        semantic_identity_hash=hash_ref("9"),
+        justification="IDENTICAL_RESOLVED_SELECTORS_AND_ENDPOINT_COVERAGE",
+    )
+
+    comparison = assert_comparable(
+        result(baseline_hashes),
+        result(candidate_hashes),
+        "TIMING",
+        approved_remaps=(remap,),
+    )
+
+    assert comparison.identity_hashes["constraint_binding"] == hash_ref("9")
+    assert comparison.approved_identity_remaps == (remap,)
+
+
+def test_semantic_remap_must_bind_the_exact_mismatched_identities() -> None:
+    baseline_hashes = hashes()
+    candidate_hashes = baseline_hashes.model_copy(update={"constraint_binding": hash_ref("8")})
+    wrong = ApprovedIdentityRemap.build(
+        identity_name="constraint_binding",
+        baseline_identity_hash=hash_ref("3"),
+        candidate_identity_hash=hash_ref("8"),
+        semantic_identity_hash=hash_ref("9"),
+        justification="IDENTICAL_RESOLVED_SELECTORS_AND_ENDPOINT_COVERAGE",
+    )
+
+    with pytest.raises(IncomparableResultsError, match="constraint_binding"):
+        assert_comparable(
+            result(baseline_hashes),
+            result(candidate_hashes),
+            "TIMING",
+            approved_remaps=(wrong,),
         )

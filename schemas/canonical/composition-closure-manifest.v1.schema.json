@@ -1,0 +1,168 @@
+{
+  "additionalProperties": false,
+  "description": "Evidence that a local proof closes over the exact delivered RTL snapshot.",
+  "properties": {
+    "assumption_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Assumption Hashes",
+      "type": "array"
+    },
+    "boundary_inputs": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Boundary Inputs",
+      "type": "array"
+    },
+    "boundary_outputs": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Boundary Outputs",
+      "type": "array"
+    },
+    "candidate_full_snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Full Snapshot Hash",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "changed_candidate_hashes": {
+      "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Changed Candidate Hashes",
+      "type": "object"
+    },
+    "changed_parent_hashes": {
+      "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Changed Parent Hashes",
+      "type": "object"
+    },
+    "changed_source_paths": {
+      "items": {
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Changed Source Paths",
+      "type": "array"
+    },
+    "changed_span_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Changed Span Ids",
+      "type": "array"
+    },
+    "discharge_obligations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Discharge Obligations",
+      "type": "array"
+    },
+    "manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Manifest Hash",
+      "type": "string"
+    },
+    "parameterizations": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Parameterizations",
+      "type": "array"
+    },
+    "parent_full_snapshot_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Parent Full Snapshot Hash",
+      "type": "string"
+    },
+    "proof_gate_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Proof Gate Hash",
+      "type": "string"
+    },
+    "proof_gold_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Proof Gold Hash",
+      "type": "string"
+    },
+    "proof_plan_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Proof Plan Hash",
+      "type": "string"
+    },
+    "proof_top": {
+      "minLength": 1,
+      "title": "Proof Top",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "state_elements": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "State Elements",
+      "type": "array"
+    },
+    "unchanged_source_hashes": {
+      "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "title": "Unchanged Source Hashes",
+      "type": "object"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "parent_full_snapshot_hash",
+    "candidate_full_snapshot_hash",
+    "changed_source_paths",
+    "changed_span_ids",
+    "changed_parent_hashes",
+    "changed_candidate_hashes",
+    "unchanged_source_hashes",
+    "proof_plan_hash",
+    "proof_gold_hash",
+    "proof_gate_hash",
+    "proof_top",
+    "parameterizations",
+    "boundary_inputs",
+    "boundary_outputs",
+    "state_elements",
+    "assumption_hashes",
+    "discharge_obligations",
+    "manifest_hash"
+  ],
+  "title": "CompositionClosureManifest",
+  "type": "object"
+}

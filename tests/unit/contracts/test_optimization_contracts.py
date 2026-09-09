@@ -212,6 +212,19 @@ def candidate_payload() -> dict[str, object]:
     }
 
 
+def test_feasible_candidate_accepts_reviewed_semantic_constraint_remap() -> None:
+    payload = candidate_payload()
+    gate = payload["hard_gate_summary"]
+    assert isinstance(gate, dict)
+    gate["binding_status"] = "APPROVED_SEMANTIC_REMAP"
+    gate["summary_hash"] = self_hash(gate, "summary_hash")
+
+    candidate = CandidateRecord.model_validate(payload)
+
+    assert candidate.hard_gate_summary is not None
+    assert candidate.hard_gate_summary.binding_status == "APPROVED_SEMANTIC_REMAP"
+
+
 def test_editable_opportunity_requires_actionable_same_snapshot_evidence() -> None:
     opportunity = OptimizationOpportunity.model_validate(opportunity_payload())
     assert opportunity.editability == "RTL_EDITABLE"

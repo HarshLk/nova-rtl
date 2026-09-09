@@ -118,3 +118,28 @@ def test_init_snapshots_a_deterministic_project_into_m1_authorities(tmp_path: Pa
         artifact_store=store,
     )
     assert len(replay_run(ledger, index.run_id)) == 1
+
+
+def test_candidate_initialization_is_identity_separated_from_baseline(tmp_path: Path) -> None:
+    project_root = tmp_path / "tiny"
+    generate_benchmark(
+        load_benchmark_config(PROFILE_MANIFEST, "tiny"),
+        project_root,
+    )
+
+    baseline = initialize_run(project_root / "project.yaml", runs_root=tmp_path / "runs")
+    candidate = initialize_run(
+        project_root / "project.yaml",
+        runs_root=tmp_path / "runs",
+        candidate_id="cand_priority_mux",
+    )
+    repeated = initialize_run(
+        project_root / "project.yaml",
+        runs_root=tmp_path / "runs",
+        candidate_id="cand_priority_mux",
+    )
+
+    assert candidate.run_directory == repeated.run_directory
+    assert candidate.run_directory != baseline.run_directory
+    assert load_run_index(baseline.run_directory).candidate_id == "baseline"
+    assert load_run_index(candidate.run_directory).candidate_id == "cand_priority_mux"

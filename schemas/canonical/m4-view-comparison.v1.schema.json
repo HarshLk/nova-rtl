@@ -1,0 +1,267 @@
+{
+  "$defs": {
+    "MetricSet": {
+      "additionalProperties": false,
+      "description": "Complete, unit-explicit measured metrics for a stage or comparison.",
+      "properties": {
+        "analysis_view_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Analysis View Id"
+        },
+        "buffer_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Buffer Count"
+        },
+        "cell_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Cell Count"
+        },
+        "congestion_overflow": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Congestion Overflow"
+        },
+        "critical_path_delay_ns": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Critical Path Delay Ns"
+        },
+        "estimated_fmax_mhz": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Estimated Fmax Mhz"
+        },
+        "failing_endpoints": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Failing Endpoints"
+        },
+        "hold_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Tns Ns"
+        },
+        "hold_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Hold Wns Ns"
+        },
+        "mapped_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Mapped Area Um2"
+        },
+        "missing_metric_reasons": {
+          "additionalProperties": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "title": "Missing Metric Reasons",
+          "type": "object"
+        },
+        "physical_area_um2": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Physical Area Um2"
+        },
+        "power_total_uw": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Power Total Uw"
+        },
+        "register_count": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Register Count"
+        },
+        "runtime_ms": {
+          "minimum": 0,
+          "title": "Runtime Ms",
+          "type": "integer"
+        },
+        "setup_tns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Tns Ns"
+        },
+        "setup_wns_ns": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Setup Wns Ns"
+        },
+        "wirelength_um": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Wirelength Um"
+        }
+      },
+      "required": [
+        "analysis_view_id",
+        "setup_wns_ns",
+        "setup_tns_ns",
+        "hold_wns_ns",
+        "hold_tns_ns",
+        "failing_endpoints",
+        "critical_path_delay_ns",
+        "estimated_fmax_mhz",
+        "mapped_area_um2",
+        "physical_area_um2",
+        "cell_count",
+        "register_count",
+        "buffer_count",
+        "power_total_uw",
+        "wirelength_um",
+        "congestion_overflow",
+        "runtime_ms",
+        "missing_metric_reasons"
+      ],
+      "title": "MetricSet",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Exact baseline/candidate metrics and result hashes for one required view.",
+  "properties": {
+    "analysis_view_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Analysis View Id",
+      "type": "string"
+    },
+    "baseline_metrics": {
+      "$ref": "#/$defs/MetricSet"
+    },
+    "baseline_stage_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Baseline Stage Result Hash",
+      "type": "string"
+    },
+    "candidate_metrics": {
+      "$ref": "#/$defs/MetricSet"
+    },
+    "candidate_stage_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Stage Result Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "analysis_view_id",
+    "baseline_stage_result_hash",
+    "candidate_stage_result_hash",
+    "baseline_metrics",
+    "candidate_metrics"
+  ],
+  "title": "M4ViewComparison",
+  "type": "object"
+}

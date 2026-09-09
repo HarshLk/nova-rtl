@@ -44,6 +44,9 @@ from nova_rtl.contracts.execution import PreparedCommand, RawToolResult, StageRe
 from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
 from nova_rtl.contracts.optimization import (
     CandidateRecord,
+    M4SignoffReport,
+    M4ViewComparison,
+    MappedStructuralEffect,
     OptimizationOpportunity,
     OptimizationProposal,
 )
@@ -85,10 +88,12 @@ from nova_rtl.contracts.reporting import (
     SearchResult,
 )
 from nova_rtl.contracts.verification import (
+    CompositionClosureManifest,
     ConstraintBindingManifest,
     FormalModelContract,
     ProofResult,
 )
+from nova_rtl.evaluation.cascade import GateEvent
 
 
 @dataclass(frozen=True)
@@ -122,6 +127,7 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "analysis-view-contract": SchemaRegistration(AnalysisViewContract, version=1),
     "power-activity-contract": SchemaRegistration(PowerActivityContract, version=1),
     "frequency-sweep-contract": SchemaRegistration(FrequencySweepContract, version=1),
+    "gate-event": SchemaRegistration(GateEvent, version=1),
     "tool-fingerprint": SchemaRegistration(ToolFingerprint, version=1),
     "doctor-report": SchemaRegistration(DoctorReport, version=1),
     "tool-job": SchemaRegistration(ToolJob, version=1),
@@ -137,6 +143,12 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "optimization-opportunity": SchemaRegistration(OptimizationOpportunity, version=1),
     "optimization-proposal": SchemaRegistration(OptimizationProposal, version=2),
     "candidate-record": SchemaRegistration(CandidateRecord, version=1),
+    "m4-signoff-report": SchemaRegistration(M4SignoffReport, version=2),
+    "m4-view-comparison": SchemaRegistration(M4ViewComparison, version=1),
+    "mapped-structural-effect": SchemaRegistration(MappedStructuralEffect, version=1),
+    "composition-closure-manifest": SchemaRegistration(
+        CompositionClosureManifest, version=1
+    ),
     "constraint-binding-manifest": SchemaRegistration(
         ConstraintBindingManifest, version=1
     ),

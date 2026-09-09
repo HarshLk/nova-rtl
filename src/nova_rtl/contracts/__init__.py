@@ -38,6 +38,8 @@ from nova_rtl.contracts.execution import PreparedCommand, RawToolResult, StageRe
 from nova_rtl.contracts.manifest import DesignContract, ProjectManifest
 from nova_rtl.contracts.optimization import (
     CandidateRecord,
+    M4SignoffReport,
+    M4ViewComparison,
     OptimizationOpportunity,
     OptimizationProposal,
 )
@@ -104,6 +106,7 @@ from nova_rtl.contracts.reporting import (
     SearchResult,
 )
 from nova_rtl.contracts.verification import (
+    CompositionClosureManifest,
     ConstraintBindingManifest,
     FormalModelContract,
     ProofResult,
@@ -125,12 +128,15 @@ __all__ = [
     "BenchmarkValidationEvidence",
     "CandidateFailureFingerprint",
     "CandidateRecord",
+    "M4SignoffReport",
+    "M4ViewComparison",
     "CDCInventory",
     "CanonicalEnvironmentEntry",
     "CalibrationReport",
     "CalibrationSample",
     "ComponentInventoryEntry",
     "ClockInventory",
+    "CompositionClosureManifest",
     "ConstraintBindingManifest",
     "ContextRequest",
     "CouncilRequest",

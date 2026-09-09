@@ -36,6 +36,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Use this verified M2 report as the M3 dependency.",
     )
+    parser.addoption(
+        "--candidate-bundle",
+        action="store",
+        default=None,
+        help="Use this verified candidate bundle for M4 sign-off.",
+    )
+    parser.addoption(
+        "--m3-packet",
+        action="store",
+        default=None,
+        help="Use this verified M3 report as the M4 dependency.",
+    )
 
 
 @pytest.fixture
@@ -90,4 +102,26 @@ def m2_packet_path(request: pytest.FixtureRequest) -> Path:
     path = Path(configured).resolve()
     if not path.is_file():
         pytest.fail(f"M2 packet does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def candidate_bundle_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--candidate-bundle")
+    if configured is None:
+        pytest.skip("M4 sign-off validation requires --candidate-bundle")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"candidate bundle does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def m3_packet_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--m3-packet")
+    if configured is None:
+        pytest.skip("M4 sign-off validation requires --m3-packet")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"M3 packet does not exist: {path}")
     return path

@@ -22,6 +22,17 @@ from nova_rtl.benchmark.validate import validate_benchmark
 from nova_rtl.contracts.platform import PlatformLockRequest
 from nova_rtl.evidence.execution import EvidenceExecutionError, analyze_evidence_run
 from nova_rtl.evidence.signoff import M3SignoffError, run_m3_signoff, verify_m3_signoff
+from nova_rtl.optimization.flow import (
+    OptimizationFlowError,
+    inspect_candidate,
+    optimize_strict_vertical_slice,
+    verify_candidate_bundle,
+)
+from nova_rtl.optimization.signoff import (
+    M4SignoffError,
+    run_m4_signoff,
+    verify_m4_signoff,
+)
 from nova_rtl.platform.activation import (
     ToolchainVerificationError,
     create_toolchain_receipt,
@@ -93,12 +104,24 @@ m3_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m3_app, name="m3")
+m4_app = typer.Typer(
+    name="m4",
+    help="Build and verify the strict-equivalence candidate milestone packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m4_app, name="m4")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
     no_args_is_help=True,
 )
 app.add_typer(m1_app, name="m1")
+candidate_app = typer.Typer(
+    name="candidate",
+    help="Inspect immutable optimized candidate evidence.",
+    no_args_is_help=True,
+)
+app.add_typer(candidate_app, name="candidate")
 
 
 def _tool_root(
@@ -200,6 +223,225 @@ def _m3_failure(error: Exception, json_output: bool) -> None:
     else:
         typer.echo(f"NOVA M3 sign-off: FAIL: {error}", err=True)
     raise typer.Exit(2)
+
+
+def _optimization_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M4", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M4 optimization: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+def _m4_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M4", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M4 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+def _candidate_bundle_path(candidate: str, runs_root: Path) -> Path:
+    supplied = Path(candidate)
+    if supplied.is_file():
+        return supplied.resolve()
+    matches = tuple(
+        sorted(
+            runs_root.resolve().glob(
+                f"**/m4/candidates/{candidate}/candidate-bundle.json"
+            )
+        )
+    )
+    if len(matches) != 1:
+        raise OptimizationFlowError(
+            f"candidate ID must resolve to exactly one bundle under {runs_root}: {candidate}"
+        )
+    return matches[0]
+
+
+@app.command("optimize")
+def optimize(
+    run_directory: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, readable=True, metavar="RUN_DIRECTORY"),
+    ],
+    planner: Annotated[str, typer.Option("--planner")] = "heuristic",
+    max_candidates: Annotated[int, typer.Option("--max-candidates", min=1, max=1)] = 1,
+    operations: Annotated[str, typer.Option("--operations")] = "RESTRUCTURE_PRIORITY_MUX",
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Execute the bounded one-candidate M4 strict-equivalence vertical slice."""
+
+    try:
+        if planner.lower() != "heuristic":
+            raise OptimizationFlowError("M4 supports only the deterministic heuristic planner")
+        if max_candidates != 1:
+            raise OptimizationFlowError("M4 executes exactly one bounded candidate")
+        if operations != "RESTRUCTURE_PRIORITY_MUX":
+            raise OptimizationFlowError("M4 supports only RESTRUCTURE_PRIORITY_MUX")
+        path, bundle = optimize_strict_vertical_slice(
+            run_directory, repository_root=repository_root
+        )
+    except (
+        BaselineFlowError,
+        OptimizationFlowError,
+        OSError,
+        ValidationError,
+        ValueError,
+    ) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": bundle.status,
+        "candidate_id": bundle.candidate.candidate_id,
+        "classification": bundle.candidate.classification,
+        "bundle": str(path),
+        "bundle_hash": bundle.bundle_hash,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M4 optimization: {bundle.status}: {path}"
+    )
+
+
+@candidate_app.command("inspect")
+def candidate_inspect(
+    candidate: Annotated[str, typer.Argument(metavar="CANDIDATE_ID_OR_BUNDLE")],
+    runs_root: Annotated[Path, typer.Option("--runs-root", file_okay=False)] = Path("runs"),
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Inspect a candidate only after resolving and verifying all evidence."""
+
+    try:
+        path = _candidate_bundle_path(candidate, runs_root)
+        payload = inspect_candidate(path, repository_root=repository_root)
+    except (OptimizationFlowError, OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else (
+            f"NOVA candidate: {payload['status']}: "
+            f"{payload['candidate_id']} ({payload['proof_outcome']})"
+        )
+    )
+
+
+@app.command("verify")
+def candidate_verify(
+    candidate: Annotated[str, typer.Argument(metavar="CANDIDATE_ID_OR_BUNDLE")],
+    runs_root: Annotated[Path, typer.Option("--runs-root", file_okay=False)] = Path("runs"),
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Verify an immutable candidate bundle independently without rerunning tools."""
+
+    try:
+        path = _candidate_bundle_path(candidate, runs_root)
+        bundle = verify_candidate_bundle(path, repository_root=repository_root)
+    except (OptimizationFlowError, OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": bundle.status,
+        "candidate_id": bundle.candidate.candidate_id,
+        "bundle_hash": bundle.bundle_hash,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA candidate verification: PASS: {bundle.candidate.candidate_id}"
+    )
+
+
+@m4_app.command("signoff")
+def m4_signoff(
+    candidate_bundle: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="CANDIDATE_BUNDLE"),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create and independently verify the final commit-bound M4 packet."""
+
+    try:
+        path, report = run_m4_signoff(
+            candidate_bundle,
+            m3_packet,
+            repository_root=repository_root,
+        )
+    except (M4SignoffError, OSError, ValidationError, ValueError) as error:
+        _m4_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M4 sign-off: PASS: {path}"
+    )
+
+
+@m4_app.command("verify")
+def m4_verify(
+    report_path: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT"),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Reconstruct and verify every identity in an M4 packet."""
+
+    try:
+        report = verify_m4_signoff(
+            report_path,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M4SignoffError, OSError, ValidationError, ValueError) as error:
+        _m4_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M4 verification: PASS: {report_path.resolve()}"
+    )
 
 
 @m2_app.command("signoff")

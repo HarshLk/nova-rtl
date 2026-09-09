@@ -22,6 +22,7 @@ from nova_rtl.contracts.base import (
     canonical_json_bytes,
 )
 from nova_rtl.contracts.events import RunEvent
+from nova_rtl.contracts.execution import StageStatus
 from nova_rtl.contracts.schema_export import SCHEMA_REGISTRY
 
 RunState = Literal[
@@ -204,6 +205,71 @@ class RunOrchestrator:
     def get_state(self, run_id: EntityId) -> RunStateRecord | None:
         with self._read_connection() as connection:
             return self._read_run(connection, run_id)
+
+    def get_candidate_state(self, candidate_id: EntityId) -> CandidateStateRecord | None:
+        """Read one validated durable candidate state without mutating history."""
+
+        with self._read_connection() as connection:
+            return self._read_candidate(connection, candidate_id)
+
+    def record_event(
+        self,
+        *,
+        run_id: EntityId,
+        event_type: str,
+        entity_type: str,
+        entity_id: EntityId,
+        payload: StrictContract,
+        status: StageStatus,
+        error_code: str | None,
+        duration_ms: int = 0,
+    ) -> RunEvent:
+        """Atomically persist a replay event that does not change run or candidate state."""
+
+        with self._write_connection() as connection:
+            run = self._read_run(connection, run_id)
+            if run is None or run.policy_hash != self.policy_hash:
+                raise StaleStateError(
+                    f"run {run_id} policy hash differs from persisted policy"
+                )
+            if entity_type == "CANDIDATE_GATE":
+                candidate = self._read_candidate(connection, entity_id)
+                if candidate is None or candidate.run_id != run_id:
+                    raise StaleStateError(
+                        f"candidate {entity_id} does not exist in {run_id}"
+                    )
+            payload_artifact = self._store_payload(payload)
+            sequence = self._next_sequence(connection, run_id)
+            timestamp = datetime.now(UTC)
+            schema_name, schema_version = self._payload_registration(payload)
+            event_digest = sha256(
+                f"{run_id}\0{sequence}\0{event_type}\0{entity_type}\0{entity_id}".encode()
+            ).hexdigest()[:32]
+            event = RunEvent(
+                event_id=f"event_{event_digest}",
+                run_id=run_id,
+                sequence=sequence,
+                event_type=event_type,
+                entity_type=entity_type,
+                entity_id=entity_id,
+                timestamp=timestamp,
+                prior_state=None,
+                new_state=None,
+                policy_hash=self.policy_hash,
+                payload_schema_name=schema_name,
+                payload_schema_version=schema_version,
+                payload_artifact=payload_artifact,
+                duration_ms=duration_ms,
+                resource_usage={
+                    "cpu_time_ms": 0,
+                    "wall_time_ms": duration_ms,
+                    "peak_rss_bytes": 0,
+                },
+                status=status,
+                error_code=error_code,
+            )
+            self._insert_event(connection, event)
+            return event
 
     def create_candidate(
         self,
