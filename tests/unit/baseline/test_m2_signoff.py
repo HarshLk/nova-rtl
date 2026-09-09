@@ -3,6 +3,7 @@ from __future__ import annotations
 import subprocess
 from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import yaml
@@ -229,6 +230,7 @@ def test_failed_prepublication_verification_preserves_previous_packet(
         "_verified_m1_dependency",
         lambda _root, _packet, _commit: (object(), "sha256:" + ("c" * 64)),
     )
+    monkeypatch.setattr(signoff, "_freeze_m2_evidence", lambda _run: None)
     monkeypatch.setattr(signoff, "_build_report", lambda *_args: report)
 
     def reject_before_publication(*_args: object, **_kwargs: object) -> object:
@@ -263,3 +265,82 @@ def test_checkpoint_change_after_verification_prevents_publication(
         )
 
     assert destination.read_bytes() == b"previous-packet\n"
+
+
+def test_m2_replay_snapshot_stops_at_the_last_signed_stage() -> None:
+    def event(sequence: int, digest: str):
+        return SimpleNamespace(
+            sequence=sequence,
+            payload_artifact=SimpleNamespace(sha256=digest),
+        )
+
+    signed = {
+        "stage_a": "sha256:" + ("a" * 64),
+        "stage_b": "sha256:" + ("b" * 64),
+    }
+    events = (
+        event(1, "sha256:" + ("0" * 64)),
+        event(2, signed["stage_a"]),
+        event(3, signed["stage_b"]),
+        event(4, "sha256:" + ("f" * 64)),
+    )
+
+    frozen = signoff._select_m2_event_prefix(events, signed)
+
+    assert tuple(item.sequence for item in frozen) == (1, 2, 3)
+
+
+def test_m2_replay_snapshot_rejects_a_missing_signed_stage() -> None:
+    event = SimpleNamespace(
+        sequence=1,
+        payload_artifact=SimpleNamespace(sha256="sha256:" + ("a" * 64)),
+    )
+
+    with pytest.raises(signoff.M2SignoffError, match="signed stage events"):
+        signoff._select_m2_event_prefix(
+            (event,),
+            {
+                "stage_a": "sha256:" + ("a" * 64),
+                "stage_b": "sha256:" + ("b" * 64),
+            },
+        )
+
+
+def test_m2_verification_prefers_a_complete_frozen_evidence_view(tmp_path: Path) -> None:
+    live_index = tmp_path / "run-index.json"
+    live_ledger = tmp_path / "experiment-ledger.sqlite3"
+    frozen_index = tmp_path / "m2-run-index.json"
+    frozen_ledger = tmp_path / "m2-experiment-ledger.sqlite3"
+    live_index.write_bytes(b"extended-index")
+    live_ledger.write_bytes(b"extended-ledger")
+    frozen_index.write_bytes(b"signed-index")
+    frozen_ledger.write_bytes(b"signed-ledger")
+
+    index_path, ledger_path = signoff._m2_evidence_paths(tmp_path)
+
+    assert index_path == frozen_index
+    assert ledger_path == frozen_ledger
+
+
+def test_m2_verification_rejects_a_partial_frozen_evidence_view(tmp_path: Path) -> None:
+    (tmp_path / "run-index.json").write_bytes(b"extended-index")
+    (tmp_path / "experiment-ledger.sqlite3").write_bytes(b"extended-ledger")
+    (tmp_path / "m2-run-index.json").write_bytes(b"signed-index")
+
+    with pytest.raises(signoff.M2SignoffError, match="incomplete"):
+        signoff._m2_evidence_paths(tmp_path)
+
+
+def test_replacing_a_signoff_packet_archives_its_exact_previous_bytes(
+    tmp_path: Path,
+) -> None:
+    destination = tmp_path / "m2-signoff.json"
+    previous = b"immutable historical packet\n"
+    destination.write_bytes(previous)
+
+    archive = signoff._archive_existing_packet(destination)
+
+    assert archive is not None
+    assert archive.read_bytes() == previous
+    assert destination.read_bytes() == previous
+    assert archive.name.startswith("m2-signoff.archive-")

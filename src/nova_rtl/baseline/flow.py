@@ -532,8 +532,16 @@ def _publish_latest(root: Path, run_directory: Path) -> None:
     os.replace(temporary, latest)
 
 
-def load_run_index(run_directory: Path) -> BaselineRunIndex:
-    path = run_directory.resolve() / _INDEX_FILE
+def load_run_index(
+    run_directory: Path,
+    *,
+    index_path: Path | None = None,
+) -> BaselineRunIndex:
+    path = (
+        index_path.resolve()
+        if index_path is not None
+        else run_directory.resolve() / _INDEX_FILE
+    )
     try:
         return BaselineRunIndex.model_validate_json(path.read_bytes())
     except (OSError, ValueError) as error:
@@ -558,11 +566,16 @@ def _load_stage_results(
     return tuple(results)
 
 
-def inspect_baseline_run(run_directory: Path) -> BaselineEvidence:
+def inspect_baseline_run(
+    run_directory: Path,
+    *,
+    index_path: Path | None = None,
+    ledger_path: Path | None = None,
+) -> BaselineEvidence:
     """Verify all persisted stage, view, resume, and replay evidence without tools."""
 
     resolved = run_directory.resolve()
-    index = load_run_index(resolved)
+    index = load_run_index(resolved, index_path=index_path)
     store = ArtifactStore.open_existing(resolved / "artifacts")
     results = _load_stage_results(index, store)
     grouped: dict[str, dict[str, StageResult]] = {}
@@ -572,7 +585,10 @@ def inspect_baseline_run(run_directory: Path) -> BaselineEvidence:
     aggregate_required_views(grouped, index.analysis_views)
     resume = plan_resume(resolved)
     ledger = ExperimentLedger.open_existing(
-        resolved / "experiment-ledger.sqlite3", artifact_store=store
+        ledger_path.resolve()
+        if ledger_path is not None
+        else resolved / "experiment-ledger.sqlite3",
+        artifact_store=store,
     )
     first = replay_digest(replay_run(ledger, index.run_id))
     second = replay_digest(replay_run(ledger, index.run_id))

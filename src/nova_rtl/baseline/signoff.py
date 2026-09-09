@@ -7,7 +7,7 @@ import os
 import shutil
 import subprocess
 import tempfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from hashlib import sha256
 from pathlib import Path
 
@@ -21,6 +21,7 @@ from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
 from nova_rtl.baseline.execution import _runtime
 from nova_rtl.baseline.flow import (
     BaselineFlowError,
+    BaselineRunIndex,
     _load_stage_results,
     inspect_baseline_run,
     load_run_index,
@@ -38,6 +39,7 @@ from nova_rtl.contracts.benchmark import (
     CalibrationReport,
     M2SignoffReport,
 )
+from nova_rtl.contracts.events import RunEvent
 from nova_rtl.contracts.execution import PreparedCommand, StageResult
 from nova_rtl.contracts.platform import ToolFingerprint
 from nova_rtl.contracts.verification import ConstraintBindingManifest, FormalModelContract
@@ -59,6 +61,8 @@ _REQUIRED_STAGE_IDS = frozenset(
         "stage_openroad_asap7_hold",
     }
 )
+_M2_INDEX_SNAPSHOT = "m2-run-index.json"
+_M2_LEDGER_SNAPSHOT = "m2-experiment-ledger.sqlite3"
 
 
 class M2SignoffError(BaselineFlowError):
@@ -67,6 +71,54 @@ class M2SignoffError(BaselineFlowError):
 
 def _hash_bytes(data: bytes) -> str:
     return f"sha256:{sha256(data).hexdigest()}"
+
+
+def _m2_evidence_paths(
+    run_directory: Path,
+    *,
+    require_frozen: bool = False,
+) -> tuple[Path, Path]:
+    """Resolve one complete M2 evidence view and reject torn snapshots."""
+
+    run = run_directory.resolve()
+    frozen_index = run / _M2_INDEX_SNAPSHOT
+    frozen_ledger = run / _M2_LEDGER_SNAPSHOT
+    present = (frozen_index.is_file(), frozen_ledger.is_file())
+    if any(present) and not all(present):
+        raise M2SignoffError("M2 frozen evidence snapshot is incomplete")
+    if all(present):
+        return frozen_index, frozen_ledger
+    if require_frozen:
+        raise M2SignoffError("M2 frozen evidence snapshot is missing")
+    return run / "run-index.json", run / "experiment-ledger.sqlite3"
+
+
+def _select_m2_event_prefix(
+    events: Sequence[RunEvent],
+    signed_stage_hashes: Mapping[str, str],
+) -> tuple[RunEvent, ...]:
+    """Select the immutable ledger prefix ending at the last signed M2 stage."""
+
+    required_hashes = set(signed_stage_hashes.values())
+    matched_sequences = {
+        event.sequence
+        for event in events
+        if event.payload_artifact.sha256 in required_hashes
+    }
+    observed_hashes = {
+        event.payload_artifact.sha256
+        for event in events
+        if event.payload_artifact.sha256 in required_hashes
+    }
+    if observed_hashes != required_hashes or not matched_sequences:
+        raise M2SignoffError("signed stage events are incomplete in the ledger")
+    boundary = max(matched_sequences)
+    prefix = tuple(event for event in events if event.sequence <= boundary)
+    if not prefix or tuple(event.sequence for event in prefix) != tuple(
+        sorted(event.sequence for event in prefix)
+    ):
+        raise M2SignoffError("M2 ledger prefix is empty or unordered")
+    return prefix
 
 
 def _git_executable() -> Path:
@@ -170,7 +222,7 @@ def _require_git_ancestor(
         timeout=30,
     )
     if ancestry.returncode != 0:
-        raise M2SignoffError("verified M1 checkpoint is not an ancestor of M2")
+        raise M2SignoffError("verified checkpoint is not an ancestor of the descendant")
 
 
 def _require_calibration_run_identity(
@@ -233,6 +285,120 @@ def _publish_report_atomic(destination: Path, content: bytes) -> None:
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def _archive_existing_packet(destination: Path) -> Path | None:
+    """Preserve an existing packet before publishing a newer checkpoint."""
+
+    if not destination.is_file():
+        return None
+    content = destination.read_bytes()
+    digest = sha256(content).hexdigest()
+    archive = destination.with_name(f"{destination.stem}.archive-{digest[:12]}.json")
+    if archive.exists():
+        if archive.read_bytes() != content:
+            raise M2SignoffError("sign-off packet archive hash collision")
+        return archive
+    _publish_report_atomic(archive, content)
+    return archive
+
+
+def _project_m2_run_index(
+    index: BaselineRunIndex,
+    stage_references: Mapping[str, ArtifactRef],
+    events: Sequence[RunEvent],
+) -> BaselineRunIndex:
+    payload = {
+        field_name: getattr(index, field_name)
+        for field_name in BaselineRunIndex.model_fields
+        if field_name not in {"index_hash", "stage_result_artifacts", "updated_at"}
+    }
+    payload.update(
+        stage_result_artifacts=dict(sorted(stage_references.items())),
+        updated_at=events[-1].timestamp,
+    )
+    provisional = BaselineRunIndex.model_construct(
+        **payload,
+        index_hash=f"sha256:{'0' * 64}",
+    )
+    return BaselineRunIndex(
+        **payload,
+        index_hash=canonical_sha256(
+            provisional,
+            exclude=frozenset({"index_hash"}),
+        ),
+    )
+
+
+def _freeze_m2_evidence(run_directory: Path) -> tuple[Path, Path]:
+    """Publish one immutable M2-only locator and replay-ledger prefix."""
+
+    run = run_directory.resolve(strict=True)
+    frozen_index = run / _M2_INDEX_SNAPSHOT
+    frozen_ledger = run / _M2_LEDGER_SNAPSHOT
+    if frozen_index.exists() or frozen_ledger.exists():
+        return _m2_evidence_paths(run, require_frozen=True)
+
+    live_index = load_run_index(run)
+    missing = sorted(_REQUIRED_STAGE_IDS - set(live_index.stage_result_artifacts))
+    if missing:
+        raise M2SignoffError(
+            f"cannot freeze incomplete M2 evidence: {', '.join(missing)}"
+        )
+    stage_references = {
+        stage_id: live_index.stage_result_artifacts[stage_id]
+        for stage_id in sorted(_REQUIRED_STAGE_IDS)
+    }
+    store = ArtifactStore.open_existing(run / "artifacts")
+    for result in _load_stage_results(
+        live_index.model_copy(update={"stage_result_artifacts": stage_references}),
+        store,
+    ):
+        if result.stage_result_id not in _REQUIRED_STAGE_IDS:
+            raise M2SignoffError("M2 evidence projection included a downstream stage")
+
+    live_ledger = ExperimentLedger.open_existing(
+        run / "experiment-ledger.sqlite3",
+        artifact_store=store,
+    )
+    events = replay_run(live_ledger, live_index.run_id)
+    prefix = _select_m2_event_prefix(
+        events,
+        {stage_id: reference.sha256 for stage_id, reference in stage_references.items()},
+    )
+    projected_index = _project_m2_run_index(live_index, stage_references, prefix)
+
+    ledger_fd, ledger_name = tempfile.mkstemp(
+        prefix=f".{_M2_LEDGER_SNAPSHOT}.",
+        dir=run,
+    )
+    os.close(ledger_fd)
+    temporary_ledger = Path(ledger_name)
+    temporary_index: Path | None = None
+    try:
+        temporary_ledger.unlink()
+        snapshot_ledger = ExperimentLedger(temporary_ledger, artifact_store=store)
+        for event in prefix:
+            snapshot_ledger.append_event(event)
+        with tempfile.NamedTemporaryFile(
+            mode="wb",
+            prefix=f".{_M2_INDEX_SNAPSHOT}.",
+            dir=run,
+            delete=False,
+        ) as temporary:
+            temporary_index = Path(temporary.name)
+            temporary.write(canonical_json_bytes(projected_index))
+            temporary.flush()
+            os.fsync(temporary.fileno())
+        os.replace(temporary_ledger, frozen_ledger)
+        os.replace(temporary_index, frozen_index)
+    except OSError as error:
+        raise M2SignoffError("failed to publish frozen M2 evidence atomically") from error
+    finally:
+        temporary_ledger.unlink(missing_ok=True)
+        if temporary_index is not None:
+            temporary_index.unlink(missing_ok=True)
+    return _m2_evidence_paths(run, require_frozen=True)
 
 
 def _contract_from_stage(
@@ -432,8 +598,13 @@ def _build_report(
     m1_report: M1SignoffReport,
     m1_packet_hash: str,
 ) -> M2SignoffReport:
-    evidence = inspect_baseline_run(run_directory)
-    index = load_run_index(run_directory)
+    index_path, ledger_path = _m2_evidence_paths(run_directory)
+    evidence = inspect_baseline_run(
+        run_directory,
+        index_path=index_path,
+        ledger_path=ledger_path,
+    )
+    index = load_run_index(run_directory, index_path=index_path)
     if evidence.status != "PASS" or index.status != "PASS":
         raise M2SignoffError("full baseline run is not complete")
     if index.profile != "full" or index.expected_master_clocks != 5:
@@ -556,7 +727,6 @@ def _build_report(
         item.analysis_view_id: canonical_sha256(item)
         for item in sorted(index.analysis_views, key=lambda value: value.analysis_view_id)
     }
-    ledger_path = run_directory.resolve() / "experiment-ledger.sqlite3"
     ledger = ExperimentLedger.open_existing(ledger_path, artifact_store=store)
     replay = replay_digest(replay_run(ledger, index.run_id))
     input_payload = {
@@ -623,6 +793,7 @@ def run_m2_signoff(
     repository_root = repository_root.resolve(strict=True)
     commit = _clean_commit(repository_root)
     tree = _implementation_tree(repository_root, commit)
+    _freeze_m2_evidence(run_directory)
     m1_report, m1_packet_hash = _verified_m1_dependency(repository_root, m1_packet, commit)
     report = _build_report(
         run_directory.resolve(strict=True),
@@ -646,6 +817,7 @@ def run_m2_signoff(
         expected_commit=commit,
         expected_tree=tree,
     )
+    _archive_existing_packet(path)
     _publish_report_atomic(path, canonical_json_bytes(verified))
     return path, verified
 
@@ -704,8 +876,182 @@ def verify_m2_signoff(
     )
 
 
+def _verify_frozen_m2_evidence(
+    report: M2SignoffReport,
+    run_directory: Path,
+) -> None:
+    index_path, ledger_path = _m2_evidence_paths(
+        run_directory,
+        require_frozen=True,
+    )
+    index = load_run_index(run_directory, index_path=index_path)
+    if index.index_hash != report.run_index_hash:
+        raise M2SignoffError("frozen M2 run index differs from the signed packet")
+    if (
+        index.run_id != report.run_id
+        or index.profile != report.profile
+        or index.benchmark_snapshot_hash != report.benchmark_snapshot_hash
+        or index.design_contract_hash != report.design_contract_hash
+        or index.platform_lock_hash != report.platform_lock_hash
+        or index.expected_master_clocks != report.expected_master_clocks
+        or index.expected_generated_clocks != report.expected_generated_clocks
+    ):
+        raise M2SignoffError("frozen M2 run identity differs from the signed packet")
+    signed_stage_hashes = {
+        stage_id: reference.sha256
+        for stage_id, reference in index.stage_result_artifacts.items()
+    }
+    if signed_stage_hashes != report.stage_result_hashes:
+        raise M2SignoffError("frozen M2 stage set differs from the signed packet")
+
+    store = ArtifactStore.open_existing(run_directory / "artifacts")
+    results = _load_stage_results(index, store)
+    by_id = {result.stage_result_id: result for result in results}
+    if set(by_id) != _REQUIRED_STAGE_IDS:
+        raise M2SignoffError("frozen M2 stage set is incomplete or contains extensions")
+    for stage_id, result in by_id.items():
+        if result.status != "PASS" and not is_complete_measured_timing_violation(result):
+            raise M2SignoffError(f"frozen M2 stage {stage_id} is {result.status}")
+    raw_hashes = {
+        artifact.artifact_id: artifact.sha256
+        for result in sorted(results, key=lambda item: item.stage_result_id)
+        for artifact in sorted(result.raw_artifacts, key=lambda item: item.artifact_id)
+    }
+    if raw_hashes != report.raw_artifact_hashes:
+        raise M2SignoffError("frozen M2 raw artifacts differ from the signed packet")
+    view_hashes = {
+        view.analysis_view_id: canonical_sha256(view)
+        for view in sorted(index.analysis_views, key=lambda item: item.analysis_view_id)
+    }
+    if view_hashes != report.analysis_view_hashes:
+        raise M2SignoffError("frozen M2 analysis views differ from the signed packet")
+
+    if _hash_bytes(ledger_path.read_bytes()) != report.ledger_hash:
+        raise M2SignoffError("frozen M2 ledger differs from the signed packet")
+    ledger = ExperimentLedger.open_existing(ledger_path, artifact_store=store)
+    replay = replay_digest(replay_run(ledger, index.run_id))
+    if replay != report.replay_digest:
+        raise M2SignoffError("frozen M2 replay differs from the signed packet")
+
+    binding = _contract_from_stage(by_id["stage_binding"], store, ConstraintBindingManifest)
+    clocks = _contract_from_stage(by_id["stage_clock"], store, ClockInventory)
+    cdc = _contract_from_stage(by_id["stage_cdc"], store, CDCInventory)
+    formal = _contract_from_stage(
+        by_id["stage_formal_preflight"],
+        store,
+        FormalModelContract,
+    )
+    if binding.coverage.unresolved_selectors != 0:
+        raise M2SignoffError("frozen M2 constraint binding has unresolved selectors")
+    if binding.coverage.timed_endpoints + binding.coverage.reviewed_exception_endpoints != (
+        binding.coverage.sequential_endpoints_total
+    ):
+        raise M2SignoffError("frozen M2 endpoint coverage is incomplete")
+    if len(clocks.master_clocks) != 5 or len(clocks.generated_clocks) != 105:
+        raise M2SignoffError("frozen M2 clock inventory is incomplete")
+    if any(clock.active_consumer_count <= 0 for clock in clocks.generated_clocks):
+        raise M2SignoffError("frozen M2 generated clock lacks active consumers")
+    if (
+        cdc.new_unapproved_count
+        or cdc.changed_approved_structure_count
+        or cdc.removed_approved_structure_count
+        or cdc.ambiguous_count
+    ):
+        raise M2SignoffError("frozen M2 CDC inventory differs from the approved registry")
+    if formal.behavioral_elaboration_delta != "NONE":
+        raise M2SignoffError("frozen M2 formal behavior identity is not NONE")
+    if by_id["stage_sby_cdc_properties"].input_hashes.formal_model != canonical_sha256(
+        formal
+    ):
+        raise M2SignoffError("frozen M2 CDC proof is not bound to the formal model")
+    if (
+        binding.effective_binding_hash != report.constraint_binding_hash
+        or clocks.clock_graph_hash != report.clock_graph_hash
+        or cdc.inventory_hash != report.cdc_inventory_hash
+        or canonical_sha256(formal) != report.formal_model_hash
+    ):
+        raise M2SignoffError("frozen M2 safety contracts differ from the signed packet")
+
+    grouped: dict[str, dict[str, StageResult]] = {}
+    for result in results:
+        if result.analysis_view_id is not None:
+            grouped.setdefault(result.analysis_view_id, {})[result.stage] = result
+    aggregate = aggregate_required_views(grouped, index.analysis_views)
+    measured = (
+        aggregate.setup_wns_ns,
+        aggregate.setup_tns_ns,
+        aggregate.hold_wns_ns,
+        aggregate.hold_tns_ns,
+    )
+    signed = (
+        report.setup_wns_ns,
+        report.setup_tns_ns,
+        report.hold_wns_ns,
+        report.hold_tns_ns,
+    )
+    if measured != signed:
+        raise M2SignoffError("frozen M2 timing metrics differ from the signed packet")
+
+    setup_result = by_id["stage_openroad_asap7_setup"]
+    setup_checkpoint = next(
+        (
+            artifact
+            for artifact in setup_result.raw_artifacts
+            if artifact.artifact_id.endswith("placed_odb")
+        ),
+        None,
+    )
+    if (
+        setup_checkpoint is None
+        or setup_checkpoint.sha256 != report.shared_physical_checkpoint_hash
+    ):
+        raise M2SignoffError("frozen M2 physical checkpoint differs from the signed packet")
+    hold_result = by_id["stage_openroad_asap7_hold"]
+    hold_command = _prepared_command(hold_result, store)
+    if setup_checkpoint.sha256 not in {
+        artifact.sha256 for artifact in hold_command.staged_input_artifact_refs
+    }:
+        raise M2SignoffError("frozen M2 hold view did not reuse the setup checkpoint")
+    if (
+        hold_result.input_hashes.parent_stage_result
+        != index.stage_result_artifacts["stage_openroad_asap7_setup"].sha256
+    ):
+        raise M2SignoffError("frozen M2 hold view has the wrong physical parent")
+    observed_tools: dict[str, str] = {}
+    for result in results:
+        tool = result.tool_fingerprint
+        previous = observed_tools.setdefault(tool.tool_id, tool.build_hash)
+        if previous != tool.build_hash:
+            raise M2SignoffError("frozen M2 stage tool identities disagree")
+    if observed_tools != report.tool_build_hashes:
+        raise M2SignoffError("frozen M2 tool identities differ from the signed packet")
+
+
+def verify_m2_dependency_snapshot(
+    report_path: Path,
+    *,
+    repository_root: Path,
+    descendant_commit: str,
+) -> tuple[M2SignoffReport, str]:
+    """Verify immutable M2 evidence for a trusted descendant milestone."""
+
+    try:
+        path = report_path.resolve(strict=True)
+        content = path.read_bytes()
+        report = M2SignoffReport.model_validate_json(content)
+    except (OSError, ValueError) as error:
+        raise M2SignoffError("M2 sign-off packet is missing or invalid") from error
+    _require_git_ancestor(repository_root, report.commit_sha, descendant_commit)
+    tree = _implementation_tree(repository_root, report.commit_sha)
+    if tree != report.implementation_tree_hash:
+        raise M2SignoffError("M2 packet does not match its recorded Git checkpoint")
+    _verify_frozen_m2_evidence(report, path.parent)
+    return report, _hash_bytes(content)
+
+
 __all__ = [
     "M2SignoffError",
     "run_m2_signoff",
+    "verify_m2_dependency_snapshot",
     "verify_m2_signoff",
 ]

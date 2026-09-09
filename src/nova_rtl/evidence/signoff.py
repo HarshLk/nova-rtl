@@ -19,6 +19,7 @@ from nova_rtl.artifacts.ledger import ExperimentLedger
 from nova_rtl.artifacts.replay import replay_digest, replay_run
 from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
 from nova_rtl.baseline.flow import BaselineFlowError, load_run_index
+from nova_rtl.baseline.signoff import verify_m2_dependency_snapshot
 from nova_rtl.contracts.analysis import (
     CDCInventory,
     ClockInventory,
@@ -198,17 +199,13 @@ def _m2_dependency(
     current_commit: str,
 ) -> tuple[M2SignoffReport, str]:
     try:
-        content = report_path.resolve(strict=True).read_bytes()
-        report = M2SignoffReport.model_validate_json(content)
-    except (OSError, ValueError) as error:
-        raise M3SignoffError("M2 sign-off packet is missing or invalid") from error
-    _require_git_ancestor(repository_root, report.commit_sha, current_commit)
-    tree = _git_output(
-        repository_root, "rev-parse", "--verify", f"{report.commit_sha}^{{tree}}"
-    )
-    if tree != report.implementation_tree_hash:
-        raise M3SignoffError("M2 packet does not match its recorded Git checkpoint")
-    return report, _hash_bytes(content)
+        return verify_m2_dependency_snapshot(
+            report_path,
+            repository_root=repository_root,
+            descendant_commit=current_commit,
+        )
+    except BaselineFlowError as error:
+        raise M3SignoffError(f"M2 dependency verification failed: {error}") from error
 
 
 def _publish_report_atomic(destination: Path, content: bytes) -> None:
@@ -230,6 +227,20 @@ def _publish_report_atomic(destination: Path, content: bytes) -> None:
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
+
+
+def _archive_existing_packet(destination: Path) -> Path | None:
+    if not destination.is_file():
+        return None
+    content = destination.read_bytes()
+    digest = sha256(content).hexdigest()
+    archive = destination.with_name(f"{destination.stem}.archive-{digest[:12]}.json")
+    if archive.exists():
+        if archive.read_bytes() != content:
+            raise M3SignoffError("sign-off packet archive hash collision")
+        return archive
+    _publish_report_atomic(archive, content)
+    return archive
 
 
 def _clock_maps(clock_inventory: ClockInventory) -> tuple[dict[str, str], dict[str, str]]:
@@ -718,6 +729,7 @@ def run_m3_signoff(
     )
     destination = run / "m3-signoff.json"
     _require_checkpoint_unchanged(repository, commit, tree)
+    _archive_existing_packet(destination)
     _publish_report_atomic(destination, canonical_json_bytes(verified))
     return destination, verified
 
