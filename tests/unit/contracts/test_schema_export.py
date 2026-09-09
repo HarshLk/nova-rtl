@@ -55,6 +55,7 @@ EXPECTED_SCHEMA_FILES = {
     "m3-signoff-report.v1.schema.json",
     "m4-signoff-report.v1.schema.json",
     "m4-view-comparison.v1.schema.json",
+    "mapped-structural-effect.v1.schema.json",
     "optimization-opportunity.v1.schema.json",
     "optimization-proposal.v2.schema.json",
     "pareto-record.v1.schema.json",

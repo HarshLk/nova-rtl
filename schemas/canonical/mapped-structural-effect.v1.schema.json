@@ -1,0 +1,116 @@
+{
+  "additionalProperties": false,
+  "description": "Measured target-module cell and combinational-depth response after mapping.",
+  "properties": {
+    "baseline_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Baseline Artifact Hash",
+      "type": "string"
+    },
+    "baseline_cell_counts": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Baseline Cell Counts",
+      "type": "object"
+    },
+    "baseline_max_depths": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Baseline Max Depths",
+      "type": "object"
+    },
+    "baseline_total_cells": {
+      "minimum": 0,
+      "title": "Baseline Total Cells",
+      "type": "integer"
+    },
+    "candidate_artifact_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Artifact Hash",
+      "type": "string"
+    },
+    "candidate_cell_counts": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Candidate Cell Counts",
+      "type": "object"
+    },
+    "candidate_max_depths": {
+      "additionalProperties": {
+        "minimum": 0,
+        "type": "integer"
+      },
+      "title": "Candidate Max Depths",
+      "type": "object"
+    },
+    "candidate_total_cells": {
+      "minimum": 0,
+      "title": "Candidate Total Cells",
+      "type": "integer"
+    },
+    "cell_delta": {
+      "title": "Cell Delta",
+      "type": "integer"
+    },
+    "effect_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Effect Hash",
+      "type": "string"
+    },
+    "module_names": {
+      "items": {
+        "type": "string"
+      },
+      "title": "Module Names",
+      "type": "array"
+    },
+    "reduced_depth_instance_count": {
+      "minimum": 0,
+      "title": "Reduced Depth Instance Count",
+      "type": "integer"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "enum": [
+        "DEPTH_REDUCED",
+        "CHANGED_NO_DEPTH_REDUCTION",
+        "NO_MAPPED_CHANGE"
+      ],
+      "title": "Status",
+      "type": "string"
+    },
+    "target_module": {
+      "title": "Target Module",
+      "type": "string"
+    }
+  },
+  "required": [
+    "baseline_artifact_hash",
+    "candidate_artifact_hash",
+    "target_module",
+    "module_names",
+    "baseline_cell_counts",
+    "candidate_cell_counts",
+    "baseline_max_depths",
+    "candidate_max_depths",
+    "baseline_total_cells",
+    "candidate_total_cells",
+    "cell_delta",
+    "reduced_depth_instance_count",
+    "status",
+    "effect_hash"
+  ],
+  "title": "MappedStructuralEffect",
+  "type": "object"
+}

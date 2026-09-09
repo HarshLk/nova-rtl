@@ -46,6 +46,7 @@ from nova_rtl.contracts.optimization import (
     CandidateRecord,
     M4SignoffReport,
     M4ViewComparison,
+    MappedStructuralEffect,
     OptimizationOpportunity,
     OptimizationProposal,
 )
@@ -144,6 +145,7 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "candidate-record": SchemaRegistration(CandidateRecord, version=1),
     "m4-signoff-report": SchemaRegistration(M4SignoffReport, version=1),
     "m4-view-comparison": SchemaRegistration(M4ViewComparison, version=1),
+    "mapped-structural-effect": SchemaRegistration(MappedStructuralEffect, version=1),
     "composition-closure-manifest": SchemaRegistration(
         CompositionClosureManifest, version=1
     ),

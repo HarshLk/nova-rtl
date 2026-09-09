@@ -74,6 +74,8 @@ from nova_rtl.optimization.authority import (
 )
 from nova_rtl.optimization.comparison import (
     M4StructuralComparison,
+    MappedStructuralEffect,
+    compare_mapped_structure,
     compare_structural_invariants,
 )
 from nova_rtl.orchestrator.state import RunOrchestrator
@@ -109,6 +111,8 @@ class M4CandidateBundle(StrictContract):
     prephysical_proof: ProofResult
     final_proof: ProofResult
     structural_comparison: M4StructuralComparison
+    mapped_structural_effect: MappedStructuralEffect
+    objective_improvements: tuple[str, ...]
     view_comparisons: dict[str, ComparabilityResult]
     candidate_stage_result_artifacts: dict[str, ArtifactRef]
     formal_stage_result_artifacts: dict[str, ArtifactRef]
@@ -164,11 +168,22 @@ class M4CandidateBundle(StrictContract):
         expected_status = (
             "PASS"
             if self.evaluation.status == "PASS"
-            and self.candidate.classification in {"FEASIBLE_PARETO", "SELECTED"}
+            and self.candidate.classification
+            in {"VALID_NEGATIVE_RESULT", "FEASIBLE_PARETO", "SELECTED"}
             else "FAIL"
         )
         if self.status != expected_status:
             raise ValueError("bundle status does not match candidate evaluation")
+        if (
+            self.candidate.classification == "VALID_NEGATIVE_RESULT"
+            and self.objective_improvements
+        ):
+            raise ValueError("valid negative candidate cannot claim an objective improvement")
+        if (
+            self.candidate.classification in {"FEASIBLE_PARETO", "SELECTED"}
+            and not self.objective_improvements
+        ):
+            raise ValueError("Pareto candidate requires a measured objective improvement")
         if self.bundle_hash != canonical_sha256(self, exclude=frozenset({"bundle_hash"})):
             raise ValueError("M4 candidate bundle hash is not canonical")
         return self
@@ -224,6 +239,17 @@ def _stage_contract(
         raise OptimizationFlowError(
             f"{result.stage_result_id} structural contract is invalid: {error}"
         ) from error
+
+
+def _mapped_design(store: ArtifactStore, result: StageResult) -> tuple[ArtifactRef, bytes]:
+    matches = tuple(
+        item for item in result.raw_artifacts if item.artifact_id.endswith("mapped_design_json")
+    )
+    if len(matches) != 1:
+        raise OptimizationFlowError(
+            f"{result.stage_result_id} lacks one mapped design JSON artifact"
+        )
+    return matches[0], store.open_verified(matches[0]).read()
 
 
 def _load_m3_authority(
@@ -659,6 +685,35 @@ def _assessment(
     )
 
 
+def _objective_improvements(
+    parent_index: BaselineRunIndex,
+    parent_results: dict[str, StageResult],
+    candidate_results: dict[str, StageResult],
+) -> tuple[str, ...]:
+    improvements: list[str] = []
+    for view in parent_index.analysis_views:
+        view_id = view.analysis_view_id
+        baseline = parent_results[f"stage_openroad_{view_id}"].metrics
+        candidate = candidate_results[f"stage_openroad_{view_id}"].metrics
+        if view.check == "SETUP" and candidate.setup_wns_ns > baseline.setup_wns_ns:  # type: ignore[operator]
+            improvements.append(f"{view_id}_setup_wns")
+        if view.check == "HOLD" and candidate.hold_wns_ns > baseline.hold_wns_ns:  # type: ignore[operator]
+            improvements.append(f"{view_id}_hold_wns")
+    baseline_area = max(
+        result.metrics.physical_area_um2 or 0.0
+        for stage_id, result in parent_results.items()
+        if stage_id.startswith("stage_openroad_")
+    )
+    candidate_area = max(
+        result.metrics.physical_area_um2 or 0.0
+        for stage_id, result in candidate_results.items()
+        if stage_id.startswith("stage_openroad_")
+    )
+    if candidate_area < baseline_area:
+        improvements.append("physical_area")
+    return tuple(sorted(improvements))
+
+
 def _formal_stage_result(
     *,
     stage_id: str,
@@ -952,6 +1007,20 @@ def optimize_strict_vertical_slice(
     )
     parent_results = _load_stage_results(parent_index, resolved)
     candidate_results = _load_stage_results(candidate_index, initialized.run_directory)
+    candidate_store = ArtifactStore.open_existing(initialized.run_directory / "artifacts")
+    baseline_design_ref, baseline_design = _mapped_design(
+        parent_store, parent_results["stage_yosys"]
+    )
+    candidate_design_ref, candidate_design = _mapped_design(
+        candidate_store, candidate_results["stage_yosys"]
+    )
+    mapped_effect = compare_mapped_structure(
+        baseline_netlist=baseline_design,
+        candidate_netlist=candidate_design,
+        baseline_artifact_hash=baseline_design_ref.sha256,
+        candidate_artifact_hash=candidate_design_ref.sha256,
+        target_module="timing_opportunity_lane",
+    )
     prephysical_stage, prephysical_stage_ref = _formal_stage_result(
         stage_id="stage_m4_strict_prephysical",
         proof=prephysical_proof,
@@ -1008,6 +1077,14 @@ def optimize_strict_vertical_slice(
         no_hard_domain_regression=all(facts["view_hard_limits_pass"].values()),  # type: ignore[union-attr]
     )
     feasible = is_feasible(materialized.candidate, evidence, policy)
+    objective_improvements = _objective_improvements(
+        parent_index, parent_results, candidate_results
+    )
+    classification = (
+        "FEASIBLE_PARETO"
+        if feasible and objective_improvements
+        else "VALID_NEGATIVE_RESULT"
+    )
     all_candidate_pass = all(result.status == "PASS" for result in candidate_results.values())
     stage_ids = tuple(
         sorted(
@@ -1047,8 +1124,8 @@ def optimize_strict_vertical_slice(
         clock_inventory_id="stage_clock",
         cdc_inventory_id="stage_cdc",
         hard_gate_summary=hard_summary,
-        classification="FEASIBLE_PARETO" if feasible else "VALID_NEGATIVE_RESULT",
-        terminal_disposition="FEASIBLE_PARETO" if feasible else "POLICY_NONPASS",
+        classification=classification,
+        terminal_disposition=classification,
     )
     structural_stages = ("stage_binding", "stage_clock", "stage_cdc")
     sta_stages = tuple(
@@ -1192,7 +1269,7 @@ def optimize_strict_vertical_slice(
             parent_index.run_id,
             candidate_id,
             "FEASIBLE",
-            "PARETO",
+            "PARETO" if classification == "FEASIBLE_PARETO" else "DOMINATED",
             candidate,
         )
     baseline_metrics = {
@@ -1278,6 +1355,8 @@ def optimize_strict_vertical_slice(
         "prephysical_proof": prephysical_proof,
         "final_proof": final_proof,
         "structural_comparison": structural,
+        "mapped_structural_effect": mapped_effect,
+        "objective_improvements": objective_improvements,
         "view_comparisons": view_comparisons,
         "candidate_stage_result_artifacts": dict(candidate_index.stage_result_artifacts),
         "formal_stage_result_artifacts": formal_stage_refs,
@@ -1388,6 +1467,7 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
         bundle.candidate_stage_result_artifacts
     ):
         raise OptimizationFlowError("candidate stage result set changed")
+    verified_candidate_results: dict[str, StageResult] = {}
     for stage_id, reference in bundle.candidate_stage_result_artifacts.items():
         result = StageResult.model_validate_json(candidate_store.open_verified(reference).read())
         if (
@@ -1397,6 +1477,23 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
             raise OptimizationFlowError(f"candidate stage identity mismatch: {stage_id}")
         for raw in result.raw_artifacts:
             candidate_store.open_verified(raw).close()
+        verified_candidate_results[stage_id] = result
+    parent_results = _load_stage_results(parent_index, parent_run)
+    baseline_design_ref, baseline_design = _mapped_design(
+        parent_store, parent_results["stage_yosys"]
+    )
+    candidate_design_ref, candidate_design = _mapped_design(
+        candidate_store, verified_candidate_results["stage_yosys"]
+    )
+    reconstructed_effect = compare_mapped_structure(
+        baseline_netlist=baseline_design,
+        candidate_netlist=candidate_design,
+        baseline_artifact_hash=baseline_design_ref.sha256,
+        candidate_artifact_hash=candidate_design_ref.sha256,
+        target_module=bundle.mapped_structural_effect.target_module,
+    )
+    if reconstructed_effect != bundle.mapped_structural_effect:
+        raise OptimizationFlowError("candidate mapped structural effect changed")
     if not is_feasible(bundle.candidate, bundle.feasibility_evidence, bundle.feasibility_policy):
         raise OptimizationFlowError("candidate no longer satisfies hard feasibility")
     if bundle.evaluation.status != "PASS" or bundle.status != "PASS":

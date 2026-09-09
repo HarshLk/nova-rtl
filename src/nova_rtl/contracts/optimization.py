@@ -345,6 +345,49 @@ class M4ViewComparison(StrictContract):
         return self
 
 
+class MappedStructuralEffect(StrictContract):
+    """Measured target-module cell and combinational-depth response after mapping."""
+
+    schema_version: Literal[1] = 1
+    baseline_artifact_hash: HashRef
+    candidate_artifact_hash: HashRef
+    target_module: str
+    module_names: tuple[str, ...]
+    baseline_cell_counts: dict[str, NonNegativeInt]
+    candidate_cell_counts: dict[str, NonNegativeInt]
+    baseline_max_depths: dict[str, NonNegativeInt]
+    candidate_max_depths: dict[str, NonNegativeInt]
+    baseline_total_cells: NonNegativeInt
+    candidate_total_cells: NonNegativeInt
+    cell_delta: int
+    reduced_depth_instance_count: NonNegativeInt
+    status: Literal["DEPTH_REDUCED", "CHANGED_NO_DEPTH_REDUCTION", "NO_MAPPED_CHANGE"]
+    effect_hash: HashRef
+
+    @model_validator(mode="after")
+    def identities_are_complete_and_hashed(self) -> Self:
+        names = set(self.module_names)
+        if not names or any(
+            set(values) != names
+            for values in (
+                self.baseline_cell_counts,
+                self.candidate_cell_counts,
+                self.baseline_max_depths,
+                self.candidate_max_depths,
+            )
+        ):
+            raise ValueError("mapped structural effect must cover the same target modules")
+        if self.baseline_total_cells != sum(self.baseline_cell_counts.values()):
+            raise ValueError("baseline target cell total is inconsistent")
+        if self.candidate_total_cells != sum(self.candidate_cell_counts.values()):
+            raise ValueError("candidate target cell total is inconsistent")
+        if self.cell_delta != self.candidate_total_cells - self.baseline_total_cells:
+            raise ValueError("mapped target cell delta is inconsistent")
+        if self.effect_hash != canonical_sha256(self, exclude=frozenset({"effect_hash"})):
+            raise ValueError("mapped structural effect hash is not canonical")
+        return self
+
+
 class M4SignoffReport(StrictContract):
     """Commit-bound proof that one M4 candidate passed the complete strict cascade."""
 
@@ -414,6 +457,7 @@ __all__ = [
     "CandidateRecord",
     "M4SignoffReport",
     "M4ViewComparison",
+    "MappedStructuralEffect",
     "OptimizationOpportunity",
     "OptimizationProposal",
 ]

@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+import json
 from typing import Literal, Self
 
 from pydantic import model_validator
 
 from nova_rtl.contracts.analysis import CDCInventory, ClockInventory
 from nova_rtl.contracts.base import HashRef, NonNegativeInt, StrictContract, canonical_sha256
+from nova_rtl.contracts.optimization import MappedStructuralEffect
 from nova_rtl.contracts.verification import ConstraintBindingManifest
 
 
@@ -98,6 +100,112 @@ class M4StructuralComparison(StrictContract):
         )
 
 
+def _module_shape(module: dict[str, object]) -> tuple[int, int]:
+    cells = module.get("cells", {})
+    if not isinstance(cells, dict):
+        raise ValueError("mapped module cells must be an object")
+    drivers: dict[int, str] = {}
+    inputs: dict[str, set[int]] = {}
+    for cell_name, raw_cell in cells.items():
+        if not isinstance(cell_name, str) or not isinstance(raw_cell, dict):
+            raise ValueError("mapped cell entry is malformed")
+        directions = raw_cell.get("port_directions", {})
+        connections = raw_cell.get("connections", {})
+        if not isinstance(directions, dict) or not isinstance(connections, dict):
+            raise ValueError("mapped cell ports are malformed")
+        for port, raw_bits in connections.items():
+            if not isinstance(raw_bits, list):
+                raise ValueError("mapped cell connection must be a bit list")
+            for bit in raw_bits:
+                if not isinstance(bit, int):
+                    continue
+                if directions.get(port) == "output":
+                    drivers[bit] = cell_name
+                elif directions.get(port) == "input":
+                    inputs.setdefault(cell_name, set()).add(bit)
+    memo: dict[str, int] = {}
+
+    def depth(cell_name: str, active: frozenset[str] = frozenset()) -> int:
+        if cell_name in memo:
+            return memo[cell_name]
+        if cell_name in active:
+            return 0
+        value = 1 + max(
+            (
+                depth(drivers[bit], active | {cell_name})
+                for bit in inputs.get(cell_name, set())
+                if bit in drivers
+            ),
+            default=0,
+        )
+        memo[cell_name] = value
+        return value
+
+    return len(cells), max((depth(name) for name in cells), default=0)
+
+
+def compare_mapped_structure(
+    *,
+    baseline_netlist: bytes,
+    candidate_netlist: bytes,
+    baseline_artifact_hash: str,
+    candidate_artifact_hash: str,
+    target_module: str,
+) -> MappedStructuralEffect:
+    """Compare the mapped target family without trusting source-level intent."""
+
+    try:
+        baseline = json.loads(baseline_netlist)
+        candidate = json.loads(candidate_netlist)
+        baseline_modules = baseline["modules"]
+        candidate_modules = candidate["modules"]
+    except (KeyError, TypeError, json.JSONDecodeError) as error:
+        raise ValueError("mapped design JSON is malformed") from error
+    names = tuple(
+        sorted(
+            name
+            for name in baseline_modules
+            if target_module in name and name in candidate_modules
+        )
+    )
+    if not names or {
+        name for name in baseline_modules if target_module in name
+    } != {name for name in candidate_modules if target_module in name}:
+        raise ValueError("mapped target module inventory changed")
+    baseline_shapes = {name: _module_shape(baseline_modules[name]) for name in names}
+    candidate_shapes = {name: _module_shape(candidate_modules[name]) for name in names}
+    baseline_cells = {name: value[0] for name, value in baseline_shapes.items()}
+    candidate_cells = {name: value[0] for name, value in candidate_shapes.items()}
+    baseline_depths = {name: value[1] for name, value in baseline_shapes.items()}
+    candidate_depths = {name: value[1] for name, value in candidate_shapes.items()}
+    reduced = sum(candidate_depths[name] < baseline_depths[name] for name in names)
+    unchanged = baseline_cells == candidate_cells and baseline_depths == candidate_depths
+    status = (
+        "DEPTH_REDUCED"
+        if reduced
+        else "NO_MAPPED_CHANGE"
+        if unchanged
+        else "CHANGED_NO_DEPTH_REDUCTION"
+    )
+    payload = {
+        "schema_version": 1,
+        "baseline_artifact_hash": baseline_artifact_hash,
+        "candidate_artifact_hash": candidate_artifact_hash,
+        "target_module": target_module,
+        "module_names": names,
+        "baseline_cell_counts": baseline_cells,
+        "candidate_cell_counts": candidate_cells,
+        "baseline_max_depths": baseline_depths,
+        "candidate_max_depths": candidate_depths,
+        "baseline_total_cells": sum(baseline_cells.values()),
+        "candidate_total_cells": sum(candidate_cells.values()),
+        "cell_delta": sum(candidate_cells.values()) - sum(baseline_cells.values()),
+        "reduced_depth_instance_count": reduced,
+        "status": status,
+    }
+    return MappedStructuralEffect(**payload, effect_hash=canonical_sha256(payload))
+
+
 def compare_structural_invariants(
     *,
     baseline_binding: ConstraintBindingManifest,
@@ -179,4 +287,9 @@ def compare_structural_invariants(
     return M4StructuralComparison(**payload, comparison_hash=canonical_sha256(payload))
 
 
-__all__ = ["M4StructuralComparison", "compare_structural_invariants"]
+__all__ = [
+    "M4StructuralComparison",
+    "MappedStructuralEffect",
+    "compare_mapped_structure",
+    "compare_structural_invariants",
+]

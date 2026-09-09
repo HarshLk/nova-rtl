@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import json
+
 from nova_rtl.contracts.analysis import CDCInventory, ClockInventory
 from nova_rtl.contracts.base import canonical_sha256
 from nova_rtl.contracts.verification import ConstraintBindingManifest, ConstraintCoverage
-from nova_rtl.optimization.comparison import compare_structural_invariants
+from nova_rtl.optimization.comparison import (
+    compare_mapped_structure,
+    compare_structural_invariants,
+)
 
 
 def _hash(digit: str) -> str:
@@ -162,3 +167,32 @@ def test_structural_comparison_detects_each_forbidden_semantic_delta() -> None:
     assert binding_delta.binding_status == "FORBIDDEN_DELTA"
     assert clock_delta.clock_status == "CHANGED"
     assert cdc_delta.cdc_status == "CHANGED"
+
+
+def test_mapped_structure_reports_cell_growth_without_depth_reduction() -> None:
+    def design(cell_count: int) -> bytes:
+        cells = {
+            f"c{index}": {
+                "type": "NAND2",
+                "port_directions": {"A": "input", "Y": "output"},
+                "connections": {"A": [index + 1], "Y": [index + 2]},
+            }
+            for index in range(cell_count)
+        }
+        return json.dumps(
+            {"modules": {"$paramod\\timing_opportunity_lane": {"cells": cells}}}
+        ).encode()
+
+    effect = compare_mapped_structure(
+        baseline_netlist=design(3),
+        candidate_netlist=design(4),
+        baseline_artifact_hash=_hash("1"),
+        candidate_artifact_hash=_hash("2"),
+        target_module="timing_opportunity_lane",
+    )
+
+    assert effect.baseline_total_cells == 3
+    assert effect.candidate_total_cells == 4
+    assert effect.cell_delta == 1
+    assert effect.reduced_depth_instance_count == 0
+    assert effect.status == "CHANGED_NO_DEPTH_REDUCTION"
