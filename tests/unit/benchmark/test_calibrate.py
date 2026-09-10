@@ -9,9 +9,12 @@ from pydantic import ValidationError
 from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.benchmark.calibrate import (
     CalibrationError,
+    SelectedCalibrationValidation,
     build_calibration_report,
     calibrate_with_measurement,
     publish_calibration_report,
+    run_full_calibration,
+    validate_selected_calibration,
 )
 from nova_rtl.contracts.base import ArtifactRef, canonical_json_bytes
 from nova_rtl.contracts.benchmark import (
@@ -146,3 +149,82 @@ def test_calibration_curve_is_published_as_resolvable_immutable_artifact(
 
     assert store.open_verified(reference).read() == canonical_json_bytes(report)
     assert store.blob_path(reference).stat().st_mode & 0o777 == 0o444
+
+
+def test_full_calibration_validates_the_search_selected_scale(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    base = BenchmarkConfig.default()
+    report = build_calibration_report(
+        base.mapped_cell_target,
+        (
+            _sample(4, 64_158, "a"),
+            _sample(2, 44_508, "b"),
+            _sample(3, 54_335, "c"),
+        ),
+    )
+    evidence = _stage_result_artifact("e")
+    validation = SelectedCalibrationValidation(
+        status="PASS",
+        timing_violation_family_ids=("family_0", "family_1"),
+        evidence_artifact=evidence,
+        evidence_hash=f"sha256:{'e' * 64}",
+    )
+    validated_configs: list[BenchmarkConfig] = []
+
+    monkeypatch.setattr(
+        "nova_rtl.benchmark.calibrate._verified_runtime",
+        lambda _: (object(), object(), tmp_path, {}),
+    )
+    monkeypatch.setattr(
+        "nova_rtl.benchmark.calibrate._locked_liberty_inputs",
+        lambda *_: (),
+    )
+    monkeypatch.setattr(
+        "nova_rtl.benchmark.calibrate.calibrate_with_measurement",
+        lambda *_args, **_kwargs: report,
+    )
+    monkeypatch.setattr(
+        "nova_rtl.benchmark.calibrate._publish_run_files",
+        lambda *_: evidence,
+    )
+
+    def capture_validation(
+        config: BenchmarkConfig,
+        _output: Path,
+    ) -> SelectedCalibrationValidation:
+        validated_configs.append(config)
+        return validation
+
+    monkeypatch.setattr(
+        "nova_rtl.benchmark.calibrate.validate_selected_calibration",
+        capture_validation,
+    )
+
+    result = run_full_calibration(base, tmp_path / "calibration")
+
+    assert result.validation == validation
+    assert len(validated_configs) == 1
+    selected = validated_configs[0]
+    assert selected.workload_scale == 3
+    assert selected.model_dump(exclude={"workload_scale"}) == base.model_dump(
+        exclude={"workload_scale"}
+    )
+
+
+def test_selected_calibration_validation_rejects_wrong_scale_before_artifact_use(
+    tmp_path: Path,
+) -> None:
+    base = BenchmarkConfig.default()
+    report = build_calibration_report(
+        base.mapped_cell_target,
+        (_sample(3, 54_335, "c"),),
+    )
+    (tmp_path / "calibration-report.json").write_bytes(canonical_json_bytes(report))
+
+    with pytest.raises(
+        CalibrationError,
+        match="configuration scale 4 does not match selected scale 3",
+    ):
+        validate_selected_calibration(base, tmp_path)
