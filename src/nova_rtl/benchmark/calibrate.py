@@ -486,6 +486,12 @@ def validate_selected_calibration(
     )
     if report.status != "PASS" or selected is None:
         raise CalibrationError("selected calibration sample is unavailable")
+    if config.workload_scale != selected.workload_scale:
+        raise CalibrationError(
+            "calibration validation configuration scale "
+            f"{config.workload_scale} does not match selected scale "
+            f"{selected.workload_scale}"
+        )
     stage = StageResult.model_validate_json(
         store.open_verified(selected.stage_result_artifact).read()
     )
@@ -707,7 +713,11 @@ def run_full_calibration(
         reference = _publish_run_files(temporary, store, report)
         os.replace(temporary, output)
         published = True
-        validation = validate_selected_calibration(config, output)
+        selected_scale = report.selected_workload_scale
+        if selected_scale is None:
+            raise CalibrationError("passing calibration report lacks a selected workload scale")
+        selected_config = config.model_copy(update={"workload_scale": selected_scale})
+        validation = validate_selected_calibration(selected_config, output)
         return CalibrationRunResult(
             report=report,
             report_artifact=reference,
