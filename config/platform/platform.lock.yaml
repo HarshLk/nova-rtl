@@ -2,50 +2,50 @@ cell_lefs:
 - artifact_id: asap7_cell_lef_01
   kind: CELL_LEF
   logical_path: flow/platforms/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef
-  resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef
+  resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef
   sha256: sha256:4eb73f825720d95eba4da455c7b2e7a28e444e88e9d8595d13492cf5eecfc0d1
   size_bytes: 391403
-content_identity_hash: sha256:7c59c9a45405cd0255e23fe300c7af3d7e3ac8a46bec34353cda9339702367b4
+content_identity_hash: sha256:46084ab3015972fabefa1ead7d8437ceba36d69e6a3936108ee7468ad2731bc2
 deterministic_seed: 0
 flow_config:
   artifact_id: asap7_flow_config
   kind: FLOW_CONFIG
   logical_path: flow/platforms/asap7/config.mk
-  resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/config.mk
+  resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/config.mk
   sha256: sha256:816a8c8d1bd2e71c5b01d5908a93483e0083ff1abbce34697e55d0b08d3a7fd9
   size_bytes: 10105
-generated_at: '2026-08-20T08:50:53.555884Z'
+generated_at: '2026-09-10T19:41:41.103885Z'
 hold_corner:
   corner_id: asap7_bc
   liberty_files:
   - artifact_id: asap7_bc_lib_01
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_FF_nldm_211120.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_FF_nldm_211120.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_FF_nldm_211120.lib.gz
     sha256: sha256:9e3848d247f9bbc8d405ee55617af98797b6d5be9a1af02988ec5d59ca9dad99
     size_bytes: 4256548
   - artifact_id: asap7_bc_lib_02
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_FF_nldm_220122.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_FF_nldm_220122.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_FF_nldm_220122.lib.gz
     sha256: sha256:e0c65688e6067ee485b0693651298636ae9ef5a0512154bcd4b7c4914d1a0ac6
     size_bytes: 69351
   - artifact_id: asap7_bc_lib_03
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_FF_nldm_211120.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_FF_nldm_211120.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_FF_nldm_211120.lib.gz
     sha256: sha256:cc9651e9235bcd29bba0737b7ba7a8afddde7462df3ff48d3870c22d05c86fb3
     size_bytes: 3829689
   - artifact_id: asap7_bc_lib_04
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_FF_nldm_220123.lib
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_FF_nldm_220123.lib
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_FF_nldm_220123.lib
     sha256: sha256:d9b6e75c8720cdd450cff15178528502cc8df34c5ab6b0ffb53fc99d664b5302
     size_bytes: 1510915
   - artifact_id: asap7_bc_lib_05
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_FF_nldm_211120.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_FF_nldm_250407.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_FF_nldm_250407.lib.gz
     sha256: sha256:0c93d44fcc6a30182d71031997771ea3fc0d09235201e9252f71daf48a1c7a38
     size_bytes: 317193
   library_model: NLDM
@@ -67,7 +67,7 @@ license_artifacts:
 - artifact_id: asap7_license_01
   kind: LICENSE
   logical_path: LICENSE_BUILD_RUN_SCRIPTS
-  resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/LICENSE_BUILD_RUN_SCRIPTS
+  resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/LICENSE_BUILD_RUN_SCRIPTS
   sha256: sha256:fae0db7a4c00c3125f037e5818e8cd0c8aa5c67fff2e8c558312068e9f2d1592
   size_bytes: 2030
 license_notes:
@@ -82,7 +82,7 @@ rc_rules:
   artifact_id: asap7_rc_config
   kind: RC_RULES
   logical_path: flow/platforms/asap7/setRC.tcl
-  resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/setRC.tcl
+  resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/setRC.tcl
   sha256: sha256:57201ff6b8de69b78656845d4c1ab303ba32613900496bc319e8b3bdb419b7fb
   size_bytes: 973
 redistribution_status: REVIEW_REQUIRED
@@ -95,31 +95,31 @@ setup_corner:
   - artifact_id: asap7_wc_lib_01
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_SS_nldm_211120.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_SS_nldm_211120.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_AO_RVT_SS_nldm_211120.lib.gz
     sha256: sha256:9ac9c70139da3c4c72b2ed6113f011d8d96de2b30f9b261a237d2ed58ffa1ff5
     size_bytes: 4181198
   - artifact_id: asap7_wc_lib_02
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_SS_nldm_220122.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_SS_nldm_220122.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_INVBUF_RVT_SS_nldm_220122.lib.gz
     sha256: sha256:339371d339fc0e3f4f50fa493ce82b984743af46d26823263dcca7a391e64408
     size_bytes: 69301
   - artifact_id: asap7_wc_lib_03
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_SS_nldm_211120.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_SS_nldm_211120.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_OA_RVT_SS_nldm_211120.lib.gz
     sha256: sha256:6912520ffc1ae5bf69103d0286bcb7867fc90de80365dfc8ec0d6b55a9113f27
     size_bytes: 3760577
   - artifact_id: asap7_wc_lib_04
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_SS_nldm_220123.lib
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_SS_nldm_220123.lib
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SEQ_RVT_SS_nldm_220123.lib
     sha256: sha256:c6a6d9ad22bfb1bc9cf1c4ac66d09ce575ca18648ce4e50597d92174bc290d78
     size_bytes: 1513373
   - artifact_id: asap7_wc_lib_05
     kind: LIBERTY
     logical_path: flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_SS_nldm_211120.lib.gz
-    resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_SS_nldm_211120.lib.gz
+    resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lib/NLDM/asap7sc7p5t_SIMPLE_RVT_SS_nldm_211120.lib.gz
     sha256: sha256:71e55ce94cde9d10ad726cf7131e7356501aa1c380ae4e138f47c2f8ca7ca7db
     size_bytes: 444914
   library_model: NLDM
@@ -134,19 +134,19 @@ setup_corner:
   role: SETUP
   temperature_c: 100.0
   voltage_v: 0.63
-source_manifest_hash: sha256:1f5fef34f43078285ee6f432d80e7279f8d6c9baa7c7d62909b7e13d4a46f686
+source_manifest_hash: sha256:aff447920e7e63c786edb426ef8c55d3f131a46d5614cab5e5bb744af29a070b
 tech_lef:
   artifact_id: asap7_tech_lef
   kind: TECH_LEF
   logical_path: flow/platforms/asap7/lef/asap7_tech_1x_201209.lef
-  resolved_path: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/orfs/flow/platforms/asap7/lef/asap7_tech_1x_201209.lef
+  resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lef/asap7_tech_1x_201209.lef
   sha256: sha256:7694bf4f8ef2f9745e4579f454788a0cf048e8605320f32d1d83ec540ed4ca41
   size_bytes: 20141
 tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:2386fa54d8bf946b8362c7ba5273488494fab53b20ef6878b5774b51d7b46797
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/oss_cad_suite/bin/yosys
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/oss_cad_suite/bin/yosys
   executable_sha256: sha256:7c3e3396b38c129dd7485be5a0a0f0da8e495a94c8fd486059e3bea043a588d6
   schema_version: 1
   tool_id: yosys
@@ -157,7 +157,7 @@ tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:2c8d89af3e6471ee8a1a903a3ad8393da11a10224a44c36555c4b1ccebc71e78
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/oss_cad_suite/bin/eqy
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/oss_cad_suite/bin/eqy
   executable_sha256: sha256:67fc0f3f2878b9403de9fbf299135c7d06e16e89ab6428b76157c61928f69dea
   schema_version: 1
   tool_id: eqy
@@ -167,7 +167,7 @@ tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:1b3b00fa105d107debab7720cbfce283a326329df006f2b994536f63817c716a
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/oss_cad_suite/bin/sby
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/oss_cad_suite/bin/sby
   executable_sha256: sha256:ef208a3bf8350076de9b09663cdb820a62a34ab2fd481784a72c7cf60c7cb02d
   schema_version: 1
   tool_id: sby
@@ -177,7 +177,7 @@ tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:bc85bc9bca30c3abc61e30d9472039a88c61f8328dea2db1378be6135dc99126
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/oss_cad_suite/bin/slang
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/oss_cad_suite/bin/slang
   executable_sha256: sha256:2341c97a5215385b12fca46a6677f6642cd3a6b6e09901a95265ea86e4fcfc4b
   schema_version: 1
   tool_id: slang
@@ -187,7 +187,7 @@ tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:20ef2b437e61234f6bebf701ad9afc8f6b199856ee3bb672e49417915f03cd9f
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/oss_cad_suite/bin/iverilog
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/oss_cad_suite/bin/iverilog
   executable_sha256: sha256:6d84be4052a92cf7184c7149506f5db6ac251f99e438a96ae3ce33f326e2ff9d
   schema_version: 1
   tool_id: iverilog
@@ -197,7 +197,7 @@ tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:e6247a19d6510d9c4ab225362d0d584d1b56cfbccc7b18204f3f6fb2a5723d71
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/oss_cad_suite/bin/verilator
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/oss_cad_suite/bin/verilator
   executable_sha256: sha256:fb2cc573b1055cf096c90e1efc9966fe56bdb4b265c83590cf2a49f7a0defcdf
   schema_version: 1
   tool_id: verilator
@@ -207,7 +207,7 @@ tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:d5780449a6a81c63f81bb75ab2772a02b07e036a111fe1673073b5a283cb9384
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/openroad/usr/bin/openroad
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/openroad/usr/bin/openroad
   executable_sha256: sha256:fcd7dcfc37d329bd43a7ede75805319a2e70e6879da11d42b4fd1c2e50e645c3
   schema_version: 1
   tool_id: openroad
@@ -217,7 +217,7 @@ tool_fingerprints:
 - adapter_version: bootstrap-doctor-v1
   build_hash: sha256:ed3a823b0c62e21b889b56a883a48ecaeb40dce674f7033fb8f69ed00be4536f
   container_digest: null
-  executable: /home/harsh/Desktop/Project_Competitions/nebula_2026/.worktrees/m0-reproducible-toolchain/.nova-tools/components/openroad/usr/bin/sta
+  executable: /run/user/1010/harsh/nova-rtl/.nova-tools/components/openroad/usr/bin/sta
   executable_sha256: sha256:35c1f0b1efeee0757d7b33fe15322ed2580b7c21616e3266f29808d5dbcb266e
   schema_version: 1
   tool_id: opensta

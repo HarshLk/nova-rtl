@@ -10,7 +10,7 @@ from nova_rtl.platform.hydration import (
 MANIFEST_PATH = (
     Path(__file__).resolve().parents[3] / "config" / "platform" / "toolchain-sources.json"
 )
-EXPECTED_MANIFEST_HASH = "sha256:1f5fef34f43078285ee6f432d80e7279f8d6c9baa7c7d62909b7e13d4a46f686"
+EXPECTED_MANIFEST_HASH = "sha256:aff447920e7e63c786edb426ef8c55d3f131a46d5614cab5e5bb744af29a070b"
 
 
 def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> None:
@@ -26,6 +26,12 @@ def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> Non
         "openroad",
         "libpython3_12t64",
         "tcl_tclreadline",
+        "libdouble_conversion3",
+        "libmd4c0",
+        "libpcre2_16_0",
+        "libqt5core5t64",
+        "libqt5gui5t64",
+        "libqt5widgets5t64",
         "libqt5charts5",
         "libyaml_cpp0_8",
         "orfs",
@@ -61,3 +67,71 @@ def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> Non
         entry.name: (entry.operation, entry.relative_paths, entry.literal_value)
         for entry in components["oss_cad_suite"].runtime_environment
     }["PYTHONDONTWRITEBYTECODE"] == ("SET_LITERAL", (), "1")
+
+
+def test_production_openroad_runtime_pins_missing_ubuntu_libraries() -> None:
+    loaded = load_toolchain_source_manifest(MANIFEST_PATH)
+    components = {component.component_id: component for component in loaded.manifest.components}
+    expected = {
+        "libqt5core5t64": (
+            "5.15.13+dfsg-1ubuntu1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5core5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
+            "sha256:8fb5c6a51ae436fefc41e0c9ad7a363ba8ab6b35db727eff5a469de2ee9f52bc",
+            2010540,
+            "LGPL-3.0-only",
+        ),
+        "libqt5gui5t64": (
+            "5.15.13+dfsg-1ubuntu1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5gui5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
+            "sha256:e2c8a969c3566bdad2b692c611ec0e6bbeaeed88db55e71bbd4f61a414b89252",
+            3747576,
+            "LGPL-3.0-only",
+        ),
+        "libqt5widgets5t64": (
+            "5.15.13+dfsg-1ubuntu1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5widgets5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
+            "sha256:bdcb4395194d5062fcbda9ba70ae6d4deef75671d70140543d58ef34728dff53",
+            2560968,
+            "LGPL-3.0-only",
+        ),
+        "libdouble_conversion3": (
+            "3.3.0-1build1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/d/double-conversion/libdouble-conversion3_3.3.0-1build1_amd64.deb",
+            "sha256:856f534738da20fa9d8c271e17781fba3dc180bbbab116c22a0b569f6f506e25",
+            40294,
+            "BSD-3-Clause",
+        ),
+        "libmd4c0": (
+            "0.4.8-1build1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/m/md4c/libmd4c0_0.4.8-1build1_amd64.deb",
+            "sha256:34fd2e7a7aa62ada2597cffd4529f086cb5058a6d7ac0048695254bd9fd882d7",
+            42274,
+            "MIT",
+        ),
+        "libpcre2_16_0": (
+            "10.42-4ubuntu2.1",
+            "https://archive.ubuntu.com/ubuntu/pool/main/p/pcre2/libpcre2-16-0_10.42-4ubuntu2.1_amd64.deb",
+            "sha256:06bba768fd16e6ea6f744114a0c500d9f5d98ee82630edf0d8a54f2175d3921b",
+            210092,
+            "BSD-3-Clause",
+        ),
+    }
+
+    assert expected.keys() <= components.keys()
+    for component_id, (
+        version, source_url, archive_sha256, byte_size, license_id
+    ) in expected.items():
+        component = components[component_id]
+        assert component.version == version
+        assert component.source_url == source_url
+        assert component.archive_sha256 == archive_sha256
+        assert component.license == license_id
+        assert component.archive is not None
+        assert component.archive.archive_format == "DEB"
+        assert component.archive.byte_size == byte_size
+        assert {
+            entry.name: (entry.operation, entry.relative_paths)
+            for entry in component.runtime_environment
+        } == {
+            "LD_LIBRARY_PATH": ("PREPEND_PATH", ("usr/lib/x86_64-linux-gnu",))
+        }

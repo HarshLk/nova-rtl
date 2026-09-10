@@ -1,5 +1,5 @@
 platform_id: asap7
-platform_lock_hash: sha256:f88d33f6684e1d7c2265103189a57bf5c90bb995563d571158efd0f083f94706
+platform_lock_hash: sha256:1a880589fcb9ca03576b32965497293a0649cd5f5e522df12aca15e342d3f948
 schema_version: 1
 views:
 - analysis_view_id: asap7_setup
