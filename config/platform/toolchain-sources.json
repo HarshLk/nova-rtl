@@ -109,6 +109,138 @@
       "allowed_redirect_hosts": []
     },
     {
+      "component_id": "libdouble_conversion3",
+      "source_kind": "ARCHIVE",
+      "version": "3.3.0-1build1",
+      "source_url": "https://archive.ubuntu.com/ubuntu/pool/universe/d/double-conversion/libdouble-conversion3_3.3.0-1build1_amd64.deb",
+      "archive_sha256": "sha256:856f534738da20fa9d8c271e17781fba3dc180bbbab116c22a0b569f6f506e25",
+      "git_commit": null,
+      "license": "BSD-3-Clause",
+      "executables": [],
+      "archive": {
+        "byte_size": 40294,
+        "archive_format": "DEB",
+        "strip_components": 0,
+        "max_decompressed_bytes": 50000000,
+        "max_regular_file_bytes": 50000000,
+        "max_entries": 5000
+      },
+      "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]}
+      ],
+      "allowed_redirect_hosts": []
+    },
+    {
+      "component_id": "libmd4c0",
+      "source_kind": "ARCHIVE",
+      "version": "0.4.8-1build1",
+      "source_url": "https://archive.ubuntu.com/ubuntu/pool/universe/m/md4c/libmd4c0_0.4.8-1build1_amd64.deb",
+      "archive_sha256": "sha256:34fd2e7a7aa62ada2597cffd4529f086cb5058a6d7ac0048695254bd9fd882d7",
+      "git_commit": null,
+      "license": "MIT",
+      "executables": [],
+      "archive": {
+        "byte_size": 42274,
+        "archive_format": "DEB",
+        "strip_components": 0,
+        "max_decompressed_bytes": 50000000,
+        "max_regular_file_bytes": 50000000,
+        "max_entries": 5000
+      },
+      "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]}
+      ],
+      "allowed_redirect_hosts": []
+    },
+    {
+      "component_id": "libpcre2_16_0",
+      "source_kind": "ARCHIVE",
+      "version": "10.42-4ubuntu2.1",
+      "source_url": "https://archive.ubuntu.com/ubuntu/pool/main/p/pcre2/libpcre2-16-0_10.42-4ubuntu2.1_amd64.deb",
+      "archive_sha256": "sha256:06bba768fd16e6ea6f744114a0c500d9f5d98ee82630edf0d8a54f2175d3921b",
+      "git_commit": null,
+      "license": "BSD-3-Clause",
+      "executables": [],
+      "archive": {
+        "byte_size": 210092,
+        "archive_format": "DEB",
+        "strip_components": 0,
+        "max_decompressed_bytes": 50000000,
+        "max_regular_file_bytes": 50000000,
+        "max_entries": 5000
+      },
+      "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]}
+      ],
+      "allowed_redirect_hosts": []
+    },
+    {
+      "component_id": "libqt5core5t64",
+      "source_kind": "ARCHIVE",
+      "version": "5.15.13+dfsg-1ubuntu1",
+      "source_url": "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5core5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
+      "archive_sha256": "sha256:8fb5c6a51ae436fefc41e0c9ad7a363ba8ab6b35db727eff5a469de2ee9f52bc",
+      "git_commit": null,
+      "license": "LGPL-3.0-only",
+      "executables": [],
+      "archive": {
+        "byte_size": 2010540,
+        "archive_format": "DEB",
+        "strip_components": 0,
+        "max_decompressed_bytes": 50000000,
+        "max_regular_file_bytes": 50000000,
+        "max_entries": 5000
+      },
+      "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]}
+      ],
+      "allowed_redirect_hosts": []
+    },
+    {
+      "component_id": "libqt5gui5t64",
+      "source_kind": "ARCHIVE",
+      "version": "5.15.13+dfsg-1ubuntu1",
+      "source_url": "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5gui5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
+      "archive_sha256": "sha256:e2c8a969c3566bdad2b692c611ec0e6bbeaeed88db55e71bbd4f61a414b89252",
+      "git_commit": null,
+      "license": "LGPL-3.0-only",
+      "executables": [],
+      "archive": {
+        "byte_size": 3747576,
+        "archive_format": "DEB",
+        "strip_components": 0,
+        "max_decompressed_bytes": 50000000,
+        "max_regular_file_bytes": 50000000,
+        "max_entries": 5000
+      },
+      "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]}
+      ],
+      "allowed_redirect_hosts": []
+    },
+    {
+      "component_id": "libqt5widgets5t64",
+      "source_kind": "ARCHIVE",
+      "version": "5.15.13+dfsg-1ubuntu1",
+      "source_url": "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5widgets5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
+      "archive_sha256": "sha256:bdcb4395194d5062fcbda9ba70ae6d4deef75671d70140543d58ef34728dff53",
+      "git_commit": null,
+      "license": "LGPL-3.0-only",
+      "executables": [],
+      "archive": {
+        "byte_size": 2560968,
+        "archive_format": "DEB",
+        "strip_components": 0,
+        "max_decompressed_bytes": 50000000,
+        "max_regular_file_bytes": 50000000,
+        "max_entries": 5000
+      },
+      "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]}
+      ],
+      "allowed_redirect_hosts": []
+    },
+    {
       "component_id": "libqt5charts5",
       "source_kind": "ARCHIVE",
       "version": "5.15.13-1",
