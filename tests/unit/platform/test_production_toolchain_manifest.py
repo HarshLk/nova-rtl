@@ -69,47 +69,63 @@ def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> Non
     }["PYTHONDONTWRITEBYTECODE"] == ("SET_LITERAL", (), "1")
 
 
-def test_production_openroad_runtime_declares_complete_qt_library_closure() -> None:
+def test_production_openroad_runtime_pins_missing_ubuntu_libraries() -> None:
     loaded = load_toolchain_source_manifest(MANIFEST_PATH)
     components = {component.component_id: component for component in loaded.manifest.components}
     expected = {
         "libqt5core5t64": (
             "5.15.13+dfsg-1ubuntu1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5core5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
             "sha256:8fb5c6a51ae436fefc41e0c9ad7a363ba8ab6b35db727eff5a469de2ee9f52bc",
             2010540,
+            "LGPL-3.0-only",
         ),
         "libqt5gui5t64": (
             "5.15.13+dfsg-1ubuntu1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5gui5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
             "sha256:e2c8a969c3566bdad2b692c611ec0e6bbeaeed88db55e71bbd4f61a414b89252",
             3747576,
+            "LGPL-3.0-only",
         ),
         "libqt5widgets5t64": (
             "5.15.13+dfsg-1ubuntu1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/q/qtbase-opensource-src/libqt5widgets5t64_5.15.13+dfsg-1ubuntu1_amd64.deb",
             "sha256:bdcb4395194d5062fcbda9ba70ae6d4deef75671d70140543d58ef34728dff53",
             2560968,
+            "LGPL-3.0-only",
         ),
         "libdouble_conversion3": (
             "3.3.0-1build1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/d/double-conversion/libdouble-conversion3_3.3.0-1build1_amd64.deb",
             "sha256:856f534738da20fa9d8c271e17781fba3dc180bbbab116c22a0b569f6f506e25",
             40294,
+            "BSD-3-Clause",
         ),
         "libmd4c0": (
             "0.4.8-1build1",
+            "https://archive.ubuntu.com/ubuntu/pool/universe/m/md4c/libmd4c0_0.4.8-1build1_amd64.deb",
             "sha256:34fd2e7a7aa62ada2597cffd4529f086cb5058a6d7ac0048695254bd9fd882d7",
             42274,
+            "MIT",
         ),
         "libpcre2_16_0": (
             "10.42-4ubuntu2.1",
+            "https://archive.ubuntu.com/ubuntu/pool/main/p/pcre2/libpcre2-16-0_10.42-4ubuntu2.1_amd64.deb",
             "sha256:06bba768fd16e6ea6f744114a0c500d9f5d98ee82630edf0d8a54f2175d3921b",
             210092,
+            "BSD-3-Clause",
         ),
     }
 
     assert expected.keys() <= components.keys()
-    for component_id, (version, archive_sha256, byte_size) in expected.items():
+    for component_id, (
+        version, source_url, archive_sha256, byte_size, license_id
+    ) in expected.items():
         component = components[component_id]
         assert component.version == version
+        assert component.source_url == source_url
         assert component.archive_sha256 == archive_sha256
+        assert component.license == license_id
         assert component.archive is not None
         assert component.archive.archive_format == "DEB"
         assert component.archive.byte_size == byte_size
