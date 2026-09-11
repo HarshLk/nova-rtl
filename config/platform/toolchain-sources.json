@@ -59,6 +59,7 @@
         "max_entries": 15000
       },
       "runtime_environment": [
+        {"name": "PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/bin"]},
         {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["opt/or-tools/lib"]}
       ],
       "allowed_redirect_hosts": ["storage.googleapis.com"]

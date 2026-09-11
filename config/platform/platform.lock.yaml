@@ -5,7 +5,7 @@ cell_lefs:
   resolved_path: /run/user/1010/harsh/nova-rtl/.nova-tools/components/orfs/flow/platforms/asap7/lef/asap7sc7p5t_28_R_1x_220121a.lef
   sha256: sha256:4eb73f825720d95eba4da455c7b2e7a28e444e88e9d8595d13492cf5eecfc0d1
   size_bytes: 391403
-content_identity_hash: sha256:46084ab3015972fabefa1ead7d8437ceba36d69e6a3936108ee7468ad2731bc2
+content_identity_hash: sha256:11f1b04d5c66af3f9db3a0b9e6e586e43d06e1adc939ead73dd4d4c596a68154
 deterministic_seed: 0
 flow_config:
   artifact_id: asap7_flow_config
@@ -134,7 +134,7 @@ setup_corner:
   role: SETUP
   temperature_c: 100.0
   voltage_v: 0.63
-source_manifest_hash: sha256:aff447920e7e63c786edb426ef8c55d3f131a46d5614cab5e5bb744af29a070b
+source_manifest_hash: sha256:5bc0f8a0fca9f8e5b011725e69aa2107a39c5c8b709dff617ffdc1a0604387cb
 tech_lef:
   artifact_id: asap7_tech_lef
   kind: TECH_LEF
