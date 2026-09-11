@@ -10,7 +10,7 @@ from nova_rtl.platform.hydration import (
 MANIFEST_PATH = (
     Path(__file__).resolve().parents[3] / "config" / "platform" / "toolchain-sources.json"
 )
-EXPECTED_MANIFEST_HASH = "sha256:aff447920e7e63c786edb426ef8c55d3f131a46d5614cab5e5bb744af29a070b"
+EXPECTED_MANIFEST_HASH = "sha256:5bc0f8a0fca9f8e5b011725e69aa2107a39c5c8b709dff617ffdc1a0604387cb"
 
 
 def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> None:
@@ -135,3 +135,13 @@ def test_production_openroad_runtime_pins_missing_ubuntu_libraries() -> None:
         } == {
             "LD_LIBRARY_PATH": ("PREPEND_PATH", ("usr/lib/x86_64-linux-gnu",))
         }
+
+
+def test_production_openroad_runtime_exports_registered_executables() -> None:
+    loaded = load_toolchain_source_manifest(MANIFEST_PATH)
+    components = {component.component_id: component for component in loaded.manifest.components}
+
+    assert {
+        entry.name: (entry.operation, entry.relative_paths)
+        for entry in components["openroad"].runtime_environment
+    }["PATH"] == ("PREPEND_PATH", ("usr/bin",))
