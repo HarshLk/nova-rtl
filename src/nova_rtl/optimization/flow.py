@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 from datetime import UTC, datetime
@@ -187,6 +188,125 @@ class M4CandidateBundle(StrictContract):
         if self.bundle_hash != canonical_sha256(self, exclude=frozenset({"bundle_hash"})):
             raise ValueError("M4 candidate bundle hash is not canonical")
         return self
+
+
+class M4TerminalCandidateBundle(StrictContract):
+    """Canonical evidence packet for a candidate stopped by an attempted gate."""
+
+    schema_version: Literal[1] = 1
+    bundle_kind: Literal["EARLY_TERMINAL"] = "EARLY_TERMINAL"
+    parent_run_id: str
+    parent_run_index_hash: HashRef
+    candidate_run_id: str
+    candidate_run_index_hash: HashRef
+    m3_source_map_artifact: ArtifactRef
+    m3_ranked_opportunities_artifact: ArtifactRef
+    syntax_span_artifact: ArtifactRef
+    proposal_artifact: ArtifactRef
+    candidate: CandidateRecord
+    evaluation: EvaluationResult
+    candidate_stage_result_artifacts: dict[str, ArtifactRef]
+    formal_stage_result_artifacts: dict[str, ArtifactRef]
+    experiment_record_artifact: ArtifactRef
+    replay_event_sequence_range: tuple[int, int]
+    gate_event_ids: tuple[str, ...]
+    replay_prefix_digest: HashRef
+    status: Literal["FAIL"] = "FAIL"
+    bundle_hash: HashRef
+
+    @field_validator("candidate_stage_result_artifacts", "formal_stage_result_artifacts")
+    @classmethod
+    def terminal_stage_map_is_canonical(
+        cls, value: dict[str, ArtifactRef]
+    ) -> dict[str, ArtifactRef]:
+        return dict(sorted(value.items()))
+
+    @model_validator(mode="after")
+    def terminal_prefix_is_coherent_and_self_hashed(self) -> Self:
+        if self.candidate.run_id != self.parent_run_id:
+            raise ValueError("candidate lineage must bind the parent optimization run")
+        if self.evaluation.candidate_id != self.candidate.candidate_id:
+            raise ValueError("evaluation candidate identity does not match bundle")
+        if self.evaluation.status == "PASS":
+            raise ValueError("terminal candidate bundle requires a non-passing evaluation")
+        if self.candidate.classification not in {
+            "REJECTED_SAFETY",
+            "REJECTED_CORRECTNESS",
+            "REJECTED_POLICY",
+            "INCONCLUSIVE",
+            "INFRASTRUCTURE_ERROR",
+        }:
+            raise ValueError("terminal candidate bundle requires a rejected classification")
+        if self.candidate.classification != _terminal_classification(self.evaluation):
+            raise ValueError("terminal classification does not match the terminal gate outcome")
+        if self.candidate.terminal_disposition != self.candidate.classification:
+            raise ValueError("terminal disposition must match rejected classification")
+        attempted_stage_ids = {
+            stage_id
+            for assessment in self.evaluation.assessments
+            for stage_id in assessment.stage_result_ids
+        }
+        referenced_stage_ids = {
+            *self.candidate_stage_result_artifacts,
+            *self.formal_stage_result_artifacts,
+        }
+        if referenced_stage_ids != attempted_stage_ids:
+            raise ValueError("terminal bundle must reference the exact attempted stage result set")
+        if set(self.candidate.stage_result_ids) != attempted_stage_ids:
+            raise ValueError("candidate must bind the exact attempted stage result set")
+        if set(self.candidate_stage_result_artifacts) & set(
+            self.formal_stage_result_artifacts
+        ):
+            raise ValueError("terminal stage artifacts cannot be duplicated across stores")
+        if self.replay_event_sequence_range[1] < self.replay_event_sequence_range[0]:
+            raise ValueError("candidate replay sequence range is invalid")
+        if len(self.gate_event_ids) != 2 * len(self.evaluation.assessments) or len(
+            set(self.gate_event_ids)
+        ) != len(self.gate_event_ids):
+            raise ValueError("terminal bundle must bind each attempted gate journal event")
+        if self.bundle_hash != canonical_sha256(self, exclude=frozenset({"bundle_hash"})):
+            raise ValueError("M4 terminal candidate bundle hash is not canonical")
+        return self
+
+
+M4StoredCandidateBundle = M4CandidateBundle | M4TerminalCandidateBundle
+
+
+def _attempted_stage_ids(evaluation: EvaluationResult) -> tuple[str, ...]:
+    return tuple(
+        dict.fromkeys(
+            stage_id
+            for assessment in evaluation.assessments
+            for stage_id in assessment.stage_result_ids
+        )
+    )
+
+
+def _terminal_classification(evaluation: EvaluationResult) -> str:
+    if evaluation.status == "INCONCLUSIVE":
+        return "INCONCLUSIVE"
+    if evaluation.status == "INFRASTRUCTURE_ERROR":
+        return "INFRASTRUCTURE_ERROR"
+    if evaluation.terminal_gate_id in {"0", "0.5", "1", "2"}:
+        return "REJECTED_SAFETY"
+    if evaluation.terminal_gate_id == "4":
+        return "REJECTED_CORRECTNESS"
+    return "REJECTED_POLICY"
+
+
+def _load_candidate_bundle(content: bytes) -> M4StoredCandidateBundle:
+    try:
+        payload = json.loads(content)
+    except (TypeError, ValueError) as error:
+        raise OptimizationFlowError("candidate bundle is not valid JSON") from error
+    if not isinstance(payload, dict):
+        raise OptimizationFlowError("candidate bundle JSON must contain an object")
+    contract = (
+        M4TerminalCandidateBundle
+        if payload.get("bundle_kind") == "EARLY_TERMINAL"
+        else M4CandidateBundle
+    )
+    return contract.model_validate(payload)
 
 
 def _hash_bytes(data: bytes) -> str:
@@ -818,7 +938,7 @@ def optimize_strict_vertical_slice(
     run_directory: Path,
     *,
     repository_root: Path,
-) -> tuple[Path, M4CandidateBundle]:
+) -> tuple[Path, M4StoredCandidateBundle]:
     """Execute the one-candidate M4 priority-mux strict-equivalence vertical slice."""
 
     resolved = run_directory.resolve()
@@ -908,7 +1028,7 @@ def optimize_strict_vertical_slice(
     candidate_id = materialized.candidate.candidate_id
     bundle_path = resolved / "m4" / "candidates" / candidate_id / "candidate-bundle.json"
     if bundle_path.is_file():
-        bundle = M4CandidateBundle.model_validate_json(bundle_path.read_bytes())
+        bundle = _load_candidate_bundle(bundle_path.read_bytes())
         verify_candidate_bundle(bundle_path, repository_root=repository_root)
         return bundle_path, bundle
     candidate_project = resolved / "m4" / "projects" / candidate_id
@@ -1191,6 +1311,38 @@ def optimize_strict_vertical_slice(
         event_sink=gate_events.append,
     )
     evaluation = cascade.evaluate(candidate)
+    if evaluation.status != "PASS":
+        attempted_stage_ids = _attempted_stage_ids(evaluation)
+        attempted = set(attempted_stage_ids)
+        attempted_views = (
+            facts["per_view_metrics"]
+            if any(stage_id.startswith("stage_opensta_") for stage_id in attempted)
+            else {}
+        )
+        attempted_proof = (
+            final_proof
+            if "stage_m4_strict_final" in attempted
+            else prephysical_proof
+            if "stage_m4_strict_prephysical" in attempted
+            else None
+        )
+        classification = _terminal_classification(evaluation)
+        candidate = replace_candidate(
+            candidate,
+            stage_result_ids=attempted_stage_ids,
+            per_view_metrics=attempted_views,
+            proof_result_id=(
+                attempted_proof.proof_result_id if attempted_proof is not None else None
+            ),
+            binding_manifest_id=(
+                f"binding_{candidate_id}" if "stage_binding" in attempted else None
+            ),
+            clock_inventory_id="stage_clock" if "stage_clock" in attempted else None,
+            cdc_inventory_id="stage_cdc" if "stage_cdc" in attempted else None,
+            hard_gate_summary=None,
+            classification=classification,
+            terminal_disposition=classification,
+        )
     design = DesignContract.model_validate_json(
         parent_store.open_verified(parent_index.design_contract_artifact).read()
     )
@@ -1272,11 +1424,14 @@ def optimize_strict_vertical_slice(
             "PARETO" if classification == "FEASIBLE_PARETO" else "DOMINATED",
             candidate,
         )
-    baseline_metrics = {
+    all_baseline_metrics = {
         view.analysis_view_id: parent_results[
             f"stage_openroad_{view.analysis_view_id}"
         ].metrics
         for view in parent_index.analysis_views
+    }
+    baseline_metrics = {
+        view_id: all_baseline_metrics[view_id] for view_id in candidate.per_view_metrics
     }
     comparison_hashes = {
         "analysis_view_set": facts["analysis_view_set_hash"],
@@ -1302,9 +1457,21 @@ def optimize_strict_vertical_slice(
         transform_fingerprint=candidate.transform_fingerprint,
         stage_result_ids=candidate.stage_result_ids,
         comparison_identity_hashes=comparison_hashes,  # type: ignore[arg-type]
-        proof_result_id=final_proof.proof_result_id,
-        proof_outcome=final_proof.outcome,
-        counterexample_artifact_id=final_proof.counterexample_artifact_id,
+        proof_result_id=candidate.proof_result_id,
+        proof_outcome=(
+            final_proof.outcome
+            if "stage_m4_strict_final" in candidate.stage_result_ids
+            else prephysical_proof.outcome
+            if "stage_m4_strict_prephysical" in candidate.stage_result_ids
+            else None
+        ),
+        counterexample_artifact_id=(
+            final_proof.counterexample_artifact_id
+            if "stage_m4_strict_final" in candidate.stage_result_ids
+            else prephysical_proof.counterexample_artifact_id
+            if "stage_m4_strict_prephysical" in candidate.stage_result_ids
+            else None
+        ),
         before_metrics=baseline_metrics,
         after_metrics=candidate.per_view_metrics,
         failure_event_id=None,
@@ -1366,22 +1533,81 @@ def optimize_strict_vertical_slice(
         "replay_prefix_digest": replay_prefix,
         "status": "PASS" if evaluation.status == "PASS" and feasible else "FAIL",
     }
-    provisional = M4CandidateBundle.model_construct(**payload, bundle_hash="sha256:" + "0" * 64)
-    bundle = M4CandidateBundle(
-        **payload,
-        bundle_hash=canonical_sha256(provisional, exclude=frozenset({"bundle_hash"})),
-    )
+    if evaluation.status == "PASS":
+        provisional = M4CandidateBundle.model_construct(
+            **payload, bundle_hash="sha256:" + "0" * 64
+        )
+        bundle: M4StoredCandidateBundle = M4CandidateBundle(
+            **payload,
+            bundle_hash=canonical_sha256(
+                provisional, exclude=frozenset({"bundle_hash"})
+            ),
+        )
+    else:
+        attempted = set(candidate.stage_result_ids)
+        terminal_payload = {
+            key: value
+            for key, value in payload.items()
+            if key
+            in {
+                "parent_run_id",
+                "parent_run_index_hash",
+                "candidate_run_id",
+                "candidate_run_index_hash",
+                "m3_source_map_artifact",
+                "m3_ranked_opportunities_artifact",
+                "syntax_span_artifact",
+                "proposal_artifact",
+                "candidate",
+                "evaluation",
+                "experiment_record_artifact",
+                "replay_event_sequence_range",
+                "gate_event_ids",
+                "replay_prefix_digest",
+                "status",
+            }
+        }
+        terminal_payload.update(
+            {
+                "schema_version": 1,
+                "bundle_kind": "EARLY_TERMINAL",
+                "candidate_stage_result_artifacts": {
+                    stage_id: reference
+                    for stage_id, reference in candidate_index.stage_result_artifacts.items()
+                    if stage_id in attempted
+                },
+                "formal_stage_result_artifacts": {
+                    stage_id: reference
+                    for stage_id, reference in formal_stage_refs.items()
+                    if stage_id in attempted
+                },
+            }
+        )
+        terminal_provisional = M4TerminalCandidateBundle.model_construct(
+            **terminal_payload, bundle_hash="sha256:" + "0" * 64
+        )
+        bundle = M4TerminalCandidateBundle(
+            **terminal_payload,
+            bundle_hash=canonical_sha256(
+                terminal_provisional, exclude=frozenset({"bundle_hash"})
+            ),
+        )
     bundle_path.parent.mkdir(parents=True, exist_ok=True)
     bundle_path.write_bytes(canonical_json_bytes(bundle) + b"\n")
     verify_candidate_bundle(bundle_path, repository_root=repository_root)
     return bundle_path, bundle
 
 
-def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4CandidateBundle:
+def verify_candidate_bundle(
+    bundle_path: Path,
+    *,
+    repository_root: Path,
+    _verify_runtime_toolchain: bool = True,
+) -> M4StoredCandidateBundle:
     """Verify a stored candidate packet and every referenced immutable artifact."""
 
     try:
-        bundle = M4CandidateBundle.model_validate_json(bundle_path.read_bytes())
+        bundle = _load_candidate_bundle(bundle_path.read_bytes())
     except (OSError, ValueError) as error:
         raise OptimizationFlowError(f"candidate bundle is invalid: {error}") from error
     parent_run = bundle_path.resolve().parents[3]
@@ -1391,6 +1617,11 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
     ):
         raise OptimizationFlowError("candidate bundle parent run identity changed")
     parent_store = ArtifactStore.open_existing(parent_run / "artifacts")
+    proof_artifacts = (
+        (*bundle.prephysical_proof.raw_artifacts, *bundle.final_proof.raw_artifacts)
+        if isinstance(bundle, M4CandidateBundle)
+        else ()
+    )
     for reference in (
         bundle.m3_source_map_artifact,
         bundle.m3_ranked_opportunities_artifact,
@@ -1398,8 +1629,7 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
         bundle.proposal_artifact,
         bundle.candidate.rtl_snapshot_artifact,
         bundle.candidate.patch_artifact,
-        *bundle.prephysical_proof.raw_artifacts,
-        *bundle.final_proof.raw_artifacts,
+        *proof_artifacts,
         *bundle.formal_stage_result_artifacts.values(),
         bundle.experiment_record_artifact,
     ):
@@ -1426,6 +1656,12 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
     }
     if stored_experiments.get(experiment.experiment_record_id) != experiment:
         raise OptimizationFlowError("candidate experiment ledger record changed")
+    if (
+        experiment.candidate_id != bundle.candidate.candidate_id
+        or experiment.stage_result_ids != bundle.candidate.stage_result_ids
+        or experiment.terminal_disposition != bundle.candidate.terminal_disposition
+    ):
+        raise OptimizationFlowError("candidate experiment identity is inconsistent")
     replayed = replay_run(ledger, bundle.parent_run_id)
     start, end = bundle.replay_event_sequence_range
     prefix = tuple(item for item in replayed if item.sequence <= end)
@@ -1456,17 +1692,37 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
         policy_hash=design.effective_policy_hash,
     )
     candidate_state = orchestrator.get_candidate_state(bundle.candidate.candidate_id)
-    if candidate_state is None or candidate_state.state not in {"PARETO", "DOMINATED"}:
+    if isinstance(bundle, M4CandidateBundle):
+        expected_states = {"PARETO", "DOMINATED"}
+    else:
+        expected_states = {
+            "INCONCLUSIVE"
+            if bundle.candidate.classification == "INCONCLUSIVE"
+            else "INFRASTRUCTURE_ERROR"
+            if bundle.candidate.classification == "INFRASTRUCTURE_ERROR"
+            else "REJECTED"
+        }
+    if candidate_state is None or candidate_state.state not in expected_states:
         raise OptimizationFlowError("candidate terminal state is not durable")
+    durable_candidate = CandidateRecord.model_validate_json(
+        parent_store.open_verified(candidate_state.payload_artifact).read()
+    )
+    if durable_candidate != bundle.candidate:
+        raise OptimizationFlowError("candidate terminal record changed")
     candidate_run = parent_run / "m4" / "candidate-runs" / bundle.candidate_run_id
     candidate_index = load_run_index(candidate_run)
     if candidate_index.index_hash != bundle.candidate_run_index_hash:
         raise OptimizationFlowError("candidate run index changed")
     candidate_store = ArtifactStore.open_existing(candidate_run / "artifacts")
-    if dict(candidate_index.stage_result_artifacts) != dict(
-        bundle.candidate_stage_result_artifacts
-    ):
-        raise OptimizationFlowError("candidate stage result set changed")
+    if isinstance(bundle, M4CandidateBundle):
+        if dict(candidate_index.stage_result_artifacts) != dict(
+            bundle.candidate_stage_result_artifacts
+        ):
+            raise OptimizationFlowError("candidate stage result set changed")
+    else:
+        for stage_id, reference in bundle.candidate_stage_result_artifacts.items():
+            if candidate_index.stage_result_artifacts.get(stage_id) != reference:
+                raise OptimizationFlowError("attempted candidate stage result changed")
     verified_candidate_results: dict[str, StageResult] = {}
     for stage_id, reference in bundle.candidate_stage_result_artifacts.items():
         result = StageResult.model_validate_json(candidate_store.open_verified(reference).read())
@@ -1478,27 +1734,31 @@ def verify_candidate_bundle(bundle_path: Path, *, repository_root: Path) -> M4Ca
         for raw in result.raw_artifacts:
             candidate_store.open_verified(raw).close()
         verified_candidate_results[stage_id] = result
-    parent_results = _load_stage_results(parent_index, parent_run)
-    baseline_design_ref, baseline_design = _mapped_design(
-        parent_store, parent_results["stage_yosys"]
-    )
-    candidate_design_ref, candidate_design = _mapped_design(
-        candidate_store, verified_candidate_results["stage_yosys"]
-    )
-    reconstructed_effect = compare_mapped_structure(
-        baseline_netlist=baseline_design,
-        candidate_netlist=candidate_design,
-        baseline_artifact_hash=baseline_design_ref.sha256,
-        candidate_artifact_hash=candidate_design_ref.sha256,
-        target_module=bundle.mapped_structural_effect.target_module,
-    )
-    if reconstructed_effect != bundle.mapped_structural_effect:
-        raise OptimizationFlowError("candidate mapped structural effect changed")
-    if not is_feasible(bundle.candidate, bundle.feasibility_evidence, bundle.feasibility_policy):
-        raise OptimizationFlowError("candidate no longer satisfies hard feasibility")
-    if bundle.evaluation.status != "PASS" or bundle.status != "PASS":
-        raise OptimizationFlowError("candidate evaluation is not passing")
-    _toolchain(repository_root)
+    if isinstance(bundle, M4CandidateBundle):
+        parent_results = _load_stage_results(parent_index, parent_run)
+        baseline_design_ref, baseline_design = _mapped_design(
+            parent_store, parent_results["stage_yosys"]
+        )
+        candidate_design_ref, candidate_design = _mapped_design(
+            candidate_store, verified_candidate_results["stage_yosys"]
+        )
+        reconstructed_effect = compare_mapped_structure(
+            baseline_netlist=baseline_design,
+            candidate_netlist=candidate_design,
+            baseline_artifact_hash=baseline_design_ref.sha256,
+            candidate_artifact_hash=candidate_design_ref.sha256,
+            target_module=bundle.mapped_structural_effect.target_module,
+        )
+        if reconstructed_effect != bundle.mapped_structural_effect:
+            raise OptimizationFlowError("candidate mapped structural effect changed")
+        if not is_feasible(
+            bundle.candidate, bundle.feasibility_evidence, bundle.feasibility_policy
+        ):
+            raise OptimizationFlowError("candidate no longer satisfies hard feasibility")
+        if bundle.evaluation.status != "PASS" or bundle.status != "PASS":
+            raise OptimizationFlowError("candidate evaluation is not passing")
+    if _verify_runtime_toolchain:
+        _toolchain(repository_root)
     return bundle
 
 
@@ -1506,6 +1766,21 @@ def inspect_candidate(bundle_path: Path, *, repository_root: Path) -> dict[str, 
     """Return the compact user-facing view only after full packet verification."""
 
     bundle = verify_candidate_bundle(bundle_path, repository_root=repository_root)
+    if isinstance(bundle, M4CandidateBundle):
+        proof_outcome = bundle.final_proof.outcome
+        required_views = bundle.feasibility_policy.required_analysis_view_ids
+        area_growth_percent = bundle.feasibility_evidence.area_growth_percent
+    else:
+        proof_outcome = next(
+            (
+                assessment.status
+                for assessment in reversed(bundle.evaluation.assessments)
+                if assessment.gate_id in {"4", "7"}
+            ),
+            None,
+        )
+        required_views = ()
+        area_growth_percent = None
     return {
         "status": bundle.status,
         "candidate_id": bundle.candidate.candidate_id,
@@ -1513,9 +1788,9 @@ def inspect_candidate(bundle_path: Path, *, repository_root: Path) -> dict[str, 
         "operation": "RESTRUCTURE_PRIORITY_MUX",
         "source_hash": bundle.candidate.source_hash,
         "patch_hash": bundle.candidate.patch_artifact.sha256,
-        "proof_outcome": bundle.final_proof.outcome,
-        "required_views": bundle.feasibility_policy.required_analysis_view_ids,
-        "area_growth_percent": bundle.feasibility_evidence.area_growth_percent,
+        "proof_outcome": proof_outcome,
+        "required_views": required_views,
+        "area_growth_percent": area_growth_percent,
         "terminal_gate": bundle.evaluation.terminal_gate_id,
         "bundle_hash": bundle.bundle_hash,
     }
@@ -1523,6 +1798,8 @@ def inspect_candidate(bundle_path: Path, *, repository_root: Path) -> dict[str, 
 
 __all__ = [
     "M4CandidateBundle",
+    "M4StoredCandidateBundle",
+    "M4TerminalCandidateBundle",
     "OptimizationFlowError",
     "inspect_candidate",
     "optimize_strict_vertical_slice",

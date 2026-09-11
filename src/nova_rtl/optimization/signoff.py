@@ -60,6 +60,41 @@ def _git_output(repository_root: Path, *arguments: str) -> str:
     return completed.stdout.strip()
 
 
+def _require_git_ancestor(
+    repository_root: Path, ancestor_commit: str, descendant_commit: str
+) -> None:
+    executable = shutil.which("git")
+    if executable is None:
+        raise M4SignoffError("Git is required for M4 dependency verification")
+    completed = subprocess.run(
+        (
+            str(Path(executable).resolve()),
+            "-C",
+            str(repository_root),
+            "merge-base",
+            "--is-ancestor",
+            ancestor_commit,
+            descendant_commit,
+        ),
+        env={
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": f"{Path(executable).resolve().parent}:/usr/bin:/bin",
+        },
+        shell=False,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise M4SignoffError(
+            f"recorded M4 commit {ancestor_commit} is not an ancestor of "
+            f"{descendant_commit}"
+        )
+
+
 def _clean_checkpoint(repository_root: Path) -> tuple[str, str]:
     root = repository_root.resolve(strict=True)
     if Path(__file__).resolve(strict=True) != root / "src/nova_rtl/optimization/signoff.py":
@@ -117,6 +152,7 @@ def _build_report(
     repository_root: Path,
     commit_sha: str,
     implementation_tree_hash: str,
+    frozen_toolchain_receipt_hash: str | None = None,
 ) -> M4SignoffReport:
     parent_run = bundle_path.resolve().parents[3]
     parent_index = load_run_index(parent_run)
@@ -163,12 +199,15 @@ def _build_report(
     candidate_replay, candidate_ledger = _run_replay_identity(
         candidate_run, candidate_index.run_id
     )
-    manifest = load_toolchain_source_manifest(
-        repository_root / "config/platform/toolchain-sources.json"
-    )
-    tool_root = repository_root / manifest.manifest.tool_root_name
-    verify_toolchain(manifest.manifest, tool_root)
-    receipt_hash = _hash_bytes((tool_root / "toolchain-receipt.json").read_bytes())
+    if frozen_toolchain_receipt_hash is None:
+        manifest = load_toolchain_source_manifest(
+            repository_root / "config/platform/toolchain-sources.json"
+        )
+        tool_root = repository_root / manifest.manifest.tool_root_name
+        verify_toolchain(manifest.manifest, tool_root)
+        receipt_hash = _hash_bytes((tool_root / "toolchain-receipt.json").read_bytes())
+    else:
+        receipt_hash = frozen_toolchain_receipt_hash
     gate_statuses = {
         gate.gate_id: gate.status for gate in bundle.evaluation.assessments
     }
@@ -337,4 +376,57 @@ def verify_m4_signoff(
     return observed
 
 
-__all__ = ["M4SignoffError", "run_m4_signoff", "verify_m4_signoff"]
+def verify_m4_dependency_snapshot(
+    report_path: Path,
+    *,
+    m3_packet: Path,
+    repository_root: Path,
+    descendant_commit: str,
+) -> tuple[M4SignoffReport, str]:
+    """Verify frozen M4 evidence as an ancestor of a newer milestone."""
+
+    try:
+        path = report_path.resolve(strict=True)
+        content = path.read_bytes()
+        observed = M4SignoffReport.model_validate_json(content)
+    except (OSError, ValueError) as error:
+        raise M4SignoffError("M4 sign-off packet is missing or invalid") from error
+    root = repository_root.resolve(strict=True)
+    _require_git_ancestor(root, observed.commit_sha, descendant_commit)
+    tree = _git_output(root, "rev-parse", "--verify", f"{observed.commit_sha}^{{tree}}")
+    if tree != observed.implementation_tree_hash:
+        raise M4SignoffError("M4 packet does not match its recorded Git checkpoint")
+    bundle_path = path.parent / "candidate-bundle.json"
+    bundle = verify_candidate_bundle(
+        bundle_path,
+        repository_root=root,
+        _verify_runtime_toolchain=False,
+    )
+    if not isinstance(bundle, M4CandidateBundle):
+        raise M4SignoffError("M4 sign-off dependency cannot bind a rejected candidate")
+    m3_report, m3_packet_hash = _m3_dependency(
+        m3_packet,
+        repository_root=root,
+        current_commit=observed.commit_sha,
+    )
+    expected = _build_report(
+        bundle_path,
+        bundle,
+        m3_report,
+        m3_packet_hash,
+        repository_root=root,
+        commit_sha=observed.commit_sha,
+        implementation_tree_hash=observed.implementation_tree_hash,
+        frozen_toolchain_receipt_hash=observed.toolchain_receipt_hash,
+    )
+    if observed != expected:
+        raise M4SignoffError("M4 dependency differs from reconstructed frozen evidence")
+    return observed, _hash_bytes(content)
+
+
+__all__ = [
+    "M4SignoffError",
+    "run_m4_signoff",
+    "verify_m4_dependency_snapshot",
+    "verify_m4_signoff",
+]
