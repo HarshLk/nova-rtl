@@ -28,6 +28,10 @@ from nova_rtl.optimization.flow import (
     optimize_strict_vertical_slice,
     verify_candidate_bundle,
 )
+from nova_rtl.optimization.planner_flow import (
+    M6PlannerFlowError,
+    run_single_agent_planning,
+)
 from nova_rtl.optimization.search_flow import (
     M5SearchFlowError,
     run_deterministic_search,
@@ -37,7 +41,6 @@ from nova_rtl.optimization.signoff import (
     run_m4_signoff,
     verify_m4_signoff,
 )
-from nova_rtl.planner.flow import M6PlannerFlowError, run_single_agent_planning
 from nova_rtl.platform.activation import (
     ToolchainVerificationError,
     create_toolchain_receipt,
