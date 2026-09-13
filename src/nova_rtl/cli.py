@@ -37,6 +37,7 @@ from nova_rtl.optimization.signoff import (
     run_m4_signoff,
     verify_m4_signoff,
 )
+from nova_rtl.planner.flow import M6PlannerFlowError, run_single_agent_planning
 from nova_rtl.platform.activation import (
     ToolchainVerificationError,
     create_toolchain_receipt,
@@ -303,6 +304,10 @@ def optimize(
         typer.Argument(exists=True, file_okay=False, readable=True, metavar="RUN_DIRECTORY"),
     ],
     planner: Annotated[str, typer.Option("--planner")] = "heuristic",
+    provider_response: Annotated[
+        Path | None,
+        typer.Option("--provider-response", exists=True, file_okay=True, readable=True),
+    ] = None,
     max_candidates: Annotated[int, typer.Option("--max-candidates", min=1, max=40)] = 1,
     operations: Annotated[str, typer.Option("--operations")] = "AUTO",
     seed: Annotated[int, typer.Option("--seed", min=0)] = 20260808,
@@ -324,9 +329,13 @@ def optimize(
     """Execute M4's vertical slice or M5's bounded deterministic search."""
 
     try:
-        if planner.lower() != "heuristic":
+        if planner.lower() not in {"heuristic", "single_agent"}:
             raise OptimizationFlowError(
-                "M5 currently supports only the deterministic heuristic planner"
+                "planner must be heuristic or single_agent"
+            )
+        if planner.lower() == "heuristic" and provider_response is not None:
+            raise OptimizationFlowError(
+                "--provider-response is valid only for single_agent planning"
             )
         requested = (
             ("RESTRUCTURE_PRIORITY_MUX",)
@@ -346,7 +355,11 @@ def optimize(
                 )
             )
         )
-        if max_candidates == 1 and requested == ("RESTRUCTURE_PRIORITY_MUX",):
+        if (
+            planner.lower() == "heuristic"
+            and max_candidates == 1
+            and requested == ("RESTRUCTURE_PRIORITY_MUX",)
+        ):
             path, bundle = optimize_strict_vertical_slice(
                 run_directory, repository_root=repository_root
             )
@@ -373,19 +386,38 @@ def optimize(
                 deterministic_seed=seed,
                 stagnation_window=stagnation_window,
             )
-            payload = {
-                "status": search.status,
-                "milestone": "M5",
-                "search_status": search.search_result.status,
-                "selected_candidate_id": search.search_result.selected_candidate_id,
-                "candidate_ids": search.search_result.ordered_candidate_ids,
-                "valid_negative_candidate_ids": search.valid_negative_candidate_ids,
-                "bundle": str(path),
-                "bundle_hash": search.bundle_hash,
-            }
+            if planner.lower() == "single_agent":
+                path, planning = run_single_agent_planning(
+                    path,
+                    repository_root=repository_root,
+                    provider_response=provider_response,
+                )
+                payload = {
+                    "status": planning.status,
+                    "milestone": "M6",
+                    "planner_mode": "SINGLE_AGENT",
+                    "fallback_count": planning.fallback_count,
+                    "proposal_ids": tuple(
+                        item.proposal_id for item in planning.proposals
+                    ),
+                    "bundle": str(path),
+                    "bundle_hash": planning.bundle_hash,
+                }
+            else:
+                payload = {
+                    "status": search.status,
+                    "milestone": "M5",
+                    "search_status": search.search_result.status,
+                    "selected_candidate_id": search.search_result.selected_candidate_id,
+                    "candidate_ids": search.search_result.ordered_candidate_ids,
+                    "valid_negative_candidate_ids": search.valid_negative_candidate_ids,
+                    "bundle": str(path),
+                    "bundle_hash": search.bundle_hash,
+                }
     except (
         BaselineFlowError,
         M5SearchFlowError,
+        M6PlannerFlowError,
         OptimizationFlowError,
         OSError,
         ValidationError,

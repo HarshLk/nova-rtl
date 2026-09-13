@@ -95,6 +95,7 @@ class CliTests(unittest.TestCase):
 
         self.assertEqual(optimize.exit_code, 0, optimize.output)
         self.assertIn("--planner", _plain_output(optimize.output))
+        self.assertIn("--provider-response", _plain_output(optimize.output))
         self.assertIn("--max-candidates", _plain_output(optimize.output))
         self.assertIn("--operations", _plain_output(optimize.output))
         self.assertIn("--seed", _plain_output(optimize.output))
