@@ -1,5 +1,11 @@
 """Constrained advisory planners for deterministic NOVA-RTL search."""
 
+from nova_rtl.planner.evidence import (
+    ContextIntegrityError,
+    EvidenceObject,
+    InMemoryEvidenceProvider,
+    RetrievalAuditRecord,
+)
 from nova_rtl.planner.interface import (
     EvidenceProvider,
     Message,
@@ -11,9 +17,13 @@ from nova_rtl.planner.interface import (
 
 __all__ = [
     "EvidenceProvider",
+    "EvidenceObject",
+    "InMemoryEvidenceProvider",
     "Message",
     "Planner",
     "PlannerPolicy",
     "StructuredModelProvider",
     "load_planner_policy",
+    "ContextIntegrityError",
+    "RetrievalAuditRecord",
 ]
