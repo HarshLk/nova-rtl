@@ -1,5 +1,6 @@
 """Constrained advisory planners for deterministic NOVA-RTL search."""
 
+from nova_rtl.planner.context import build_context
 from nova_rtl.planner.evidence import (
     ContextIntegrityError,
     EvidenceObject,
@@ -24,6 +25,7 @@ __all__ = [
     "PlannerPolicy",
     "StructuredModelProvider",
     "load_planner_policy",
+    "build_context",
     "ContextIntegrityError",
     "RetrievalAuditRecord",
 ]
