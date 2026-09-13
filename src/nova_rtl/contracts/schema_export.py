@@ -58,6 +58,8 @@ from nova_rtl.contracts.planning import (
     CritiqueDisposition,
     CritiqueReport,
     DiagnosisReport,
+    M6GateEvidence,
+    M6SignoffReport,
     PlannerRequest,
     PlannerResult,
     ProposalShortlist,
@@ -148,6 +150,8 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "m4-signoff-report": SchemaRegistration(M4SignoffReport, version=2),
     "m5-gate-evidence": SchemaRegistration(M5GateEvidence, version=1),
     "m5-signoff-report": SchemaRegistration(M5SignoffReport, version=1),
+    "m6-gate-evidence": SchemaRegistration(M6GateEvidence, version=1),
+    "m6-signoff-report": SchemaRegistration(M6SignoffReport, version=1),
     "m4-view-comparison": SchemaRegistration(M4ViewComparison, version=1),
     "mapped-structural-effect": SchemaRegistration(MappedStructuralEffect, version=1),
     "composition-closure-manifest": SchemaRegistration(

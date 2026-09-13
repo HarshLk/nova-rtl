@@ -28,6 +28,15 @@ from nova_rtl.optimization.flow import (
     optimize_strict_vertical_slice,
     verify_candidate_bundle,
 )
+from nova_rtl.optimization.planner_flow import (
+    M6PlannerFlowError,
+    run_single_agent_planning,
+)
+from nova_rtl.optimization.planner_signoff import (
+    M6SignoffError,
+    run_m6_signoff,
+    verify_m6_signoff,
+)
 from nova_rtl.optimization.search_flow import (
     M5SearchFlowError,
     run_deterministic_search,
@@ -121,6 +130,12 @@ m5_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m5_app, name="m5")
+m6_app = typer.Typer(
+    name="m6",
+    help="Build and verify the constrained single-agent planner milestone packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m6_app, name="m6")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -278,6 +293,20 @@ def _m5_failure(error: Exception, json_output: bool) -> None:
     raise typer.Exit(2)
 
 
+def _m6_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M6", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M6 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
 def _candidate_bundle_path(candidate: str, runs_root: Path) -> Path:
     supplied = Path(candidate)
     if supplied.is_file():
@@ -303,6 +332,10 @@ def optimize(
         typer.Argument(exists=True, file_okay=False, readable=True, metavar="RUN_DIRECTORY"),
     ],
     planner: Annotated[str, typer.Option("--planner")] = "heuristic",
+    provider_response: Annotated[
+        Path | None,
+        typer.Option("--provider-response", exists=True, file_okay=True, readable=True),
+    ] = None,
     max_candidates: Annotated[int, typer.Option("--max-candidates", min=1, max=40)] = 1,
     operations: Annotated[str, typer.Option("--operations")] = "AUTO",
     seed: Annotated[int, typer.Option("--seed", min=0)] = 20260808,
@@ -324,9 +357,13 @@ def optimize(
     """Execute M4's vertical slice or M5's bounded deterministic search."""
 
     try:
-        if planner.lower() != "heuristic":
+        if planner.lower() not in {"heuristic", "single_agent"}:
             raise OptimizationFlowError(
-                "M5 currently supports only the deterministic heuristic planner"
+                "planner must be heuristic or single_agent"
+            )
+        if planner.lower() == "heuristic" and provider_response is not None:
+            raise OptimizationFlowError(
+                "--provider-response is valid only for single_agent planning"
             )
         requested = (
             ("RESTRUCTURE_PRIORITY_MUX",)
@@ -346,7 +383,11 @@ def optimize(
                 )
             )
         )
-        if max_candidates == 1 and requested == ("RESTRUCTURE_PRIORITY_MUX",):
+        if (
+            planner.lower() == "heuristic"
+            and max_candidates == 1
+            and requested == ("RESTRUCTURE_PRIORITY_MUX",)
+        ):
             path, bundle = optimize_strict_vertical_slice(
                 run_directory, repository_root=repository_root
             )
@@ -373,19 +414,38 @@ def optimize(
                 deterministic_seed=seed,
                 stagnation_window=stagnation_window,
             )
-            payload = {
-                "status": search.status,
-                "milestone": "M5",
-                "search_status": search.search_result.status,
-                "selected_candidate_id": search.search_result.selected_candidate_id,
-                "candidate_ids": search.search_result.ordered_candidate_ids,
-                "valid_negative_candidate_ids": search.valid_negative_candidate_ids,
-                "bundle": str(path),
-                "bundle_hash": search.bundle_hash,
-            }
+            if planner.lower() == "single_agent":
+                path, planning = run_single_agent_planning(
+                    path,
+                    repository_root=repository_root,
+                    provider_response=provider_response,
+                )
+                payload = {
+                    "status": planning.status,
+                    "milestone": "M6",
+                    "planner_mode": "SINGLE_AGENT",
+                    "fallback_count": planning.fallback_count,
+                    "proposal_ids": tuple(
+                        item.proposal_id for item in planning.proposals
+                    ),
+                    "bundle": str(path),
+                    "bundle_hash": planning.bundle_hash,
+                }
+            else:
+                payload = {
+                    "status": search.status,
+                    "milestone": "M5",
+                    "search_status": search.search_result.status,
+                    "selected_candidate_id": search.search_result.selected_candidate_id,
+                    "candidate_ids": search.search_result.ordered_candidate_ids,
+                    "valid_negative_candidate_ids": search.valid_negative_candidate_ids,
+                    "bundle": str(path),
+                    "bundle_hash": search.bundle_hash,
+                }
     except (
         BaselineFlowError,
         M5SearchFlowError,
+        M6PlannerFlowError,
         OptimizationFlowError,
         OSError,
         ValidationError,
@@ -598,6 +658,99 @@ def m5_verify(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA M5 verification: PASS: {report_path.resolve()}"
+    )
+
+
+@m6_app.command("signoff")
+def m6_signoff(
+    planner_run: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="PLANNER_RUN"),
+    ],
+    m5_packet: Annotated[
+        Path,
+        typer.Option("--m5-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m4_packet: Annotated[
+        Path,
+        typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Execute and publish the final commit-bound M6 planner packet."""
+
+    try:
+        path, report = run_m6_signoff(
+            planner_run,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M6SignoffError, OSError, ValidationError, ValueError) as error:
+        _m6_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M6 sign-off: PASS: {path}"
+    )
+
+
+@m6_app.command("verify")
+def m6_verify(
+    report_path: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT"),
+    ],
+    planner_run: Annotated[
+        Path,
+        typer.Option("--planner-run", exists=True, dir_okay=False, readable=True),
+    ],
+    m5_packet: Annotated[
+        Path,
+        typer.Option("--m5-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m4_packet: Annotated[
+        Path,
+        typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Reconstruct every M6 identity without invoking the model provider."""
+
+    try:
+        report = verify_m6_signoff(
+            report_path,
+            planner_run=planner_run,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M6SignoffError, OSError, ValidationError, ValueError) as error:
+        _m6_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M6 verification: PASS: {report_path.resolve()}"
     )
 
 
