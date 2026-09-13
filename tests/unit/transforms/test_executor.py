@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
+from typing import ClassVar
 
 import pytest
 
 from nova_rtl.artifacts.store import ArtifactStore
+from nova_rtl.contracts.base import StrictContract
 from nova_rtl.contracts.optimization import OptimizationProposal
 from nova_rtl.evidence.models import SourceSpanRecord
 from nova_rtl.search.dag import CandidateDag, CandidateDagError, replace_candidate
@@ -16,7 +19,7 @@ from nova_rtl.transforms.executor import (
     UnauthorizedDiffError,
 )
 from nova_rtl.transforms.priority_mux import PriorityMuxContext, RestructurePriorityMux
-from nova_rtl.transforms.registry import TransformRegistry
+from nova_rtl.transforms.registry import TransformCapabilityMetadata, TransformRegistry
 from nova_rtl.transforms.syntax import SourceEdit, parse_slang_ast
 
 SOURCE = "if (req[0]) grant = value[0]; else if (req[1]) grant = value[1]; else grant = fallback;"
@@ -231,3 +234,103 @@ def test_candidate_updates_are_revalidated_not_mutated(tmp_path: Path) -> None:
     assert original.terminal_disposition == "PENDING_EVALUATION"
     with pytest.raises(ValueError):
         replace_candidate(original, source_hash="sha256:" + "0" * 64)
+
+
+class _GenericParameters(StrictContract):
+    replacement: str
+
+
+class _GenericContext(StrictContract):
+    relative_path: str
+    source_text: str
+    start_line: int
+    start_column: int
+    end_line: int
+    end_column: int
+
+
+class _GenericMatch(StrictContract):
+    context: _GenericContext
+    match_hash: str
+
+
+class _GenericCapability:
+    parameter_model: ClassVar[type[StrictContract]] = _GenericParameters
+    metadata = TransformCapabilityMetadata(
+        operation="BALANCE_BOOLEAN_TREE",
+        family="LOGIC_RESTRUCTURING",
+        correctness_contract="STRICT_SEQ_EQUIV",
+        implementation_version="transform:v1:generic_test",
+        allowed_ast_node_kinds=("ConditionalStatement",),
+        prohibited_contexts=("PROTECTED_NODE",),
+        expected_structural_effects=("REDUCE_LOGIC_DEPTH",),
+        conflicts=(),
+    )
+
+    def match(self, context: _GenericContext) -> _GenericMatch:
+        return _GenericMatch(context=context, match_hash=_hash(context.source_text))
+
+    def preflight(
+        self, match: _GenericMatch, parameters: _GenericParameters
+    ) -> None:
+        del match, parameters
+
+    def rewrite(
+        self, match: _GenericMatch, parameters: _GenericParameters
+    ) -> SourceEdit:
+        context = match.context
+        return SourceEdit(
+            relative_path=context.relative_path,
+            start_line=context.start_line,
+            start_column=context.start_column,
+            end_line=context.end_line,
+            end_column=context.end_column,
+            expected_text_hash=_hash(context.source_text),
+            replacement=parameters.replacement,
+            ast_node_kind="ConditionalStatement",
+        )
+
+    def fingerprint(
+        self, match: _GenericMatch, parameters: _GenericParameters
+    ) -> str:
+        del match, parameters
+        return "generic:v1:test"
+
+
+def test_executor_accepts_registry_defined_context_and_match_types(tmp_path: Path) -> None:
+    parent = _parent(tmp_path)
+    original = _request(parent)
+    proposal = original.proposal.model_copy(
+        update={
+            "transformation": original.proposal.transformation.model_copy(
+                update={
+                    "operation": "BALANCE_BOOLEAN_TREE",
+                    "parameters": {"replacement": "grant = fallback;"},
+                }
+            )
+        }
+    )
+    request = replace(
+        original,
+        proposal=proposal,
+        transform_context=_GenericContext(
+            relative_path="rtl/priority_mux.sv",
+            source_text=SOURCE,
+            start_line=3,
+            start_column=START_COLUMN,
+            end_line=3,
+            end_column=END_COLUMN,
+        ),
+    )
+    executor = TransformExecutor(
+        registry=TransformRegistry((_GenericCapability(),)),
+        artifact_store=ArtifactStore(tmp_path / "artifacts"),
+        candidates_root=tmp_path / "candidates",
+    )
+
+    materialized = executor.materialize(request)
+
+    assert "grant = fallback;" in materialized.workspace.joinpath(
+        "rtl/priority_mux.sv"
+    ).read_text()
+    assert materialized.candidate.transform_fingerprint == "generic:v1:test"

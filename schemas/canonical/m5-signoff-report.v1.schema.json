@@ -1,0 +1,308 @@
+{
+  "$defs": {
+    "ConsumedSearchBudgets": {
+      "additionalProperties": false,
+      "properties": {
+        "candidates": {
+          "minimum": 0,
+          "title": "Candidates",
+          "type": "integer"
+        },
+        "formal_jobs": {
+          "minimum": 0,
+          "title": "Formal Jobs",
+          "type": "integer"
+        },
+        "latency_ms": {
+          "minimum": 0,
+          "title": "Latency Ms",
+          "type": "integer"
+        },
+        "physical_jobs": {
+          "minimum": 0,
+          "title": "Physical Jobs",
+          "type": "integer"
+        },
+        "tokens": {
+          "minimum": 0,
+          "title": "Tokens",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "candidates",
+        "formal_jobs",
+        "physical_jobs",
+        "tokens",
+        "latency_ms"
+      ],
+      "title": "ConsumedSearchBudgets",
+      "type": "object"
+    },
+    "M5GateEvidence": {
+      "additionalProperties": false,
+      "description": "One reproducible M5 gate invocation and its immutable combined output.",
+      "properties": {
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Argv",
+          "type": "array"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "output_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Output Hash",
+          "type": "string"
+        },
+        "output_relative_path": {
+          "minLength": 1,
+          "title": "Output Relative Path",
+          "type": "string"
+        },
+        "output_size_bytes": {
+          "minimum": 0,
+          "title": "Output Size Bytes",
+          "type": "integer"
+        },
+        "passed_test_count": {
+          "exclusiveMinimum": 0,
+          "title": "Passed Test Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "argv",
+        "output_relative_path",
+        "output_hash",
+        "output_size_bytes",
+        "passed_test_count"
+      ],
+      "title": "M5GateEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Commit-bound proof that deterministic M5 search satisfies its exit gate.",
+  "properties": {
+    "budget_compliance": {
+      "const": true,
+      "title": "Budget Compliance",
+      "type": "boolean"
+    },
+    "candidate_dag_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Dag Hash",
+      "type": "string"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "comparison_identity_hashes": {
+      "minProperties": 1,
+      "patternProperties": {
+        "^[a-z][a-z0-9_]{2,95}$": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        }
+      },
+      "title": "Comparison Identity Hashes",
+      "type": "object"
+    },
+    "consumed_budgets": {
+      "$ref": "#/$defs/ConsumedSearchBudgets"
+    },
+    "evaluated_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Evaluated Candidate Ids",
+      "type": "array"
+    },
+    "formal_matrix_evidence": {
+      "$ref": "#/$defs/M5GateEvidence"
+    },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
+    "input_set_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Set Hash",
+      "type": "string"
+    },
+    "m4_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "M4 Candidate Id",
+      "type": "string"
+    },
+    "m4_commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M4 Commit Sha",
+      "type": "string"
+    },
+    "m4_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M4 Packet Hash",
+      "type": "string"
+    },
+    "m4_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M4 Report Hash",
+      "type": "string"
+    },
+    "pareto_archive_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Pareto Archive Hash",
+      "type": "string"
+    },
+    "platform_lock_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Platform Lock Hash",
+      "type": "string"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "search_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Bundle Hash",
+      "type": "string"
+    },
+    "search_implementation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Implementation Hash",
+      "type": "string"
+    },
+    "search_ledger_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Ledger Hash",
+      "type": "string"
+    },
+    "search_replay_digest": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Replay Digest",
+      "type": "string"
+    },
+    "search_request_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Request Hash",
+      "type": "string"
+    },
+    "search_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Result Hash",
+      "type": "string"
+    },
+    "search_trace_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Trace Hash",
+      "type": "string"
+    },
+    "selected_candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Selected Candidate Id",
+      "type": "string"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    },
+    "strict_frontier_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Strict Frontier Candidate Ids",
+      "type": "array"
+    },
+    "toolchain_receipt_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Toolchain Receipt Hash",
+      "type": "string"
+    },
+    "transform_operations": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "title": "Transform Operations",
+      "type": "array"
+    },
+    "transform_registry_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Transform Registry Hash",
+      "type": "string"
+    },
+    "valid_negative_candidate_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Valid Negative Candidate Ids",
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "implementation_tree_hash",
+    "m4_commit_sha",
+    "m4_packet_hash",
+    "m4_report_hash",
+    "m4_candidate_id",
+    "run_id",
+    "search_bundle_hash",
+    "search_implementation_hash",
+    "transform_registry_hash",
+    "transform_operations",
+    "search_request_hash",
+    "search_result_hash",
+    "candidate_dag_hash",
+    "pareto_archive_hash",
+    "search_trace_hash",
+    "search_ledger_hash",
+    "search_replay_digest",
+    "evaluated_candidate_ids",
+    "strict_frontier_candidate_ids",
+    "selected_candidate_id",
+    "valid_negative_candidate_ids",
+    "consumed_budgets",
+    "budget_compliance",
+    "platform_lock_hash",
+    "toolchain_receipt_hash",
+    "comparison_identity_hashes",
+    "formal_matrix_evidence",
+    "input_set_hash",
+    "report_hash"
+  ],
+  "title": "M5SignoffReport",
+  "type": "object"
+}

@@ -48,6 +48,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Use this verified M3 report as the M4 dependency.",
     )
+    parser.addoption(
+        "--search-bundle",
+        action="store",
+        default=None,
+        help="Use this verified deterministic search bundle for M5 sign-off.",
+    )
+    parser.addoption(
+        "--m4-packet",
+        action="store",
+        default=None,
+        help="Use this verified M4 report as the M5 dependency.",
+    )
 
 
 @pytest.fixture
@@ -124,4 +136,26 @@ def m3_packet_path(request: pytest.FixtureRequest) -> Path:
     path = Path(configured).resolve()
     if not path.is_file():
         pytest.fail(f"M3 packet does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def search_bundle_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--search-bundle")
+    if configured is None:
+        pytest.skip("M5 sign-off validation requires --search-bundle")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"search bundle does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def m4_packet_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--m4-packet")
+    if configured is None:
+        pytest.skip("M5 sign-off validation requires --m4-packet")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"M4 packet does not exist: {path}")
     return path

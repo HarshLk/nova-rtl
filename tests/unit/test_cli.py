@@ -97,6 +97,10 @@ class CliTests(unittest.TestCase):
         self.assertIn("--planner", _plain_output(optimize.output))
         self.assertIn("--max-candidates", _plain_output(optimize.output))
         self.assertIn("--operations", _plain_output(optimize.output))
+        self.assertIn("--seed", _plain_output(optimize.output))
+        self.assertIn("--formal-budget", _plain_output(optimize.output))
+        self.assertIn("--physical-budget", _plain_output(optimize.output))
+        self.assertIn("--stagnation-window", _plain_output(optimize.output))
         self.assertEqual(inspect.exit_code, 0, inspect.output)
         self.assertIn("CANDIDATE_ID_OR_BUNDLE", _plain_output(inspect.output))
         self.assertEqual(verify.exit_code, 0, verify.output)
@@ -110,6 +114,19 @@ class CliTests(unittest.TestCase):
         self.assertIn("CANDIDATE_BUNDLE", _plain_output(signoff.output))
         self.assertIn("--m3-packet", _plain_output(signoff.output))
         self.assertIn("REPORT", _plain_output(verify.output))
+        self.assertIn("--m3-packet", _plain_output(verify.output))
+
+    def test_cli_exposes_m5_search_signoff_and_verification_commands(self) -> None:
+        signoff = self.runner.invoke(app, ["m5", "signoff", "--help"])
+        verify = self.runner.invoke(app, ["m5", "verify", "--help"])
+
+        self.assertEqual(signoff.exit_code, 0, signoff.output)
+        self.assertEqual(verify.exit_code, 0, verify.output)
+        self.assertIn("SEARCH_BUNDLE", _plain_output(signoff.output))
+        self.assertIn("--m4-packet", _plain_output(signoff.output))
+        self.assertIn("--m3-packet", _plain_output(signoff.output))
+        self.assertIn("REPORT", _plain_output(verify.output))
+        self.assertIn("--m4-packet", _plain_output(verify.output))
         self.assertIn("--m3-packet", _plain_output(verify.output))
 
     def test_m1_cli_exposes_signoff_and_offline_verification(self) -> None:

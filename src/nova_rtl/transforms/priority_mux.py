@@ -389,6 +389,14 @@ class RestructurePriorityMux:
             ast_node_kind="ConditionalStatement",
         )
 
+    def preflight(
+        self, match: PriorityMuxMatch, parameters: PriorityMuxParameters
+    ) -> None:
+        """Reject unsupported branch counts before source materialization."""
+
+        if len(match.branches) > parameters.max_branches:
+            raise PriorityMuxError("priority branch count exceeds configured bound")
+
     def fingerprint(
         self, match: PriorityMuxMatch, parameters: PriorityMuxParameters
     ) -> str:

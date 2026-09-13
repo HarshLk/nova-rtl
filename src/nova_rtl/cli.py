@@ -28,6 +28,10 @@ from nova_rtl.optimization.flow import (
     optimize_strict_vertical_slice,
     verify_candidate_bundle,
 )
+from nova_rtl.optimization.search_flow import (
+    M5SearchFlowError,
+    run_deterministic_search,
+)
 from nova_rtl.optimization.signoff import (
     M4SignoffError,
     run_m4_signoff,
@@ -55,6 +59,7 @@ from nova_rtl.platform.lock import (
 )
 from nova_rtl.platform.signoff import M0SignoffRequest, SignoffError, run_m0_signoff
 from nova_rtl.platform.smoke import SmokeError
+from nova_rtl.search.signoff import M5SignoffError, run_m5_signoff, verify_m5_signoff
 from nova_rtl.signoff.m1 import (
     M1SignoffError,
     M1SignoffRequest,
@@ -110,6 +115,12 @@ m4_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m4_app, name="m4")
+m5_app = typer.Typer(
+    name="m5",
+    help="Build and verify the bounded deterministic-search milestone packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m5_app, name="m5")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -253,6 +264,20 @@ def _m4_failure(error: Exception, json_output: bool) -> None:
     raise typer.Exit(2)
 
 
+def _m5_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M5", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M5 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
 def _candidate_bundle_path(candidate: str, runs_root: Path) -> Path:
     supplied = Path(candidate)
     if supplied.is_file():
@@ -278,45 +303,99 @@ def optimize(
         typer.Argument(exists=True, file_okay=False, readable=True, metavar="RUN_DIRECTORY"),
     ],
     planner: Annotated[str, typer.Option("--planner")] = "heuristic",
-    max_candidates: Annotated[int, typer.Option("--max-candidates", min=1, max=1)] = 1,
-    operations: Annotated[str, typer.Option("--operations")] = "RESTRUCTURE_PRIORITY_MUX",
+    max_candidates: Annotated[int, typer.Option("--max-candidates", min=1, max=40)] = 1,
+    operations: Annotated[str, typer.Option("--operations")] = "AUTO",
+    seed: Annotated[int, typer.Option("--seed", min=0)] = 20260808,
+    formal_budget: Annotated[int | None, typer.Option("--formal-budget", min=1)] = None,
+    physical_budget: Annotated[int | None, typer.Option("--physical-budget", min=1)] = None,
+    token_budget: Annotated[int, typer.Option("--token-budget", min=1)] = 1,
+    latency_budget_ms: Annotated[
+        int, typer.Option("--latency-budget-ms", min=1)
+    ] = 3_600_000,
+    stagnation_window: Annotated[
+        int, typer.Option("--stagnation-window", min=1)
+    ] = 8,
     repository_root: Annotated[
         Path,
         typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
     ] = Path("."),
     json_output: Annotated[bool, typer.Option("--json")] = False,
 ) -> None:
-    """Execute the bounded one-candidate M4 strict-equivalence vertical slice."""
+    """Execute M4's vertical slice or M5's bounded deterministic search."""
 
     try:
         if planner.lower() != "heuristic":
-            raise OptimizationFlowError("M4 supports only the deterministic heuristic planner")
-        if max_candidates != 1:
-            raise OptimizationFlowError("M4 executes exactly one bounded candidate")
-        if operations != "RESTRUCTURE_PRIORITY_MUX":
-            raise OptimizationFlowError("M4 supports only RESTRUCTURE_PRIORITY_MUX")
-        path, bundle = optimize_strict_vertical_slice(
-            run_directory, repository_root=repository_root
+            raise OptimizationFlowError(
+                "M5 currently supports only the deterministic heuristic planner"
+            )
+        requested = (
+            ("RESTRUCTURE_PRIORITY_MUX",)
+            if operations == "AUTO" and max_candidates == 1
+            else (
+                (
+                    "BALANCE_BOOLEAN_TREE",
+                    "FACTOR_COMMON_PREDICATE",
+                    "FSM_DECODE_RESTRUCTURE",
+                    "RESTRUCTURE_PRIORITY_MUX",
+                )
+                if operations == "AUTO"
+                else tuple(
+                    item.strip().upper()
+                    for item in operations.split(",")
+                    if item.strip()
+                )
+            )
         )
+        if max_candidates == 1 and requested == ("RESTRUCTURE_PRIORITY_MUX",):
+            path, bundle = optimize_strict_vertical_slice(
+                run_directory, repository_root=repository_root
+            )
+            payload = {
+                "status": bundle.status,
+                "milestone": "M4",
+                "candidate_id": bundle.candidate.candidate_id,
+                "classification": bundle.candidate.classification,
+                "bundle": str(path),
+                "bundle_hash": bundle.bundle_hash,
+            }
+        else:
+            formal = min(max_candidates, formal_budget or max_candidates)
+            physical = min(formal, physical_budget or min(formal, 4))
+            path, search = run_deterministic_search(
+                run_directory,
+                repository_root=repository_root,
+                operations=requested,
+                max_candidates=max_candidates,
+                formal_budget=formal,
+                physical_budget=physical,
+                token_budget=token_budget,
+                latency_budget_ms=latency_budget_ms,
+                deterministic_seed=seed,
+                stagnation_window=stagnation_window,
+            )
+            payload = {
+                "status": search.status,
+                "milestone": "M5",
+                "search_status": search.search_result.status,
+                "selected_candidate_id": search.search_result.selected_candidate_id,
+                "candidate_ids": search.search_result.ordered_candidate_ids,
+                "valid_negative_candidate_ids": search.valid_negative_candidate_ids,
+                "bundle": str(path),
+                "bundle_hash": search.bundle_hash,
+            }
     except (
         BaselineFlowError,
+        M5SearchFlowError,
         OptimizationFlowError,
         OSError,
         ValidationError,
         ValueError,
     ) as error:
         _optimization_failure(error, json_output)
-    payload = {
-        "status": bundle.status,
-        "candidate_id": bundle.candidate.candidate_id,
-        "classification": bundle.candidate.classification,
-        "bundle": str(path),
-        "bundle_hash": bundle.bundle_hash,
-    }
     typer.echo(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
-        else f"NOVA M4 optimization: {bundle.status}: {path}"
+        else f"NOVA {payload['milestone']} optimization: {payload['status']}: {path}"
     )
 
 
@@ -441,6 +520,84 @@ def m4_verify(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA M4 verification: PASS: {report_path.resolve()}"
+    )
+
+
+@m5_app.command("signoff")
+def m5_signoff(
+    search_bundle: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="SEARCH_BUNDLE"),
+    ],
+    m4_packet: Annotated[
+        Path,
+        typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Execute and publish the final commit-bound M5 search packet."""
+
+    try:
+        path, report = run_m5_signoff(
+            search_bundle,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M5SignoffError, OSError, ValidationError, ValueError) as error:
+        _m5_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M5 sign-off: PASS: {path}"
+    )
+
+
+@m5_app.command("verify")
+def m5_verify(
+    report_path: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT"),
+    ],
+    m4_packet: Annotated[
+        Path,
+        typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Reconstruct and verify every identity in an M5 packet."""
+
+    try:
+        report = verify_m5_signoff(
+            report_path,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M5SignoffError, OSError, ValidationError, ValueError) as error:
+        _m5_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M5 verification: PASS: {report_path.resolve()}"
     )
 
 

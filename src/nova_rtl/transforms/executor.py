@@ -12,11 +12,12 @@ from datetime import datetime
 from hashlib import sha256
 from pathlib import Path, PurePosixPath
 
+from pydantic import BaseModel
+
 from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.contracts.base import canonical_json_bytes, canonical_sha256
 from nova_rtl.contracts.optimization import CandidateRecord, OptimizationProposal
 from nova_rtl.evidence.models import SourceSpanRecord
-from nova_rtl.transforms.priority_mux import PriorityMuxContext, PriorityMuxMatch
 from nova_rtl.transforms.registry import TransformRegistry
 from nova_rtl.transforms.syntax import (
     AppliedSourceEdit,
@@ -46,7 +47,7 @@ class MaterializationRequest:
     authorized_span: SourceSpanRecord
     protected_spans: tuple[SourceSpanRecord, ...]
     parsed_ast: ParsedSlangAst
-    transform_context: PriorityMuxContext
+    transform_context: BaseModel
     lineage_depth: int
     created_at: datetime
 
@@ -155,8 +156,9 @@ class TransformExecutor:
             proposal.transformation.operation, proposal.transformation.parameters
         )
         match = capability.match(request.transform_context)  # type: ignore[attr-defined]
-        if not isinstance(match, PriorityMuxMatch):
-            raise TransformExecutionError("M4 capability returned an unsupported match type")
+        if not isinstance(match, BaseModel):
+            raise TransformExecutionError("transform capability returned an invalid match type")
+        capability.preflight(match, parameters)  # type: ignore[attr-defined]
         edit = capability.rewrite(match, parameters)  # type: ignore[attr-defined]
         fingerprint = capability.fingerprint(match, parameters)  # type: ignore[attr-defined]
 

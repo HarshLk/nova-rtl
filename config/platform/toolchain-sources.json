@@ -176,6 +176,28 @@
       "allowed_redirect_hosts": []
     },
     {
+      "component_id": "libicu74",
+      "source_kind": "ARCHIVE",
+      "version": "74.2-1ubuntu3",
+      "source_url": "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu74_74.2-1ubuntu3_amd64.deb",
+      "archive_sha256": "sha256:d29c97a21a3e3254731cfac186e4d4e611e5e67d2c9a0430f6acfbd9acaefa2e",
+      "git_commit": null,
+      "license": "MIT",
+      "executables": [],
+      "archive": {
+        "byte_size": 10860410,
+        "archive_format": "DEB",
+        "strip_components": 0,
+        "max_decompressed_bytes": 100000000,
+        "max_regular_file_bytes": 50000000,
+        "max_entries": 5000
+      },
+      "runtime_environment": [
+        {"name": "LD_LIBRARY_PATH", "operation": "PREPEND_PATH", "relative_paths": ["usr/lib/x86_64-linux-gnu"]}
+      ],
+      "allowed_redirect_hosts": []
+    },
+    {
       "component_id": "libqt5core5t64",
       "source_kind": "ARCHIVE",
       "version": "5.15.13+dfsg-1ubuntu1",

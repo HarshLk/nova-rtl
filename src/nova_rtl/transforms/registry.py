@@ -55,6 +55,14 @@ class TransformCapability(Protocol):
     metadata: TransformCapabilityMetadata
     parameter_model: type[BaseModel]
 
+    def match(self, context: BaseModel) -> BaseModel: ...
+
+    def preflight(self, match: BaseModel, parameters: BaseModel) -> None: ...
+
+    def rewrite(self, match: BaseModel, parameters: BaseModel): ...  # type: ignore[no-untyped-def]
+
+    def fingerprint(self, match: BaseModel, parameters: BaseModel) -> str: ...
+
 
 class TransformRegistry:
     """Immutable exact-operation registry with a canonical content identity."""
@@ -100,10 +108,35 @@ class TransformRegistry:
                 f"transform operation is not registered: {operation}"
             ) from error
 
+    def get_descriptor(self, operation: str) -> TransformCapabilityMetadata:
+        """Return stable policy-facing metadata without exposing implementation state."""
+
+        return self.resolve(operation).metadata
+
     def validate_parameters(
         self, operation: str, parameters: Mapping[str, JsonScalar]
     ) -> BaseModel:
         return self.resolve(operation).parameter_model.model_validate(dict(parameters))
+
+
+def competition_mvp_registry() -> TransformRegistry:
+    """Build the exact reviewed transform set used by the M5 competition flow."""
+
+    # Keep these imports local so individual capability modules can depend on the
+    # registry contracts without creating an import cycle.
+    from nova_rtl.transforms.boolean_tree import BalanceBooleanTree
+    from nova_rtl.transforms.fsm_decode import RestructureFsmDecode
+    from nova_rtl.transforms.predicate import FactorCommonPredicate
+    from nova_rtl.transforms.priority_mux import RestructurePriorityMux
+
+    return TransformRegistry(
+        (
+            BalanceBooleanTree(),
+            FactorCommonPredicate(),
+            RestructureFsmDecode(),
+            RestructurePriorityMux(),
+        )
+    )
 
 
 __all__ = [
@@ -111,4 +144,5 @@ __all__ = [
     "TransformCapabilityMetadata",
     "TransformRegistry",
     "TransformRegistryError",
+    "competition_mvp_registry",
 ]

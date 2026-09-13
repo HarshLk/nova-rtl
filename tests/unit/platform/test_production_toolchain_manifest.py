@@ -10,7 +10,7 @@ from nova_rtl.platform.hydration import (
 MANIFEST_PATH = (
     Path(__file__).resolve().parents[3] / "config" / "platform" / "toolchain-sources.json"
 )
-EXPECTED_MANIFEST_HASH = "sha256:5bc0f8a0fca9f8e5b011725e69aa2107a39c5c8b709dff617ffdc1a0604387cb"
+EXPECTED_MANIFEST_HASH = "sha256:d9f06b235a7180a5c8bdf99e4e74187c4c4e405d356b9e60df850b9c0a14b423"
 
 
 def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> None:
@@ -29,6 +29,7 @@ def test_production_toolchain_manifest_is_strict_and_canonically_stable() -> Non
         "libdouble_conversion3",
         "libmd4c0",
         "libpcre2_16_0",
+        "libicu74",
         "libqt5core5t64",
         "libqt5gui5t64",
         "libqt5widgets5t64",
@@ -114,6 +115,13 @@ def test_production_openroad_runtime_pins_missing_ubuntu_libraries() -> None:
             "sha256:06bba768fd16e6ea6f744114a0c500d9f5d98ee82630edf0d8a54f2175d3921b",
             210092,
             "BSD-3-Clause",
+        ),
+        "libicu74": (
+            "74.2-1ubuntu3",
+            "https://archive.ubuntu.com/ubuntu/pool/main/i/icu/libicu74_74.2-1ubuntu3_amd64.deb",
+            "sha256:d29c97a21a3e3254731cfac186e4d4e611e5e67d2c9a0430f6acfbd9acaefa2e",
+            10860410,
+            "MIT",
         ),
     }
 
