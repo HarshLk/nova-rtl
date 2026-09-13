@@ -16,6 +16,11 @@ from nova_rtl.planner.interface import (
     StructuredModelProvider,
     load_planner_policy,
 )
+from nova_rtl.planner.provider import (
+    ProviderBoundaryError,
+    RecordedProviderResponse,
+    RecordedStructuredModelProvider,
+)
 
 __all__ = [
     "EvidenceProvider",
@@ -26,6 +31,9 @@ __all__ = [
     "Planner",
     "PlannerPolicy",
     "PlannerIntegrityError",
+    "ProviderBoundaryError",
+    "RecordedProviderResponse",
+    "RecordedStructuredModelProvider",
     "StructuredModelProvider",
     "load_planner_policy",
     "build_context",
