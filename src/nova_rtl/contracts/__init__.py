@@ -100,6 +100,8 @@ from nova_rtl.contracts.recovery import (
 )
 from nova_rtl.contracts.reporting import (
     ExperimentRecord,
+    M5GateEvidence,
+    M5SignoffReport,
     ParetoRecord,
     ReportBundle,
     SearchRequest,
@@ -130,6 +132,8 @@ __all__ = [
     "CandidateRecord",
     "M4SignoffReport",
     "M4ViewComparison",
+    "M5GateEvidence",
+    "M5SignoffReport",
     "CDCInventory",
     "CanonicalEnvironmentEntry",
     "CalibrationReport",

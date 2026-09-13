@@ -59,6 +59,7 @@ from nova_rtl.platform.lock import (
 )
 from nova_rtl.platform.signoff import M0SignoffRequest, SignoffError, run_m0_signoff
 from nova_rtl.platform.smoke import SmokeError
+from nova_rtl.search.signoff import M5SignoffError, run_m5_signoff, verify_m5_signoff
 from nova_rtl.signoff.m1 import (
     M1SignoffError,
     M1SignoffRequest,
@@ -114,6 +115,12 @@ m4_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m4_app, name="m4")
+m5_app = typer.Typer(
+    name="m5",
+    help="Build and verify the bounded deterministic-search milestone packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m5_app, name="m5")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -254,6 +261,20 @@ def _m4_failure(error: Exception, json_output: bool) -> None:
         )
     else:
         typer.echo(f"NOVA M4 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+def _m5_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M5", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M5 sign-off: FAIL: {error}", err=True)
     raise typer.Exit(2)
 
 
@@ -499,6 +520,84 @@ def m4_verify(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA M4 verification: PASS: {report_path.resolve()}"
+    )
+
+
+@m5_app.command("signoff")
+def m5_signoff(
+    search_bundle: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="SEARCH_BUNDLE"),
+    ],
+    m4_packet: Annotated[
+        Path,
+        typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Execute and publish the final commit-bound M5 search packet."""
+
+    try:
+        path, report = run_m5_signoff(
+            search_bundle,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M5SignoffError, OSError, ValidationError, ValueError) as error:
+        _m5_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M5 sign-off: PASS: {path}"
+    )
+
+
+@m5_app.command("verify")
+def m5_verify(
+    report_path: Annotated[
+        Path,
+        typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT"),
+    ],
+    m4_packet: Annotated[
+        Path,
+        typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    m3_packet: Annotated[
+        Path,
+        typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True),
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Reconstruct and verify every identity in an M5 packet."""
+
+    try:
+        report = verify_m5_signoff(
+            report_path,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M5SignoffError, OSError, ValidationError, ValueError) as error:
+        _m5_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M5 verification: PASS: {report_path.resolve()}"
     )
 
 

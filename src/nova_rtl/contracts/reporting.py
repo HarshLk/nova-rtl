@@ -21,7 +21,7 @@ from nova_rtl.contracts.base import (
     canonical_sha256,
 )
 from nova_rtl.contracts.manifest import CorrectnessContract, JsonScalar
-from nova_rtl.contracts.optimization import Fingerprint, SelectionClass
+from nova_rtl.contracts.optimization import Fingerprint, SelectionClass, TransformOperation
 from nova_rtl.contracts.planning import PlannerMode
 
 StableUpperString = Annotated[
@@ -274,6 +274,88 @@ class SearchResult(StrictContract):
         return self
 
 
+GitCommitSha = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+
+
+class M5GateEvidence(StrictContract):
+    """One reproducible M5 gate invocation and its immutable combined output."""
+
+    evidence_id: EntityId
+    argv: tuple[NonEmptyString, ...] = Field(min_length=1)
+    output_relative_path: NonEmptyString
+    output_hash: HashRef
+    output_size_bytes: NonNegativeInt
+    passed_test_count: int = Field(strict=True, gt=0)
+
+
+class M5SignoffReport(StrictContract):
+    """Commit-bound proof that deterministic M5 search satisfies its exit gate."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: GitCommitSha
+    implementation_tree_hash: GitCommitSha
+    m4_commit_sha: GitCommitSha
+    m4_packet_hash: HashRef
+    m4_report_hash: HashRef
+    m4_candidate_id: EntityId
+    run_id: EntityId
+    search_bundle_hash: HashRef
+    search_implementation_hash: HashRef
+    transform_registry_hash: HashRef
+    transform_operations: tuple[TransformOperation, ...]
+    search_request_hash: HashRef
+    search_result_hash: HashRef
+    candidate_dag_hash: HashRef
+    pareto_archive_hash: HashRef
+    search_trace_hash: HashRef
+    search_ledger_hash: HashRef
+    search_replay_digest: HashRef
+    evaluated_candidate_ids: tuple[EntityId, ...]
+    strict_frontier_candidate_ids: tuple[EntityId, ...]
+    selected_candidate_id: EntityId
+    valid_negative_candidate_ids: tuple[EntityId, ...] = Field(min_length=1)
+    consumed_budgets: ConsumedSearchBudgets
+    budget_compliance: Literal[True]
+    platform_lock_hash: HashRef
+    toolchain_receipt_hash: HashRef
+    comparison_identity_hashes: dict[StableLowerName, HashRef] = Field(min_length=1)
+    formal_matrix_evidence: M5GateEvidence
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def milestone_boundary_is_complete_and_hashed(self) -> Self:
+        expected_operations = (
+            "BALANCE_BOOLEAN_TREE",
+            "FACTOR_COMMON_PREDICATE",
+            "FSM_DECODE_RESTRUCTURE",
+            "RESTRUCTURE_PRIORITY_MUX",
+        )
+        if self.transform_operations != expected_operations:
+            raise ValueError("M5 requires the exact four-transform competition registry")
+        _require_unique(self.evaluated_candidate_ids, "evaluated candidate IDs")
+        _require_unique(self.strict_frontier_candidate_ids, "strict frontier IDs")
+        _require_unique(self.valid_negative_candidate_ids, "valid negative candidate IDs")
+        evaluated = set(self.evaluated_candidate_ids)
+        if not set(self.strict_frontier_candidate_ids).issubset(evaluated):
+            raise ValueError("strict frontier must be drawn from evaluated candidates")
+        if not set(self.valid_negative_candidate_ids).issubset(evaluated):
+            raise ValueError("valid negative results must be evaluated candidates")
+        if self.selected_candidate_id not in self.strict_frontier_candidate_ids:
+            raise ValueError("selected M5 candidate must be on the strict frontier")
+        input_payload = {
+            key: value
+            for key, value in self.model_dump(mode="python").items()
+            if key not in {"input_set_hash", "report_hash", "schema_version", "status"}
+        }
+        if self.input_set_hash != canonical_sha256(input_payload):
+            raise ValueError("input_set_hash does not match the M5 evidence boundary")
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
+            raise ValueError("report_hash does not match canonical M5 sign-off report")
+        return self
+
+
 class ClaimEvidence(StrictContract):
     artifact_ids: tuple[EntityId, ...] = Field(min_length=1)
     evidence_refs: tuple[EvidenceRef, ...] = Field(min_length=1)
@@ -352,6 +434,8 @@ class ReportBundle(StrictContract):
 
 __all__ = [
     "ExperimentRecord",
+    "M5GateEvidence",
+    "M5SignoffReport",
     "ParetoRecord",
     "ReportBundle",
     "SearchRequest",
