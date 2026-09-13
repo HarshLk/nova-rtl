@@ -20,7 +20,11 @@ from nova_rtl.contracts.base import (
     canonical_json_bytes,
     canonical_sha256,
 )
-from nova_rtl.contracts.optimization import CandidateRecord, TransformOperation
+from nova_rtl.contracts.optimization import (
+    CandidateRecord,
+    StableUpperString,
+    TransformOperation,
+)
 from nova_rtl.contracts.reporting import (
     ConsumedSearchBudgets,
     ExperimentRecord,
@@ -125,7 +129,7 @@ class CandidateEvaluation(StrictContract):
     pareto_record: ParetoRecord | None
     artifact_refs: tuple[ArtifactRef, ...] = Field(min_length=1)
     consumed_cost: EvaluationCost
-    terminal_disposition: str
+    terminal_disposition: StableUpperString
 
     @model_validator(mode="after")
     def identities_are_coherent(self) -> Self:
@@ -148,6 +152,8 @@ class SearchTrace(StrictContract):
     schema_version: Literal[1] = 1
     search_request_id: EntityId
     ordered_proposal_ids: tuple[EntityId, ...]
+    rejected_proposal_ids: tuple[EntityId, ...]
+    proposal_dispositions: dict[EntityId, StableUpperString]
     evaluated_candidate_ids: tuple[EntityId, ...]
     feasible_candidate_ids: tuple[EntityId, ...]
     consumed_budgets: ConsumedSearchBudgets
@@ -158,6 +164,17 @@ class SearchTrace(StrictContract):
 
     @model_validator(mode="after")
     def hash_is_canonical(self) -> Self:
+        if len(self.ordered_proposal_ids) != len(set(self.ordered_proposal_ids)):
+            raise ValueError("ordered search proposals must be unique")
+        if set(self.proposal_dispositions) != set(self.ordered_proposal_ids):
+            raise ValueError("every ordered proposal requires one disposition")
+        expected_rejected = {
+            proposal_id
+            for proposal_id, disposition in self.proposal_dispositions.items()
+            if disposition == "NO_SAFE_SOURCE_MATCH"
+        }
+        if set(self.rejected_proposal_ids) != expected_rejected:
+            raise ValueError("rejected proposal identities and dispositions differ")
         if self.trace_hash != canonical_sha256(self, exclude=frozenset({"trace_hash"})):
             raise ValueError("search trace hash is not canonical")
         return self
@@ -168,7 +185,7 @@ class SearchPlanner(Protocol):
 
 
 class CandidateMaterializer(Protocol):
-    async def materialize(self, proposal: PlannedCandidate) -> CandidateRecord: ...
+    async def materialize(self, proposal: PlannedCandidate) -> CandidateRecord | None: ...
 
 
 class CandidateEvaluator(Protocol):
@@ -292,6 +309,8 @@ class SearchController:
         )
         evaluated_ids: list[str] = []
         feasible_ids: list[str] = []
+        rejected_proposal_ids: list[str] = []
+        proposal_dispositions: dict[str, str] = {}
         source_hashes: set[str] = set()
         patch_hashes: set[str] = set()
         artifacts: dict[str, ArtifactRef] = {}
@@ -306,6 +325,10 @@ class SearchController:
                 budget_exhausted = True
                 break
             candidate = await self._materializer.materialize(proposal)
+            if candidate is None:
+                rejected_proposal_ids.append(proposal.proposal_id)
+                proposal_dispositions[proposal.proposal_id] = "NO_SAFE_SOURCE_MATCH"
+                continue
             if candidate.proposal_id != proposal.proposal_id:
                 raise SearchControllerError("materialized candidate does not bind its proposal")
             if (
@@ -354,6 +377,7 @@ class SearchController:
                     )
                 artifacts[ref.artifact_id] = ref
             evaluated_ids.append(candidate.candidate_id)
+            proposal_dispositions[proposal.proposal_id] = evaluation.terminal_disposition
             used = ConsumedSearchBudgets(
                 candidates=used.candidates + 1,
                 formal_jobs=used.formal_jobs + estimated.formal_jobs,
@@ -401,10 +425,22 @@ class SearchController:
             status = "COMPLETED"
             stop_reason = "OPPORTUNITIES_EXHAUSTED"
 
+        pending_disposition = (
+            "NOT_ATTEMPTED_POLICY"
+            if stopped_by_policy
+            else "NOT_ATTEMPTED_BUDGET"
+            if budget_exhausted
+            else "NO_SAFE_SOURCE_MATCH"
+        )
+        for proposal in unique:
+            proposal_dispositions.setdefault(proposal.proposal_id, pending_disposition)
+
         trace_payload = {
             "schema_version": 1,
             "search_request_id": request.search_request_id,
             "ordered_proposal_ids": tuple(item.proposal_id for item in unique),
+            "rejected_proposal_ids": tuple(rejected_proposal_ids),
+            "proposal_dispositions": dict(sorted(proposal_dispositions.items())),
             "evaluated_candidate_ids": tuple(evaluated_ids),
             "feasible_candidate_ids": tuple(feasible_ids),
             "consumed_budgets": used.model_dump(mode="json"),
