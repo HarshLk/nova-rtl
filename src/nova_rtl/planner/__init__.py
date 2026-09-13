@@ -21,6 +21,7 @@ from nova_rtl.planner.provider import (
     RecordedProviderResponse,
     RecordedStructuredModelProvider,
 )
+from nova_rtl.planner.single_agent import SingleAgentPlanner, SingleAgentPlannerError
 
 __all__ = [
     "EvidenceProvider",
@@ -35,6 +36,8 @@ __all__ = [
     "RecordedProviderResponse",
     "RecordedStructuredModelProvider",
     "StructuredModelProvider",
+    "SingleAgentPlanner",
+    "SingleAgentPlannerError",
     "load_planner_policy",
     "build_context",
     "ContextIntegrityError",
