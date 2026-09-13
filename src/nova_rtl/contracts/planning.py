@@ -17,6 +17,7 @@ from nova_rtl.contracts.base import (
     NonNegativeInt,
     StrictContract,
     UtcDatetime,
+    canonical_sha256,
 )
 from nova_rtl.contracts.manifest import CorrectnessContract, JsonScalar
 
@@ -194,6 +195,80 @@ class ProviderResult(StrictContract):
                 raise ValueError("non-pass provider result cannot expose normalized output")
             if self.error_code is None:
                 raise ValueError("non-pass provider result requires an error code")
+        return self
+
+
+class M6GateEvidence(StrictContract):
+    """One reproducible M6 safety/equivalence gate and its preserved output."""
+
+    evidence_id: EntityId
+    argv: tuple[NonEmptyString, ...] = Field(min_length=1)
+    output_relative_path: NonEmptyString
+    output_hash: HashRef
+    output_size_bytes: NonNegativeInt
+    passed_test_count: int = Field(strict=True, gt=0)
+
+
+class M6SignoffReport(StrictContract):
+    """Commit-bound proof that constrained single-agent planning is safe."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    implementation_tree_hash: Annotated[
+        str, StringConstraints(pattern=r"^[0-9a-f]{40}$")
+    ]
+    m5_commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    m5_packet_hash: HashRef
+    m5_report_hash: HashRef
+    run_id: EntityId
+    m5_search_bundle_hash: HashRef
+    planner_run_hash: HashRef
+    planner_implementation_hash: HashRef
+    planner_policy_hash: HashRef
+    provider_response_hash: HashRef | None
+    planner_request_hashes: tuple[HashRef, ...] = Field(min_length=1)
+    context_pack_hashes: tuple[HashRef, ...] = Field(min_length=1)
+    provider_result_hashes: tuple[HashRef, ...] = Field(min_length=1)
+    planner_result_hashes: tuple[HashRef, ...] = Field(min_length=1)
+    proposal_hashes: tuple[HashRef, ...] = Field(min_length=1)
+    normalized_plan_hashes: tuple[HashRef, ...] = Field(min_length=1)
+    registered_operations: tuple[StableUpperString, ...] = Field(min_length=1)
+    validated_planner_modes: tuple[PlannerMode, ...]
+    provider_attempt_count: int = Field(strict=True, gt=0)
+    fallback_count: int = Field(strict=True, gt=0)
+    retrieval_grant_count: NonNegativeInt
+    retrieval_denial_count: NonNegativeInt
+    budget_compliance: Literal[True]
+    planner_matrix_evidence: M6GateEvidence
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def milestone_boundary_is_complete_and_hashed(self) -> Self:
+        if self.validated_planner_modes != ("HEURISTIC", "SINGLE_AGENT"):
+            raise ValueError("M6 must validate heuristic and single-agent modes")
+        for values, label in (
+            (self.planner_request_hashes, "planner request hashes"),
+            (self.context_pack_hashes, "context pack hashes"),
+            (self.provider_result_hashes, "provider result hashes"),
+            (self.planner_result_hashes, "planner result hashes"),
+            (self.proposal_hashes, "proposal hashes"),
+            (self.normalized_plan_hashes, "normalized plan hashes"),
+            (self.registered_operations, "registered operations"),
+        ):
+            _require_unique(values, label)
+        if self.fallback_count > self.provider_attempt_count:
+            raise ValueError("fallback count cannot exceed provider attempts")
+        payload = {
+            key: value
+            for key, value in self.model_dump(mode="python").items()
+            if key not in {"schema_version", "status", "input_set_hash", "report_hash"}
+        }
+        if self.input_set_hash != canonical_sha256(payload):
+            raise ValueError("M6 input_set_hash differs from sign-off evidence")
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
+            raise ValueError("M6 report_hash is not canonical")
         return self
 
 
@@ -667,6 +742,8 @@ __all__ = [
     "CritiqueDisposition",
     "CritiqueReport",
     "DiagnosisReport",
+    "M6GateEvidence",
+    "M6SignoffReport",
     "PlannerRequest",
     "PlannerResult",
     "ProposalShortlist",

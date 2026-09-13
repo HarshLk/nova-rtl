@@ -1,0 +1,50 @@
+{
+  "additionalProperties": false,
+  "description": "One reproducible M6 safety/equivalence gate and its preserved output.",
+  "properties": {
+    "argv": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Argv",
+      "type": "array"
+    },
+    "evidence_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Evidence Id",
+      "type": "string"
+    },
+    "output_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Output Hash",
+      "type": "string"
+    },
+    "output_relative_path": {
+      "minLength": 1,
+      "title": "Output Relative Path",
+      "type": "string"
+    },
+    "output_size_bytes": {
+      "minimum": 0,
+      "title": "Output Size Bytes",
+      "type": "integer"
+    },
+    "passed_test_count": {
+      "exclusiveMinimum": 0,
+      "title": "Passed Test Count",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "evidence_id",
+    "argv",
+    "output_relative_path",
+    "output_hash",
+    "output_size_bytes",
+    "passed_test_count"
+  ],
+  "title": "M6GateEvidence",
+  "type": "object"
+}

@@ -60,6 +60,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Use this verified M4 report as the M5 dependency.",
     )
+    parser.addoption(
+        "--m5-packet",
+        action="store",
+        default=None,
+        help="Use this verified M5 report as the M6 dependency.",
+    )
+    parser.addoption(
+        "--planner-run",
+        action="store",
+        default=None,
+        help="Use this completed M6 planner run for sign-off verification.",
+    )
 
 
 @pytest.fixture
@@ -158,4 +170,26 @@ def m4_packet_path(request: pytest.FixtureRequest) -> Path:
     path = Path(configured).resolve()
     if not path.is_file():
         pytest.fail(f"M4 packet does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def m5_packet_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--m5-packet")
+    if configured is None:
+        pytest.skip("M6 sign-off validation requires --m5-packet")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"M5 packet does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def planner_run_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--planner-run")
+    if configured is None:
+        pytest.skip("M6 sign-off validation requires --planner-run")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"M6 planner run does not exist: {path}")
     return path

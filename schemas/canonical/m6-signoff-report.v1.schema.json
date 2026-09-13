@@ -1,0 +1,276 @@
+{
+  "$defs": {
+    "M6GateEvidence": {
+      "additionalProperties": false,
+      "description": "One reproducible M6 safety/equivalence gate and its preserved output.",
+      "properties": {
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Argv",
+          "type": "array"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "output_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Output Hash",
+          "type": "string"
+        },
+        "output_relative_path": {
+          "minLength": 1,
+          "title": "Output Relative Path",
+          "type": "string"
+        },
+        "output_size_bytes": {
+          "minimum": 0,
+          "title": "Output Size Bytes",
+          "type": "integer"
+        },
+        "passed_test_count": {
+          "exclusiveMinimum": 0,
+          "title": "Passed Test Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "argv",
+        "output_relative_path",
+        "output_hash",
+        "output_size_bytes",
+        "passed_test_count"
+      ],
+      "title": "M6GateEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Commit-bound proof that constrained single-agent planning is safe.",
+  "properties": {
+    "budget_compliance": {
+      "const": true,
+      "title": "Budget Compliance",
+      "type": "boolean"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "context_pack_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Context Pack Hashes",
+      "type": "array"
+    },
+    "fallback_count": {
+      "exclusiveMinimum": 0,
+      "title": "Fallback Count",
+      "type": "integer"
+    },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
+    "input_set_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Set Hash",
+      "type": "string"
+    },
+    "m5_commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M5 Commit Sha",
+      "type": "string"
+    },
+    "m5_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M5 Packet Hash",
+      "type": "string"
+    },
+    "m5_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M5 Report Hash",
+      "type": "string"
+    },
+    "m5_search_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M5 Search Bundle Hash",
+      "type": "string"
+    },
+    "normalized_plan_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Normalized Plan Hashes",
+      "type": "array"
+    },
+    "planner_implementation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Planner Implementation Hash",
+      "type": "string"
+    },
+    "planner_matrix_evidence": {
+      "$ref": "#/$defs/M6GateEvidence"
+    },
+    "planner_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Planner Policy Hash",
+      "type": "string"
+    },
+    "planner_request_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Planner Request Hashes",
+      "type": "array"
+    },
+    "planner_result_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Planner Result Hashes",
+      "type": "array"
+    },
+    "planner_run_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Planner Run Hash",
+      "type": "string"
+    },
+    "proposal_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Proposal Hashes",
+      "type": "array"
+    },
+    "provider_attempt_count": {
+      "exclusiveMinimum": 0,
+      "title": "Provider Attempt Count",
+      "type": "integer"
+    },
+    "provider_response_hash": {
+      "anyOf": [
+        {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Provider Response Hash"
+    },
+    "provider_result_hashes": {
+      "items": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Provider Result Hashes",
+      "type": "array"
+    },
+    "registered_operations": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Registered Operations",
+      "type": "array"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "retrieval_denial_count": {
+      "minimum": 0,
+      "title": "Retrieval Denial Count",
+      "type": "integer"
+    },
+    "retrieval_grant_count": {
+      "minimum": 0,
+      "title": "Retrieval Grant Count",
+      "type": "integer"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    },
+    "validated_planner_modes": {
+      "items": {
+        "enum": [
+          "HEURISTIC",
+          "SINGLE_AGENT",
+          "AGENT_COUNCIL"
+        ],
+        "type": "string"
+      },
+      "title": "Validated Planner Modes",
+      "type": "array"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "implementation_tree_hash",
+    "m5_commit_sha",
+    "m5_packet_hash",
+    "m5_report_hash",
+    "run_id",
+    "m5_search_bundle_hash",
+    "planner_run_hash",
+    "planner_implementation_hash",
+    "planner_policy_hash",
+    "provider_response_hash",
+    "planner_request_hashes",
+    "context_pack_hashes",
+    "provider_result_hashes",
+    "planner_result_hashes",
+    "proposal_hashes",
+    "normalized_plan_hashes",
+    "registered_operations",
+    "validated_planner_modes",
+    "provider_attempt_count",
+    "fallback_count",
+    "retrieval_grant_count",
+    "retrieval_denial_count",
+    "budget_compliance",
+    "planner_matrix_evidence",
+    "input_set_hash",
+    "report_hash"
+  ],
+  "title": "M6SignoffReport",
+  "type": "object"
+}

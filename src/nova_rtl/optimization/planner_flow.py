@@ -127,6 +127,8 @@ class M6PlannerRun(StrictContract):
 
 def _implementation_hash(repository_root: Path) -> str:
     relative_paths = (
+        "src/nova_rtl/contracts/optimization.py",
+        "src/nova_rtl/contracts/planning.py",
         "src/nova_rtl/optimization/planner_flow.py",
         "src/nova_rtl/planner/context.py",
         "src/nova_rtl/planner/evidence.py",

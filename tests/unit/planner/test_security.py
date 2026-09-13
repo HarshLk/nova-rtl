@@ -1,11 +1,16 @@
 from __future__ import annotations
 
 import ast
+import shutil
 from pathlib import Path
 
 import pytest
 
-from nova_rtl.optimization.planner_flow import M6PlannerFlowError, verify_planner_run
+from nova_rtl.optimization.planner_flow import (
+    M6PlannerFlowError,
+    _implementation_hash,
+    verify_planner_run,
+)
 
 
 def test_planner_package_does_not_import_execution_or_process_authority() -> None:
@@ -43,3 +48,14 @@ def test_verifier_rejects_tampered_document_before_dependency_lookup(
 
     with pytest.raises(M6PlannerFlowError, match="planner run is invalid"):
         verify_planner_run(path, repository_root=Path("."))
+
+
+def test_implementation_hash_includes_canonical_planning_contract(tmp_path: Path) -> None:
+    repository = tmp_path / "repository"
+    shutil.copytree(Path("src/nova_rtl"), repository / "src/nova_rtl")
+    before = _implementation_hash(repository)
+
+    contract = repository / "src/nova_rtl/contracts/planning.py"
+    contract.write_text(contract.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+
+    assert _implementation_hash(repository) != before
