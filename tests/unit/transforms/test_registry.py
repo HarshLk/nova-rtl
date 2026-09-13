@@ -41,6 +41,7 @@ def test_registry_resolves_exact_capability_and_validates_parameters() -> None:
 
     assert registry.operations == ("RESTRUCTURE_PRIORITY_MUX",)
     assert registry.resolve("RESTRUCTURE_PRIORITY_MUX") is capability
+    assert registry.get_descriptor("RESTRUCTURE_PRIORITY_MUX") == capability.metadata
     assert registry.validate_parameters(
         "RESTRUCTURE_PRIORITY_MUX", {"preserve_priority": True}
     ) == Parameters(preserve_priority=True)

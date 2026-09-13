@@ -55,6 +55,14 @@ class TransformCapability(Protocol):
     metadata: TransformCapabilityMetadata
     parameter_model: type[BaseModel]
 
+    def match(self, context: BaseModel) -> BaseModel: ...
+
+    def preflight(self, match: BaseModel, parameters: BaseModel) -> None: ...
+
+    def rewrite(self, match: BaseModel, parameters: BaseModel): ...  # type: ignore[no-untyped-def]
+
+    def fingerprint(self, match: BaseModel, parameters: BaseModel) -> str: ...
+
 
 class TransformRegistry:
     """Immutable exact-operation registry with a canonical content identity."""
@@ -99,6 +107,11 @@ class TransformRegistry:
             raise TransformRegistryError(
                 f"transform operation is not registered: {operation}"
             ) from error
+
+    def get_descriptor(self, operation: str) -> TransformCapabilityMetadata:
+        """Return stable policy-facing metadata without exposing implementation state."""
+
+        return self.resolve(operation).metadata
 
     def validate_parameters(
         self, operation: str, parameters: Mapping[str, JsonScalar]
