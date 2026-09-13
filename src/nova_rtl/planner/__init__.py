@@ -7,6 +7,7 @@ from nova_rtl.planner.evidence import (
     InMemoryEvidenceProvider,
     RetrievalAuditRecord,
 )
+from nova_rtl.planner.heuristic import HeuristicPlanner, PlannerIntegrityError
 from nova_rtl.planner.interface import (
     EvidenceProvider,
     Message,
@@ -20,9 +21,11 @@ __all__ = [
     "EvidenceProvider",
     "EvidenceObject",
     "InMemoryEvidenceProvider",
+    "HeuristicPlanner",
     "Message",
     "Planner",
     "PlannerPolicy",
+    "PlannerIntegrityError",
     "StructuredModelProvider",
     "load_planner_policy",
     "build_context",
