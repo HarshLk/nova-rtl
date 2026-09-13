@@ -10,6 +10,7 @@ from nova_rtl.transforms.registry import (
     TransformCapabilityMetadata,
     TransformRegistry,
     TransformRegistryError,
+    competition_mvp_registry,
 )
 
 
@@ -80,3 +81,18 @@ def test_registry_hash_is_order_independent_and_metadata_sensitive() -> None:
     assert first.operations == ("BALANCE_BOOLEAN_TREE", "RESTRUCTURE_PRIORITY_MUX")
     assert first.registry_hash == reordered.registry_hash
     assert first.registry_hash != changed.registry_hash
+
+
+def test_competition_mvp_registry_contains_exactly_four_reviewed_transforms() -> None:
+    registry = competition_mvp_registry()
+
+    assert registry.operations == (
+        "BALANCE_BOOLEAN_TREE",
+        "FACTOR_COMMON_PREDICATE",
+        "FSM_DECODE_RESTRUCTURE",
+        "RESTRUCTURE_PRIORITY_MUX",
+    )
+    assert all(
+        registry.get_descriptor(operation).correctness_contract == "STRICT_SEQ_EQUIV"
+        for operation in registry.operations
+    )
