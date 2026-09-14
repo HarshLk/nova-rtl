@@ -70,6 +70,7 @@ rules:
     <<: *protected
     rule_id: RECOVERY_PROTECTED_STRUCTURE_VIOLATION
     priority: 33
+    required_evidence_kinds: [HISTORY]
   RTL_PARSE_OR_ELAB_FAILURE: &local
     rule_id: RECOVERY_RTL_PARSE_OR_ELAB_FAILURE
     priority: 50
