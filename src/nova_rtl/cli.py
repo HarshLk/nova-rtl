@@ -68,6 +68,11 @@ from nova_rtl.platform.lock import (
 )
 from nova_rtl.platform.signoff import M0SignoffRequest, SignoffError, run_m0_signoff
 from nova_rtl.platform.smoke import SmokeError
+from nova_rtl.recovery.showcase import (
+    PathMigrationRecoveryError,
+    create_path_migration_showcase,
+    inspect_failure,
+)
 from nova_rtl.search.signoff import M5SignoffError, run_m5_signoff, verify_m5_signoff
 from nova_rtl.signoff.m1 import (
     M1SignoffError,
@@ -148,6 +153,12 @@ candidate_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(candidate_app, name="candidate")
+failure_app = typer.Typer(
+    name="failure",
+    help="Inspect deterministic failure and recovery evidence.",
+    no_args_is_help=True,
+)
+app.add_typer(failure_app, name="failure")
 
 
 def _tool_root(
@@ -348,6 +359,7 @@ def optimize(
     stagnation_window: Annotated[
         int, typer.Option("--stagnation-window", min=1)
     ] = 8,
+    recovery: Annotated[str, typer.Option("--recovery")] = "off",
     repository_root: Annotated[
         Path,
         typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
@@ -361,6 +373,8 @@ def optimize(
             raise OptimizationFlowError(
                 "planner must be heuristic or single_agent"
             )
+        if recovery not in {"off", "deterministic"}:
+            raise OptimizationFlowError("--recovery must be off or deterministic")
         if planner.lower() == "heuristic" and provider_response is not None:
             raise OptimizationFlowError(
                 "--provider-response is valid only for single_agent planning"
@@ -414,6 +428,18 @@ def optimize(
                 deterministic_seed=seed,
                 stagnation_window=stagnation_window,
             )
+            recovery_report_path = None
+            recovery_report = None
+            if recovery == "deterministic" and search.candidate_dag.candidates:
+                candidate = search.candidate_dag.candidates[0]
+                recovery_report_path, recovery_report = create_path_migration_showcase(
+                    output_directory=path.parent / "recovery",
+                    run_id=search.run_id,
+                    candidate_id=candidate.candidate_id,
+                    parent_candidate_id=candidate.parent_candidate_id,
+                    source_hash=candidate.source_hash,
+                    search_bundle_hash=search.bundle_hash,
+                )
             if planner.lower() == "single_agent":
                 path, planning = run_single_agent_planning(
                     path,
@@ -441,12 +467,21 @@ def optimize(
                     "valid_negative_candidate_ids": search.valid_negative_candidate_ids,
                     "bundle": str(path),
                     "bundle_hash": search.bundle_hash,
+                    "recovery_report": (
+                        str(recovery_report_path) if recovery_report_path else None
+                    ),
+                    "recovery_decision_id": (
+                        recovery_report.decision.recovery_decision_id
+                        if recovery_report
+                        else None
+                    ),
                 }
     except (
         BaselineFlowError,
         M5SearchFlowError,
         M6PlannerFlowError,
         OptimizationFlowError,
+        PathMigrationRecoveryError,
         OSError,
         ValidationError,
         ValueError,
@@ -456,6 +491,33 @@ def optimize(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA {payload['milestone']} optimization: {payload['status']}: {path}"
+    )
+
+
+@failure_app.command("inspect")
+def failure_inspect(
+    failure_id: Annotated[str, typer.Argument(metavar="FAILURE_ID")],
+    runs_root: Annotated[Path, typer.Option("--runs-root", file_okay=False)] = Path("runs"),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Resolve and verify one deterministic recovery report."""
+
+    try:
+        path, report = inspect_failure(failure_id, runs_root)
+    except (PathMigrationRecoveryError, OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": report.status,
+        "failure_event_id": report.failure.failure_event_id,
+        "failure_family": report.failure.failure_family,
+        "action": report.decision.action,
+        "report": str(path),
+        "report_hash": report.report_hash,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA failure recovery: PASS: {failure_id} -> {report.decision.action}"
     )
 
 

@@ -102,9 +102,17 @@ class CliTests(unittest.TestCase):
         self.assertIn("--formal-budget", _plain_output(optimize.output))
         self.assertIn("--physical-budget", _plain_output(optimize.output))
         self.assertIn("--stagnation-window", _plain_output(optimize.output))
+        self.assertIn("--recovery", _plain_output(optimize.output))
         self.assertEqual(inspect.exit_code, 0, inspect.output)
         self.assertIn("CANDIDATE_ID_OR_BUNDLE", _plain_output(inspect.output))
         self.assertEqual(verify.exit_code, 0, verify.output)
+
+    def test_cli_exposes_m7_failure_inspection(self) -> None:
+        result = self.runner.invoke(app, ["failure", "inspect", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("FAILURE_ID", _plain_output(result.output))
+        self.assertIn("--runs-root", _plain_output(result.output))
 
     def test_cli_exposes_m4_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m4", "signoff", "--help"])
