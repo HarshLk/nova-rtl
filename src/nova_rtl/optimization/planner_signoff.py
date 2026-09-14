@@ -312,6 +312,16 @@ def run_m6_signoff(
 
     root = repository_root.resolve(strict=True)
     run_path = planner_run.resolve(strict=True)
+    destination = run_path.parent / "m6-signoff.json"
+    if destination.is_file():
+        return destination, verify_m6_signoff(
+            destination,
+            planner_run=run_path,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=root,
+        )
     gate = _run_gate(root, run_path.parent / _GATE_RELATIVE_PATH)
     report = _reconstruct(
         run_path,
@@ -321,7 +331,6 @@ def run_m6_signoff(
         repository_root=root,
         gate=gate,
     )
-    destination = run_path.parent / "m6-signoff.json"
     _publish_atomic(destination, canonical_json_bytes(report) + b"\n")
     verify_m6_signoff(
         destination,
@@ -351,12 +360,24 @@ def verify_m6_signoff(
         _verify_gate_evidence(resolved.parent, observed.planner_matrix_evidence)
     except (OSError, UnicodeError, ValueError) as error:
         raise M6SignoffError("M6 sign-off report is missing or invalid") from error
+    root = repository_root.resolve(strict=True)
+    current_commit, _ = _clean_checkpoint(root)
+    if observed.commit_sha != current_commit:
+        frozen, _ = verify_m6_dependency_snapshot(
+            resolved,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=root,
+            descendant_commit=current_commit,
+        )
+        return frozen
     expected = _reconstruct(
         planner_run.resolve(strict=True),
         m5_packet=m5_packet,
         m4_packet=m4_packet,
         m3_packet=m3_packet,
-        repository_root=repository_root.resolve(strict=True),
+        repository_root=root,
         gate=observed.planner_matrix_evidence,
     )
     if observed != expected:
