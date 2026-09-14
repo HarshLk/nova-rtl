@@ -32,6 +32,7 @@ from nova_rtl.contracts.reporting import (
     SearchRequest,
     SearchResult,
 )
+from nova_rtl.recovery.execution import RecoveryApplication
 from nova_rtl.search.dag import CandidateDag
 from nova_rtl.search.pareto import ParetoArchive
 
@@ -194,6 +195,12 @@ class CandidateEvaluator(Protocol):
     async def evaluate(self, candidate: CandidateRecord) -> CandidateEvaluation: ...
 
 
+class RecoveryHandler(Protocol):
+    async def recover(
+        self, candidate: CandidateRecord, evaluation: CandidateEvaluation
+    ) -> RecoveryApplication: ...
+
+
 class DeterministicHeuristicPlanner:
     """Return pre-authorized heuristic proposals in canonical identity order."""
 
@@ -254,6 +261,7 @@ class SearchController:
         ledger: ExperimentLedger,
         artifact_store: ArtifactStore,
         stop_policy: SearchStopPolicy,
+        recovery: RecoveryHandler | None = None,
     ) -> None:
         self._planner = planner
         self._materializer = materializer
@@ -263,6 +271,7 @@ class SearchController:
         self._ledger = ledger
         self._artifact_store = artifact_store
         self._stop_policy = stop_policy
+        self._recovery = recovery
 
     async def run(self, request: SearchRequest) -> SearchResult:
         if request.stop_policy_hash != self._stop_policy.policy_hash:
@@ -314,6 +323,7 @@ class SearchController:
         source_hashes: set[str] = set()
         patch_hashes: set[str] = set()
         artifacts: dict[str, ArtifactRef] = {}
+        recovery_ids: list[str] = []
         budget_exhausted = False
         stopped_by_policy = False
         policy_stop_reason = ""
@@ -347,6 +357,16 @@ class SearchController:
                 raise SearchControllerError(
                     "evaluator cost differs from its pre-execution estimate"
                 )
+            recovery_artifacts: tuple[ArtifactRef, ...] = ()
+            if evaluation.pareto_record is None and self._recovery is not None:
+                application = await self._recovery.recover(candidate, evaluation)
+                if application.experiment_record.candidate_id != candidate.candidate_id:
+                    raise SearchControllerError("recovery returned the wrong candidate identity")
+                evaluation = evaluation.model_copy(
+                    update={"experiment_record": application.experiment_record}
+                )
+                recovery_ids.append(application.recovery_decision_id)
+                recovery_artifacts = application.artifact_refs
             self._ledger.append_record(evaluation.experiment_record)
             if evaluation.pareto_record is not None:
                 prior_frontier = tuple(
@@ -369,7 +389,7 @@ class SearchController:
                     candidates_without_improvement += 1
             else:
                 candidates_without_improvement += 1
-            for ref in evaluation.artifact_refs:
+            for ref in (*evaluation.artifact_refs, *recovery_artifacts):
                 previous = artifacts.get(ref.artifact_id)
                 if previous is not None and previous != ref:
                     raise SearchControllerError(
@@ -470,7 +490,7 @@ class SearchController:
             consumed_budgets=used,
             planner_result_ids=tuple(dict.fromkeys(planner_ids)),
             council_result_ids=tuple(dict.fromkeys(council_ids)),
-            recovery_decision_ids=(),
+            recovery_decision_ids=tuple(dict.fromkeys(recovery_ids)),
             event_sequence_range=(0, len(evaluated_ids)),
             artifact_refs=tuple(artifacts[key] for key in sorted(artifacts)),
             completed_at=request.created_at,
@@ -488,6 +508,7 @@ __all__ = [
     "SearchController",
     "SearchControllerError",
     "SearchPlanner",
+    "RecoveryHandler",
     "SearchStopPolicy",
     "SearchTrace",
 ]

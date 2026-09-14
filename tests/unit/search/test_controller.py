@@ -10,7 +10,14 @@ import pytest
 from nova_rtl.artifacts.ledger import ExperimentLedger
 from nova_rtl.artifacts.store import ArtifactStore
 from nova_rtl.contracts.optimization import CandidateRecord
+from nova_rtl.contracts.recovery import (
+    CandidateFailureFingerprint,
+    FailureEvent,
+    RecoveryDecision,
+    RepairDirective,
+)
 from nova_rtl.contracts.reporting import ExperimentRecord, ParetoRecord, SearchRequest
+from nova_rtl.recovery.execution import apply_recovery
 from nova_rtl.search.controller import (
     CandidateEvaluation,
     DeterministicHeuristicPlanner,
@@ -242,6 +249,7 @@ def _controller(
     evaluator=None,  # type: ignore[no-untyped-def]
     *,
     stop_policy: SearchStopPolicy = STOP_POLICY,
+    recovery=None,  # type: ignore[no-untyped-def]
 ):  # type: ignore[no-untyped-def]
     store = ArtifactStore(tmp_path / "artifacts")
     ledger = ExperimentLedger(tmp_path / "ledger.sqlite3", artifact_store=store)
@@ -260,8 +268,87 @@ def _controller(
         ledger=ledger,
         artifact_store=store,
         stop_policy=stop_policy,
+        recovery=recovery,
     )
     return controller, materializer, archive, dag, ledger
+
+
+class _RejectedEvaluator(_Evaluator):
+    async def evaluate(self, candidate: CandidateRecord) -> CandidateEvaluation:
+        evaluation = await super().evaluate(candidate)
+        return evaluation.model_copy(
+            update={
+                "pareto_record": None,
+                "terminal_disposition": "REJECTED_CORRECTNESS",
+                "experiment_record": evaluation.experiment_record.model_copy(
+                    update={"terminal_disposition": "REJECTED_CORRECTNESS"}
+                ),
+            }
+        )
+
+
+class _RecoveryHandler:
+    def __init__(self, store: ArtifactStore) -> None:
+        self.store = store
+
+    async def recover(self, candidate, evaluation):  # type: ignore[no-untyped-def]
+        failure = FailureEvent.model_construct(
+            failure_event_id=f"failure_{candidate.candidate_id}",
+            candidate_id=candidate.candidate_id,
+        )
+        directive = RepairDirective.model_construct(
+            repair_directive_id=f"directive_{candidate.candidate_id}",
+            failure_event_id=failure.failure_event_id,
+        )
+        semantic = CandidateFailureFingerprint.model_construct(
+            candidate_failure_fingerprint_id=f"candidate_failure_{candidate.candidate_id}",
+            candidate_id=candidate.candidate_id,
+        )
+        decision = RecoveryDecision.model_construct(
+            recovery_decision_id=f"recovery_decision_{candidate.candidate_id}",
+            failure_event_id=failure.failure_event_id,
+            action="REJECT_CANDIDATE",
+        )
+        return apply_recovery(
+            evaluation.experiment_record,
+            failure=failure,
+            directive=directive,
+            fingerprint=semantic,
+            decision=decision,
+            artifact_store=self.store,
+        )
+
+
+def test_nonpass_search_persists_and_indexes_recovery_chain(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    handler = _RecoveryHandler(store)
+    ledger = ExperimentLedger(tmp_path / "ledger.sqlite3", artifact_store=store)
+    controller = SearchController(
+        planner=DeterministicHeuristicPlanner(
+            {"opportunity_a": (_proposal(1),), "opportunity_b": ()}
+        ),
+        materializer=_Materializer(store),
+        evaluator=_RejectedEvaluator(),
+        archive=ParetoArchive(),
+        candidate_dag=CandidateDag("baseline"),
+        ledger=ledger,
+        artifact_store=store,
+        stop_policy=STOP_POLICY,
+        recovery=handler,
+    )
+
+    result = asyncio.run(controller.run(_request()))
+    record = tuple(ledger.iter_records("run_search_001"))[0]
+
+    assert result.recovery_decision_ids == ("recovery_decision_cand_001",)
+    assert record.failure_event_id == "failure_cand_001"
+    assert record.recovery_decision_id == "recovery_decision_cand_001"
+    recovery_artifact = next(
+        item
+        for item in result.artifact_refs
+        if item.artifact_id.startswith("artifact_recovery_chain")
+    )
+    assert store.blob_path(recovery_artifact).read_bytes()
 
 
 def test_search_never_exceeds_executed_candidate_budget(tmp_path: Path) -> None:
