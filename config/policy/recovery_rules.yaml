@@ -1,0 +1,156 @@
+schema_version: 1
+policy_version: m7-recovery-v1
+fingerprint_schema: semantic-failure-v1
+similarity_threshold: 0.85
+wns_progress_epsilon_ns: 0.01
+area_progress_epsilon_percent: 0.10
+repeated_failure_count: 2
+max_recovery_depth: 4
+rules:
+  BASELINE_INPUT_ERROR: &stop
+    rule_id: RECOVERY_BASELINE_INPUT_ERROR
+    priority: 0
+    repairability: NO_RETRY
+    retryable: false
+    severity: CRITICAL
+    allowed_actions: [STOP_RUN_OR_REQUEST_HUMAN]
+    required_evidence_kinds: [HISTORY]
+  ANALYSIS_VIEW_OR_ACTIVITY_MISMATCH:
+    <<: *stop
+    rule_id: RECOVERY_ANALYSIS_VIEW_OR_ACTIVITY_MISMATCH
+    priority: 10
+    required_evidence_kinds: [METRIC]
+  INFRASTRUCTURE_TRANSIENT:
+    rule_id: RECOVERY_INFRASTRUCTURE_TRANSIENT
+    priority: 20
+    repairability: DETERMINISTIC_RETRY
+    retryable: true
+    severity: HIGH
+    allowed_actions: [RETRY_INFRASTRUCTURE, STOP_RUN_OR_REQUEST_HUMAN]
+    required_evidence_kinds: [HISTORY]
+  ADAPTER_OR_PARSER_ERROR:
+    rule_id: RECOVERY_ADAPTER_OR_PARSER_ERROR
+    priority: 21
+    repairability: DETERMINISTIC_RETRY
+    retryable: true
+    severity: HIGH
+    allowed_actions: [CORRECT_EXECUTOR_OUTPUT, STOP_RUN_OR_REQUEST_HUMAN]
+    required_evidence_kinds: [HISTORY]
+  CONSTRAINT_BINDING_DELTA: &protected
+    rule_id: RECOVERY_CONSTRAINT_BINDING_DELTA
+    priority: 30
+    repairability: NO_RETRY
+    retryable: false
+    severity: CRITICAL
+    allowed_actions: [REJECT_CANDIDATE, STOP_RUN_OR_REQUEST_HUMAN]
+    required_evidence_kinds: [BINDING]
+  CDC_INVARIANT_DELTA:
+    <<: *protected
+    rule_id: RECOVERY_CDC_INVARIANT_DELTA
+    priority: 31
+    required_evidence_kinds: [CDC]
+  FORMAL_MODEL_MISMATCH:
+    <<: *stop
+    rule_id: RECOVERY_FORMAL_MODEL_MISMATCH
+    priority: 32
+    required_evidence_kinds: [FORMAL]
+  INVALID_PROPOSAL_SCHEMA:
+    rule_id: RECOVERY_INVALID_PROPOSAL_SCHEMA
+    priority: 40
+    repairability: LOCAL_REVISION
+    retryable: true
+    severity: MEDIUM
+    allowed_actions: [REPAIR_SCHEMA, REJECT_CANDIDATE]
+    required_evidence_kinds: [HISTORY]
+  UNKNOWN_OR_INAPPLICABLE_TRANSFORM:
+    <<: *protected
+    rule_id: RECOVERY_UNKNOWN_OR_INAPPLICABLE_TRANSFORM
+    priority: 41
+  PROTECTED_STRUCTURE_VIOLATION:
+    <<: *protected
+    rule_id: RECOVERY_PROTECTED_STRUCTURE_VIOLATION
+    priority: 33
+  RTL_PARSE_OR_ELAB_FAILURE: &local
+    rule_id: RECOVERY_RTL_PARSE_OR_ELAB_FAILURE
+    priority: 50
+    repairability: LOCAL_REVISION
+    retryable: true
+    severity: HIGH
+    allowed_actions: [NARROW_TRANSFORM_SCOPE, SWITCH_TRANSFORM_FAMILY, REJECT_CANDIDATE]
+    required_evidence_kinds: [SOURCE_SPAN]
+  FAST_SYNTH_STRUCTURAL_FAILURE:
+    <<: *local
+    rule_id: RECOVERY_FAST_SYNTH_STRUCTURAL_FAILURE
+    priority: 51
+    required_evidence_kinds: [CONE]
+  FORMAL_SEMANTIC_FAILURE:
+    <<: *local
+    rule_id: RECOVERY_FORMAL_SEMANTIC_FAILURE
+    priority: 52
+    required_evidence_kinds: [FORMAL]
+  FORMAL_INCONCLUSIVE:
+    <<: *local
+    rule_id: RECOVERY_FORMAL_INCONCLUSIVE
+    priority: 53
+    allowed_actions: [REPARTITION_FORMAL_PROOF, SWITCH_TRANSFORM_FAMILY, REJECT_CANDIDATE]
+    required_evidence_kinds: [FORMAL]
+  TIMING_NO_GAIN: &timing
+    rule_id: RECOVERY_TIMING_NO_GAIN
+    priority: 60
+    repairability: LOCAL_REVISION
+    retryable: true
+    severity: MEDIUM
+    allowed_actions: [LOCAL_PARAMETER_REVISION, SWITCH_TRANSFORM_FAMILY, OPPORTUNITY_REANALYSIS, ABANDON_LINEAGE]
+    required_evidence_kinds: [PATH, METRIC]
+  TIMING_REGRESSION:
+    <<: *timing
+    rule_id: RECOVERY_TIMING_REGRESSION
+    priority: 61
+    allowed_actions: [SWITCH_TRANSFORM_FAMILY, BRANCH_FROM_ALTERNATE_PARENT, REJECT_CANDIDATE]
+  CRITICAL_PATH_MIGRATION:
+    <<: *timing
+    rule_id: RECOVERY_CRITICAL_PATH_MIGRATION
+    priority: 62
+    repairability: OPPORTUNITY_REANALYSIS
+    allowed_actions: [OPPORTUNITY_REANALYSIS, TARGET_NEW_PATH_CLUSTER, ABANDON_LINEAGE]
+  HOLD_REGRESSION:
+    <<: *timing
+    rule_id: RECOVERY_HOLD_REGRESSION
+    priority: 63
+    allowed_actions: [LOCAL_PARAMETER_REVISION, SWITCH_TRANSFORM_FAMILY, REJECT_CANDIDATE]
+  AREA_POLICY_VIOLATION:
+    <<: *timing
+    rule_id: RECOVERY_AREA_POLICY_VIOLATION
+    priority: 64
+    required_evidence_kinds: [METRIC]
+  POWER_POLICY_VIOLATION:
+    <<: *timing
+    rule_id: RECOVERY_POWER_POLICY_VIOLATION
+    priority: 65
+    required_evidence_kinds: [METRIC]
+  PHYSICAL_CORRELATION_MISS:
+    <<: *timing
+    rule_id: RECOVERY_PHYSICAL_CORRELATION_MISS
+    priority: 66
+    repairability: OPPORTUNITY_REANALYSIS
+    allowed_actions: [PHYSICAL_ONLY_RECOMMENDATION, TARGET_NEW_PATH_CLUSTER, ABANDON_LINEAGE]
+    required_evidence_kinds: [PHYSICAL, METRIC]
+  CONGESTION_OR_ROUTABILITY_RISK:
+    <<: *timing
+    rule_id: RECOVERY_CONGESTION_OR_ROUTABILITY_RISK
+    priority: 67
+    required_evidence_kinds: [PHYSICAL]
+  REPEATED_NON_PROGRESS:
+    <<: *timing
+    rule_id: RECOVERY_REPEATED_NON_PROGRESS
+    priority: 5
+    repairability: OPPORTUNITY_REANALYSIS
+    allowed_actions: [TARGET_NEW_PATH_CLUSTER, BRANCH_FROM_ALTERNATE_PARENT, ABANDON_LINEAGE]
+    required_evidence_kinds: [HISTORY, METRIC]
+  VALID_BUT_DOMINATED:
+    <<: *stop
+    rule_id: RECOVERY_VALID_BUT_DOMINATED
+    priority: 70
+    severity: LOW
+    allowed_actions: [ABANDON_LINEAGE]
+    required_evidence_kinds: [METRIC]
