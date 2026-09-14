@@ -85,7 +85,10 @@ def _implementation_hash(repository_root: Path) -> str:
         "src/nova_rtl/recovery/policy.py",
         "src/nova_rtl/recovery/router.py",
         "src/nova_rtl/recovery/safety.py",
+        "src/nova_rtl/recovery/search.py",
         "src/nova_rtl/recovery/showcase.py",
+        "src/nova_rtl/search/controller.py",
+        "src/nova_rtl/optimization/search_flow.py",
         "config/policy/recovery_rules.yaml",
     )
     try:
