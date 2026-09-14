@@ -93,11 +93,14 @@ from nova_rtl.contracts.platform import (
 from nova_rtl.contracts.recovery import (
     CandidateFailureFingerprint,
     FailureEvent,
+    M7GateEvidence,
+    M7SignoffReport,
     RecoveryAdvice,
     RecoveryDecision,
     RecoveryRequest,
     RecoveryRoutePlan,
     RepairDirective,
+    SearchRecoveryReport,
     validate_recovery_authority_chain,
 )
 from nova_rtl.contracts.reporting import (
@@ -138,6 +141,8 @@ __all__ = [
     "M5SignoffReport",
     "M6GateEvidence",
     "M6SignoffReport",
+    "M7GateEvidence",
+    "M7SignoffReport",
     "CDCInventory",
     "CanonicalEnvironmentEntry",
     "CalibrationReport",
@@ -202,6 +207,7 @@ __all__ = [
     "RuntimeEnvironmentEntry",
     "RunEvent",
     "SearchRequest",
+    "SearchRecoveryReport",
     "SearchResult",
     "SignoffEvidenceFile",
     "SmokeTimingView",

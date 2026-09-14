@@ -346,8 +346,12 @@ def run_m4_signoff(
 
     root = repository_root.resolve(strict=True)
     bundle_path = candidate_bundle.resolve(strict=True)
-    report = _reconstruct(bundle_path, m3_packet, root)
     destination = bundle_path.parent / "m4-signoff.json"
+    if destination.is_file():
+        return destination, verify_m4_signoff(
+            destination, m3_packet=m3_packet, repository_root=root
+        )
+    report = _reconstruct(bundle_path, m3_packet, root)
     _publish_atomic(destination, canonical_json_bytes(report))
     verify_m4_signoff(destination, m3_packet=m3_packet, repository_root=root)
     return destination, report
@@ -366,10 +370,20 @@ def verify_m4_signoff(
         observed = M4SignoffReport.model_validate_json(resolved.read_bytes())
     except (OSError, ValueError) as error:
         raise M4SignoffError("M4 sign-off report is missing or invalid") from error
+    root = repository_root.resolve(strict=True)
+    current_commit, _ = _clean_checkpoint(root)
+    if observed.commit_sha != current_commit:
+        frozen, _ = verify_m4_dependency_snapshot(
+            resolved,
+            m3_packet=m3_packet,
+            repository_root=root,
+            descendant_commit=current_commit,
+        )
+        return frozen
     expected = _reconstruct(
         resolved.parent / "candidate-bundle.json",
         m3_packet,
-        repository_root.resolve(strict=True),
+        root,
     )
     if observed != expected:
         raise M4SignoffError("M4 sign-off report differs from reconstructed evidence")

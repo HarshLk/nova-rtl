@@ -440,6 +440,14 @@ def run_m5_signoff(
     root = repository_root.resolve(strict=True)
     bundle_path = search_bundle.resolve(strict=True)
     report_directory = bundle_path.parent
+    destination = report_directory / "m5-signoff.json"
+    if destination.is_file():
+        return destination, verify_m5_signoff(
+            destination,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=root,
+        )
     evidence = _run_formal_matrix(root, report_directory / _GATE_RELATIVE_PATH)
     report = _reconstruct(
         bundle_path,
@@ -448,7 +456,6 @@ def run_m5_signoff(
         repository_root=root,
         formal_evidence=evidence,
     )
-    destination = report_directory / "m5-signoff.json"
     _publish_atomic(destination, canonical_json_bytes(report) + b"\n")
     verify_m5_signoff(
         destination,
@@ -474,11 +481,22 @@ def verify_m5_signoff(
         _verify_formal_matrix_evidence(resolved.parent, observed.formal_matrix_evidence)
     except (OSError, UnicodeError, ValueError) as error:
         raise M5SignoffError("M5 sign-off report is missing or invalid") from error
+    root = repository_root.resolve(strict=True)
+    current_commit, _ = _clean_checkpoint(root)
+    if observed.commit_sha != current_commit:
+        frozen, _ = verify_m5_dependency_snapshot(
+            resolved,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=root,
+            descendant_commit=current_commit,
+        )
+        return frozen
     expected = _reconstruct(
         resolved.parent / "search-bundle.json",
         m4_packet=m4_packet,
         m3_packet=m3_packet,
-        repository_root=repository_root.resolve(strict=True),
+        repository_root=root,
         formal_evidence=observed.formal_matrix_evidence,
     )
     if observed != expected:

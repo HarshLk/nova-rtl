@@ -7,6 +7,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, StringConstraints, model_validator
 
 from nova_rtl.contracts.base import (
+    ArtifactRef,
     EntityId,
     EvidenceRef,
     FiniteFloat,
@@ -474,6 +475,112 @@ class RecoveryDecision(StrictContract):
         return self
 
 
+class SearchRecoveryReport(StrictContract):
+    """One evidence-bound recovery route derived from a completed M5 candidate."""
+
+    schema_version: Literal[1] = 1
+    run_id: EntityId
+    search_bundle_hash: HashRef
+    candidate_bundle_hash: HashRef
+    metric_comparison_hash: HashRef
+    source_hash: HashRef
+    evidence_artifacts: tuple[ArtifactRef, ...] = Field(min_length=1)
+    failure: FailureEvent
+    directive: RepairDirective
+    fingerprint: CandidateFailureFingerprint
+    route_plan: RecoveryRoutePlan
+    request: RecoveryRequest
+    decision: RecoveryDecision
+    recovery_outcome: Literal["ROUTED"] = "ROUTED"
+    status: Literal["PASS"] = "PASS"
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def evidence_authority_and_hash_resolve(self) -> Self:
+        if self.failure.run_id != self.run_id:
+            raise ValueError("search recovery run identity differs")
+        if self.failure.candidate_id != self.fingerprint.candidate_id:
+            raise ValueError("search recovery candidate identity differs")
+        if {
+            item.evidence_id: item for item in self.failure.primary_evidence_refs
+        } != {item.evidence_id: item for item in self.directive.evidence_refs}:
+            raise ValueError("search recovery directive evidence differs")
+        artifact_ids = {item.artifact_id for item in self.evidence_artifacts}
+        if any(
+            item.artifact_id not in artifact_ids
+            for item in self.failure.primary_evidence_refs
+        ):
+            raise ValueError("search recovery evidence artifact does not resolve")
+        if self.route_plan != self.request.route_plan:
+            raise ValueError("search recovery route plan differs")
+        validate_recovery_authority_chain(
+            failure_event=self.failure,
+            repair_directive=self.directive,
+            request=self.request,
+            decision=self.decision,
+        )
+        expected = canonical_sha256(self, exclude=frozenset({"report_hash"}))
+        if self.report_hash != expected:
+            raise ValueError("search recovery report hash is not canonical")
+        return self
+
+
+class M7GateEvidence(StrictContract):
+    """One reproducible deterministic-recovery gate and its preserved output."""
+
+    evidence_id: EntityId
+    argv: tuple[NonEmptyString, ...] = Field(min_length=1)
+    output_relative_path: NonEmptyString
+    output_hash: HashRef
+    output_size_bytes: NonNegativeInt
+    passed_test_count: int = Field(strict=True, gt=0)
+
+
+class M7SignoffReport(StrictContract):
+    """Commit-bound proof of bounded deterministic failure recovery."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    implementation_tree_hash: Annotated[
+        str, StringConstraints(pattern=r"^[0-9a-f]{40}$")
+    ]
+    m6_commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    m6_packet_hash: HashRef
+    m6_report_hash: HashRef
+    run_id: EntityId
+    search_bundle_hash: HashRef
+    source_hash: HashRef
+    recovery_policy_hash: HashRef
+    recovery_implementation_hash: HashRef
+    path_migration_report_hash: HashRef
+    failure_event_hash: HashRef
+    repair_directive_hash: HashRef
+    candidate_failure_fingerprint_hash: HashRef
+    recovery_decision_hash: HashRef
+    failure_family: Literal["CRITICAL_PATH_MIGRATION"]
+    recovery_action: Literal["OPPORTUNITY_REANALYSIS", "TARGET_NEW_PATH_CLUSTER"]
+    next_target_cone_fingerprint: Fingerprint
+    next_operation_family: StableUpperString
+    deterministic_only: Literal[True]
+    safety_matrix_evidence: M7GateEvidence
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def milestone_is_complete_and_self_hashed(self) -> Self:
+        payload = {
+            key: value
+            for key, value in self.model_dump(mode="python").items()
+            if key not in {"schema_version", "status", "input_set_hash", "report_hash"}
+        }
+        if self.input_set_hash != canonical_sha256(payload):
+            raise ValueError("M7 input_set_hash differs from sign-off evidence")
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
+            raise ValueError("M7 report_hash is not canonical")
+        return self
+
+
 def validate_recovery_authority_chain(
     *,
     failure_event: FailureEvent,
@@ -604,9 +711,12 @@ def validate_recovery_authority_chain(
 __all__ = [
     "CandidateFailureFingerprint",
     "FailureEvent",
+    "M7GateEvidence",
+    "M7SignoffReport",
     "RecoveryAdvice",
     "RecoveryDecision",
     "RecoveryRequest",
+    "SearchRecoveryReport",
     "RecoveryRoutePlan",
     "RepairDirective",
     "validate_recovery_authority_chain",
