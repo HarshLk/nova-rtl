@@ -15,10 +15,12 @@ from typing import Any
 
 from nova_rtl.contracts.base import StrictContract, canonical_json_bytes, canonical_sha256
 from nova_rtl.contracts.recovery import M7GateEvidence, M7SignoffReport
+from nova_rtl.contracts.reporting import M5SignoffReport
 from nova_rtl.optimization.planner_signoff import (
     M6SignoffError,
     verify_m6_dependency_snapshot,
 )
+from nova_rtl.optimization.search_flow import M5SearchBundle
 from nova_rtl.recovery.showcase import (
     PathMigrationRecoveryError,
     verify_path_migration_showcase,
@@ -140,6 +142,24 @@ def _publish_atomic(destination: Path, content: bytes) -> None:
             temporary_path.unlink(missing_ok=True)
 
 
+def _publish_immutable(destination: Path, content: bytes) -> None:
+    if destination.exists():
+        if destination.read_bytes() != content:
+            raise M7SignoffError(f"immutable M7 evidence differs: {destination}")
+        return
+    _publish_atomic(destination, content)
+
+
+def _normalize_gate_output(output: bytes) -> bytes:
+    decoded = output.decode("utf-8", errors="strict")
+    normalized = re.sub(
+        r"(?m)(\d+ passed(?:, \d+ skipped)?)(?: in [0-9.]+s)?$",
+        r"\1 in <elapsed>",
+        decoded,
+    )
+    return normalized.encode("utf-8")
+
+
 def _run_gate(repository_root: Path, destination: Path) -> M7GateEvidence:
     argv = _recovery_matrix_argv()
     completed = subprocess.run(
@@ -158,17 +178,18 @@ def _run_gate(repository_root: Path, destination: Path) -> M7GateEvidence:
         text=False,
         timeout=300,
     )
-    output = completed.stdout + completed.stderr
+    raw_output = completed.stdout + completed.stderr
     if completed.returncode != 0:
         raise M7SignoffError(
             "M7 recovery safety matrix failed: "
-            + output.decode("utf-8", errors="replace")[-2000:]
+            + raw_output.decode("utf-8", errors="replace")[-2000:]
         )
+    output = _normalize_gate_output(raw_output)
     decoded = output.decode("utf-8", errors="strict")
     matches = re.findall(r"(?:^|\s)(\d+) passed(?:,|\s|$)", decoded)
     if len(matches) != 1 or int(matches[0]) < 1:
         raise M7SignoffError("M7 recovery safety matrix lacks one passing count")
-    _publish_atomic(destination, output)
+    _publish_immutable(destination, output)
     return M7GateEvidence(
         evidence_id=_GATE_EVIDENCE_ID,
         argv=argv,
@@ -223,6 +244,26 @@ def _build_report(
         )
     except (M6SignoffError, PathMigrationRecoveryError, OSError, ValueError) as error:
         raise M7SignoffError("M7 dependency reconstruction failed") from error
+    try:
+        m5 = M5SignoffReport.model_validate_json(m5_packet.read_bytes())
+        m5_bundle = M5SearchBundle.model_validate_json(
+            (m5_packet.parent / "search-bundle.json").read_bytes()
+        )
+        candidate = next(
+            item
+            for item in m5_bundle.candidate_dag.candidates
+            if item.candidate_id == recovery.failure.candidate_id
+        )
+    except (OSError, StopIteration, ValueError) as error:
+        raise M7SignoffError("M7 path-migration lineage cannot resolve in M5") from error
+    if (
+        m5.search_bundle_hash != m5_bundle.bundle_hash
+        or recovery.search_bundle_hash != m5_bundle.bundle_hash
+        or recovery.run_id != m5_bundle.run_id
+        or recovery.failure.candidate_id not in m5.valid_negative_candidate_ids
+        or recovery.source_hash != candidate.source_hash
+    ):
+        raise M7SignoffError("M7 path-migration report differs from trusted M5 lineage")
     payload = {
         "schema_version": 1,
         "status": "PASS",
@@ -288,7 +329,7 @@ def run_m7_signoff(
         implementation_tree_hash=tree,
     )
     destination = recovery_path.parent / "m7-signoff.json"
-    _publish_atomic(destination, canonical_json_bytes(report) + b"\n")
+    _publish_immutable(destination, canonical_json_bytes(report) + b"\n")
     verify_m7_signoff(
         destination,
         path_migration_report=recovery_path,

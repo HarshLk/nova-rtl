@@ -52,6 +52,17 @@ def test_infrastructure_retry_cannot_mutate_rtl() -> None:
         )
 
 
+@pytest.mark.parametrize("action", ["REPAIR_SCHEMA", "CORRECT_EXECUTOR_OUTPUT"])
+def test_schema_and_executor_repair_cannot_mutate_rtl(action: str) -> None:
+    authorization = authorize_recovery_materialization(
+        _decision(action),
+        current_source_hash=SNAPSHOT,
+        requested_source_hash=SNAPSHOT,
+    )
+
+    assert not authorization.creates_child_snapshot
+
+
 @pytest.mark.parametrize("action", ["REJECT_CANDIDATE", "STOP_RUN_OR_REQUEST_HUMAN"])
 def test_protected_terminal_actions_never_create_child(action: str) -> None:
     authorization = authorize_recovery_materialization(

@@ -104,3 +104,31 @@ def test_progress_or_different_failure_breaks_stagnation() -> None:
         area_change_percent=0.02,
         policy=_policy(),
     )
+
+
+def test_formal_counterexample_and_metric_response_are_semantic_boundaries() -> None:
+    first = fingerprint(
+        _candidate("candidate_one"),
+        _failure("FORMAL_SEMANTIC_FAILURE"),
+        _evidence(
+            formal_counterexample_fingerprint="counterexample:v1:first",
+            metric_response_class="FORMAL_FAILURE",
+        ),
+    )
+    different_counterexample = fingerprint(
+        _candidate("candidate_two"),
+        _failure("FORMAL_SEMANTIC_FAILURE"),
+        _evidence(
+            formal_counterexample_fingerprint="counterexample:v1:second",
+            metric_response_class="FORMAL_FAILURE",
+        ),
+    )
+    different_response = fingerprint(
+        _candidate("candidate_three"),
+        _failure(),
+        _evidence(metric_response_class="AREA_REGRESSION"),
+    )
+    timing = fingerprint(_candidate("candidate_four"), _failure(), _evidence())
+
+    assert semantic_similarity(first, different_counterexample) < 0.85
+    assert semantic_similarity(timing, different_response) < 0.85

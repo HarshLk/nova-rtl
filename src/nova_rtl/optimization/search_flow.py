@@ -6,6 +6,7 @@ import asyncio
 import os
 import shutil
 from collections.abc import Sequence
+from datetime import UTC, datetime
 from hashlib import sha256
 from pathlib import Path
 from tempfile import mkdtemp
@@ -18,6 +19,7 @@ from nova_rtl.artifacts.store import ArtifactStore, ArtifactStoreError
 from nova_rtl.baseline.flow import BaselineRunIndex, load_run_index
 from nova_rtl.contracts.base import (
     EntityId,
+    EvidenceRef,
     HashRef,
     MetricSet,
     StrictContract,
@@ -27,6 +29,7 @@ from nova_rtl.contracts.base import (
 from nova_rtl.contracts.benchmark import BenchmarkSnapshot
 from nova_rtl.contracts.execution import StageResult
 from nova_rtl.contracts.optimization import CandidateRecord, StableUpperString
+from nova_rtl.contracts.recovery import FailureEvent
 from nova_rtl.contracts.reporting import ExperimentRecord, ParetoRecord, SearchRequest, SearchResult
 from nova_rtl.evaluation.metrics import ComparableMetrics, MetricDelta, compare_metrics
 from nova_rtl.evidence.opportunities import RankedOpportunitySet
@@ -37,6 +40,15 @@ from nova_rtl.optimization.flow import (
     _load_m3_authority,
     optimize_strict_vertical_slice,
     verify_candidate_bundle,
+)
+from nova_rtl.recovery.compiler import compile_directive
+from nova_rtl.recovery.execution import apply_recovery
+from nova_rtl.recovery.fingerprint import FingerprintEvidence, fingerprint
+from nova_rtl.recovery.policy import load_recovery_policy
+from nova_rtl.recovery.router import (
+    RecoveryBudgets,
+    RecoveryHistory,
+    route_recovery_envelope,
 )
 from nova_rtl.search.controller import (
     CandidateEvaluation,
@@ -351,6 +363,146 @@ class _Evaluator:
         self._planned = plans
 
 
+class _M7RecoveryHandler:
+    """Translate real valid-negative M5 comparisons into persisted M7 authority."""
+
+    def __init__(
+        self,
+        *,
+        comparisons: dict[str, tuple[MetricDelta, ParetoRecord]],
+        plans: tuple[PlannedCandidate, ...],
+        artifact_store: ArtifactStore,
+        repository_root: Path,
+    ) -> None:
+        self._comparisons = comparisons
+        self._plans = {item.proposal_id: item for item in plans}
+        self._store = artifact_store
+        self._policy = load_recovery_policy(
+            repository_root / "config/policy/recovery_rules.yaml"
+        )
+
+    async def recover(
+        self, candidate: CandidateRecord, evaluation: CandidateEvaluation
+    ):
+        delta = self._comparisons[candidate.candidate_id][0]
+        setup_delta = delta.metric_deltas.get("setup_wns_ns", 0.0)
+        hold_delta = delta.metric_deltas.get("hold_wns_ns", 0.0)
+        baseline_area = delta.baseline_vector.get("physical_area_um2", 0.0)
+        area_delta = delta.metric_deltas.get("physical_area_um2", 0.0)
+        if setup_delta < 0.0:
+            family = "TIMING_REGRESSION"
+        elif hold_delta < 0.0:
+            family = "HOLD_REGRESSION"
+        elif baseline_area > 0.0 and 100.0 * area_delta / baseline_area > 0.10:
+            family = "AREA_POLICY_VIOLATION"
+        else:
+            family = "TIMING_NO_GAIN"
+        rule = self._policy.rules[family]
+        evidence_content = canonical_json_bytes(
+            {
+                "candidate_id": candidate.candidate_id,
+                "source_hash": candidate.source_hash,
+                "metric_comparison": delta.model_dump(mode="json"),
+                "terminal_disposition": evaluation.terminal_disposition,
+            }
+        )
+        evidence_artifact = self._store.put_named_bytes(
+            evidence_content,
+            artifact_id="artifact_recovery_metrics_"
+            + delta.comparison_hash.removeprefix("sha256:")[:20],
+            media_type="application/json",
+            classification="INTERNAL",
+            producer_stage_result_id=None,
+        ).model_copy(update={"created_at": candidate.created_at})
+        evidence = tuple(
+            EvidenceRef(
+                evidence_id=f"evidence_{kind.lower()}_"
+                + delta.comparison_hash.removeprefix("sha256:")[:16],
+                kind=kind,
+                artifact_id=evidence_artifact.artifact_id,
+                json_pointer=f"/metric_comparison/{kind.lower()}",
+                snapshot_hash=candidate.source_hash,
+            )
+            for kind in rule.required_evidence_kinds
+        )
+        failure = FailureEvent(
+            failure_event_id="failure_search_"
+            + canonical_sha256(
+                {
+                    "candidate": candidate.candidate_id,
+                    "comparison": delta.comparison_hash,
+                    "family": family,
+                }
+            ).removeprefix("sha256:")[:20],
+            run_id=candidate.run_id,
+            subject_type="CANDIDATE",
+            subject_id=candidate.candidate_id,
+            candidate_id=candidate.candidate_id,
+            proposal_id=candidate.proposal_id,
+            parent_candidate_id=candidate.parent_candidate_id,
+            opportunity_id=candidate.opportunity_id,
+            failed_stage="OPENROAD_PHYSICAL",
+            analysis_view_id="asap7_setup",
+            failure_family=family,
+            failure_scope="CANDIDATE",
+            repairability=rule.repairability,
+            severity=rule.severity,
+            retryable=rule.retryable,
+            constraint_hash_verified=True,
+            analysis_view_hash_verified=True,
+            constraint_binding_status="EQUIVALENT",
+            protected_structure_status="UNCHANGED",
+            metric_delta=dict(sorted(delta.metric_deltas.items())),
+            primary_evidence_refs=evidence,
+            raw_stage_result_ref="stage_search_metric_comparison",
+            classifier_version="m7-search-outcome-v1",
+        )
+        directive = compile_directive(failure, evidence, self._policy)
+        planned = self._plans[candidate.proposal_id]
+        descriptor = competition_mvp_registry().get_descriptor(planned.operation)
+        semantic = fingerprint(
+            candidate,
+            failure,
+            FingerprintEvidence(
+                target_cone_fingerprint=f"cone:v1:{candidate.opportunity_id}",
+                operation_family=descriptor.family,
+                operation=planned.operation,
+                parameters={},
+                ast_delta_tokens=tuple(candidate.changed_spans),
+                mapped_delta_tokens=(family.lower(),),
+                ancestor_lineage=(candidate.parent_candidate_id,),
+                formal_counterexample_fingerprint=None,
+                metric_response_class=family,
+            ),
+        )
+        envelope = route_recovery_envelope(
+            failure,
+            directive,
+            RecoveryHistory(current_transform_family=descriptor.family),
+            RecoveryBudgets(
+                remaining_family_budget=1,
+                remaining_lineage_budget=4,
+                remaining_token_budget=0,
+                remaining_latency_budget_ms=1000,
+                deadline=datetime(2100, 1, 1, tzinfo=UTC),
+            ),
+            policy=self._policy,
+            candidate_failure_fingerprint_ids=(
+                semantic.candidate_failure_fingerprint_id,
+            ),
+        )
+        return apply_recovery(
+            evaluation.experiment_record,
+            failure=failure,
+            directive=directive,
+            fingerprint=semantic,
+            route_plan=envelope.route_plan,
+            request=envelope.request,
+            decision=envelope.decision,
+            artifact_store=self._store,
+        )
+
+
 def _planned_candidates(
     *,
     ranked: RankedOpportunitySet,
@@ -566,6 +718,12 @@ def run_deterministic_search(
                 ledger=ledger,
                 artifact_store=parent_store,
                 stop_policy=stop_policy,
+                recovery=_M7RecoveryHandler(
+                    comparisons=comparisons,
+                    plans=planned,
+                    artifact_store=parent_store,
+                    repository_root=repository_root,
+                ),
             ).run(request)
         )
         if not result.ordered_candidate_ids or result.selected_candidate_id is None:

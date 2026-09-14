@@ -9,15 +9,21 @@ import pytest
 
 from nova_rtl.artifacts.ledger import ExperimentLedger
 from nova_rtl.artifacts.store import ArtifactStore
+from nova_rtl.contracts.base import EvidenceRef
 from nova_rtl.contracts.optimization import CandidateRecord
 from nova_rtl.contracts.recovery import (
-    CandidateFailureFingerprint,
     FailureEvent,
-    RecoveryDecision,
-    RepairDirective,
 )
 from nova_rtl.contracts.reporting import ExperimentRecord, ParetoRecord, SearchRequest
+from nova_rtl.recovery.compiler import compile_directive
 from nova_rtl.recovery.execution import apply_recovery
+from nova_rtl.recovery.fingerprint import FingerprintEvidence, fingerprint
+from nova_rtl.recovery.policy import load_recovery_policy
+from nova_rtl.recovery.router import (
+    RecoveryBudgets,
+    RecoveryHistory,
+    route_recovery_envelope,
+)
 from nova_rtl.search.controller import (
     CandidateEvaluation,
     DeterministicHeuristicPlanner,
@@ -292,29 +298,81 @@ class _RecoveryHandler:
         self.store = store
 
     async def recover(self, candidate, evaluation):  # type: ignore[no-untyped-def]
-        failure = FailureEvent.model_construct(
+        policy = load_recovery_policy(
+            Path(__file__).resolve().parents[3] / "config/policy/recovery_rules.yaml"
+        )
+        evidence = EvidenceRef(
+            evidence_id=f"evidence_{candidate.candidate_id}",
+            kind="METRIC",
+            artifact_id=candidate.patch_artifact.artifact_id,
+            json_pointer="/terminal_disposition",
+            snapshot_hash=candidate.source_hash,
+        )
+        failure = FailureEvent(
             failure_event_id=f"failure_{candidate.candidate_id}",
+            run_id=candidate.run_id,
+            subject_type="CANDIDATE",
+            subject_id=candidate.candidate_id,
             candidate_id=candidate.candidate_id,
+            proposal_id=candidate.proposal_id,
+            parent_candidate_id=candidate.parent_candidate_id,
+            opportunity_id=candidate.opportunity_id,
+            failed_stage="OPENROAD_PHYSICAL",
+            analysis_view_id="asap7_setup",
+            failure_family="AREA_POLICY_VIOLATION",
+            failure_scope="CANDIDATE",
+            repairability="LOCAL_REVISION",
+            severity="MEDIUM",
+            retryable=True,
+            constraint_hash_verified=True,
+            analysis_view_hash_verified=True,
+            constraint_binding_status="EQUIVALENT",
+            protected_structure_status="UNCHANGED",
+            metric_delta={"physical_area_um2_delta": 1.0},
+            primary_evidence_refs=(evidence,),
+            raw_stage_result_ref="stage_rejected_candidate",
+            classifier_version="m7-classifier-v1",
         )
-        directive = RepairDirective.model_construct(
-            repair_directive_id=f"directive_{candidate.candidate_id}",
-            failure_event_id=failure.failure_event_id,
+        directive = compile_directive(failure, (evidence,), policy)
+        semantic = fingerprint(
+            candidate,
+            failure,
+            FingerprintEvidence(
+                target_cone_fingerprint="cone:v1:search",
+                operation_family="LOGIC_RESTRUCTURE",
+                operation="RESTRUCTURE_PRIORITY_MUX",
+                parameters={},
+                ast_delta_tokens=(candidate.transform_fingerprint,),
+                mapped_delta_tokens=("area_growth",),
+                ancestor_lineage=(candidate.parent_candidate_id,),
+                formal_counterexample_fingerprint=None,
+                metric_response_class="AREA_GROWTH",
+            ),
         )
-        semantic = CandidateFailureFingerprint.model_construct(
-            candidate_failure_fingerprint_id=f"candidate_failure_{candidate.candidate_id}",
-            candidate_id=candidate.candidate_id,
-        )
-        decision = RecoveryDecision.model_construct(
-            recovery_decision_id=f"recovery_decision_{candidate.candidate_id}",
-            failure_event_id=failure.failure_event_id,
-            action="REJECT_CANDIDATE",
+        envelope = route_recovery_envelope(
+            failure,
+            directive,
+            RecoveryHistory(current_transform_family="LOGIC_RESTRUCTURE"),
+            RecoveryBudgets(
+                remaining_family_budget=1,
+                remaining_lineage_budget=2,
+                remaining_token_budget=0,
+                remaining_latency_budget_ms=1000,
+                deadline=datetime(2100, 1, 1, tzinfo=UTC),
+            ),
+            policy=policy,
+            candidate_failure_fingerprint_ids=(
+                semantic.candidate_failure_fingerprint_id,
+            ),
         )
         return apply_recovery(
             evaluation.experiment_record,
             failure=failure,
             directive=directive,
             fingerprint=semantic,
-            decision=decision,
+            route_plan=envelope.route_plan,
+            request=envelope.request,
+            decision=envelope.decision,
             artifact_store=self.store,
         )
 
@@ -340,15 +398,46 @@ def test_nonpass_search_persists_and_indexes_recovery_chain(tmp_path: Path) -> N
     result = asyncio.run(controller.run(_request()))
     record = tuple(ledger.iter_records("run_search_001"))[0]
 
-    assert result.recovery_decision_ids == ("recovery_decision_cand_001",)
+    assert len(result.recovery_decision_ids) == 1
     assert record.failure_event_id == "failure_cand_001"
-    assert record.recovery_decision_id == "recovery_decision_cand_001"
+    assert record.recovery_decision_id == result.recovery_decision_ids[0]
     recovery_artifact = next(
         item
         for item in result.artifact_refs
         if item.artifact_id.startswith("artifact_recovery_chain")
     )
     assert store.blob_path(recovery_artifact).read_bytes()
+
+
+class _ValidNegativeEvaluator(_Evaluator):
+    async def evaluate(self, candidate: CandidateRecord) -> CandidateEvaluation:
+        evaluation = await super().evaluate(candidate)
+        return evaluation.model_copy(
+            update={"terminal_disposition": "VALID_NEGATIVE_RESULT"}
+        )
+
+
+def test_valid_negative_pareto_candidate_is_routed_to_recovery(tmp_path: Path) -> None:
+    store = ArtifactStore(tmp_path / "artifacts")
+    handler = _RecoveryHandler(store)
+    controller = SearchController(
+        planner=DeterministicHeuristicPlanner(
+            {"opportunity_a": (_proposal(1),), "opportunity_b": ()}
+        ),
+        materializer=_Materializer(store),
+        evaluator=_ValidNegativeEvaluator(),
+        archive=ParetoArchive(),
+        candidate_dag=CandidateDag("baseline"),
+        ledger=ExperimentLedger(tmp_path / "ledger.sqlite3", artifact_store=store),
+        artifact_store=store,
+        stop_policy=STOP_POLICY,
+        recovery=handler,
+    )
+
+    result = asyncio.run(controller.run(_request()))
+
+    assert len(result.recovery_decision_ids) == 1
+    assert result.feasible_candidate_ids == ("cand_001",)
 
 
 def test_search_never_exceeds_executed_candidate_budget(tmp_path: Path) -> None:

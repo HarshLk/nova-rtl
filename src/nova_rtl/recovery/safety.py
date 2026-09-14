@@ -25,6 +25,16 @@ class RecoveryMaterializationAuthorization(StrictContract):
     status: Literal["AUTHORIZED"] = "AUTHORIZED"
 
 
+NON_RTL_ACTIONS: frozenset[RecoveryAction] = frozenset(
+    {
+        "RETRY_INFRASTRUCTURE",
+        "REPAIR_SCHEMA",
+        "CORRECT_EXECUTOR_OUTPUT",
+        "REPARTITION_FORMAL_PROOF",
+    }
+)
+
+
 def validate_recovery_evidence(
     failure: FailureEvent,
     directive: RepairDirective,
@@ -53,9 +63,11 @@ def authorize_recovery_materialization(
 ) -> RecoveryMaterializationAuthorization:
     """Ensure infrastructure and terminal routes cannot create an RTL child."""
 
-    if decision.action == "RETRY_INFRASTRUCTURE":
+    if decision.action in NON_RTL_ACTIONS:
         if requested_source_hash != current_source_hash:
-            raise RecoverySafetyError("infrastructure retry requires identical RTL source hash")
+            raise RecoverySafetyError(
+                "non-RTL recovery action requires identical RTL source hash"
+            )
         return RecoveryMaterializationAuthorization(
             action=decision.action,
             creates_child_snapshot=False,

@@ -100,6 +100,7 @@ from nova_rtl.contracts.recovery import (
     RecoveryRequest,
     RecoveryRoutePlan,
     RepairDirective,
+    SearchRecoveryReport,
     validate_recovery_authority_chain,
 )
 from nova_rtl.contracts.reporting import (
@@ -206,6 +207,7 @@ __all__ = [
     "RuntimeEnvironmentEntry",
     "RunEvent",
     "SearchRequest",
+    "SearchRecoveryReport",
     "SearchResult",
     "SignoffEvidenceFile",
     "SmokeTimingView",

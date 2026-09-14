@@ -84,6 +84,7 @@ EXPECTED_SCHEMA_FILES = {
     "role-context-pack.v1.schema.json",
     "run-event.v1.schema.json",
     "search-request.v1.schema.json",
+    "search-recovery-report.v1.schema.json",
     "search-result.v1.schema.json",
     "stage-input-hashes.v1.schema.json",
     "stage-result.v2.schema.json",

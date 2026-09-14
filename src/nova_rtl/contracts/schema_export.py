@@ -83,6 +83,7 @@ from nova_rtl.contracts.recovery import (
     RecoveryRequest,
     RecoveryRoutePlan,
     RepairDirective,
+    SearchRecoveryReport,
 )
 from nova_rtl.contracts.reporting import (
     ExperimentRecord,
@@ -186,6 +187,7 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "recovery-request": SchemaRegistration(RecoveryRequest, version=1),
     "recovery-advice": SchemaRegistration(RecoveryAdvice, version=1),
     "recovery-decision": SchemaRegistration(RecoveryDecision, version=1),
+    "search-recovery-report": SchemaRegistration(SearchRecoveryReport, version=1),
     "m7-gate-evidence": SchemaRegistration(M7GateEvidence, version=1),
     "m7-signoff-report": SchemaRegistration(M7SignoffReport, version=1),
     "experiment-record": SchemaRegistration(ExperimentRecord, version=1),

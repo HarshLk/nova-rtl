@@ -8,6 +8,7 @@ from nova_rtl.optimization.search_flow import (
     run_deterministic_search,
     verify_deterministic_search,
 )
+from nova_rtl.recovery.search import recover_search_bundle, verify_search_recovery
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 
@@ -57,3 +58,14 @@ def test_deterministic_small_search_is_replayable(completed_run_path: Path) -> N
     assert first.valid_negative_candidate_ids
     assert first.candidate_dag.dag_hash == second.candidate_dag.dag_hash
     assert first.pareto_archive.archive_hash == second.pareto_archive.archive_hash
+
+    recovery_path, recovery = recover_search_bundle(
+        first_path, repository_root=PROJECT_ROOT
+    )
+    replayed_recovery = verify_search_recovery(
+        recovery_path, repository_root=PROJECT_ROOT
+    )
+    assert recovery.failure.candidate_id in first.valid_negative_candidate_ids
+    assert recovery.search_bundle_hash == first.bundle_hash
+    assert recovery.recovery_outcome == "ROUTED"
+    assert recovery.report_hash == replayed_recovery.report_hash

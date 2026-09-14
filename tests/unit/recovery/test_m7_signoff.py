@@ -47,3 +47,11 @@ def test_m7_input_hash_normalizes_nested_contracts() -> None:
     )
 
     assert first == second
+
+
+def test_gate_output_normalization_removes_elapsed_time_only() -> None:
+    first = b"................................ [100%]\n40 passed in 1.21s\n"
+    second = b"................................ [100%]\n40 passed in 2.87s\n"
+
+    assert signoff._normalize_gate_output(first) == signoff._normalize_gate_output(second)
+    assert b"40 passed" in signoff._normalize_gate_output(first)

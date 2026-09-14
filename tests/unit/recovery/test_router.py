@@ -118,3 +118,30 @@ def test_advice_cannot_escape_deterministic_action_envelope() -> None:
             advice=advice,
             policy=_policy(),
         )
+
+
+def test_human_review_classification_cannot_route_automatic_repair() -> None:
+    failure = _failure("ADAPTER_OR_PARSER_ERROR").model_copy(
+        update={"repairability": "HUMAN_REVIEW", "retryable": False}
+    )
+    decision = route_recovery(
+        failure,
+        _directive("ADAPTER_OR_PARSER_ERROR"),
+        RecoveryHistory(),
+        _budgets(),
+        policy=_policy(),
+    )
+
+    assert decision.action == "STOP_RUN_OR_REQUEST_HUMAN"
+
+
+def test_exhausted_family_budget_skips_same_family_revision() -> None:
+    decision = route_recovery(
+        _failure("TIMING_NO_GAIN"),
+        _directive("TIMING_NO_GAIN"),
+        RecoveryHistory(),
+        _budgets(remaining_family_budget=0),
+        policy=_policy(),
+    )
+
+    assert decision.action == "OPPORTUNITY_REANALYSIS"

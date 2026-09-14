@@ -7,6 +7,7 @@ import pytest
 from nova_rtl.contracts.base import Diagnostic
 from nova_rtl.contracts.execution import StageResult
 from nova_rtl.recovery.classifier import ClassificationError, classify
+from nova_rtl.recovery.compiler import compile_directive
 from nova_rtl.recovery.policy import load_recovery_policy
 
 
@@ -96,3 +97,16 @@ def test_classifier_rejects_passing_stage() -> None:
             None,
             _policy(),
         )
+
+
+def test_timing_classifier_emits_complete_compiler_evidence() -> None:
+    policy = _policy()
+    event = classify(
+        _stage(stage="OPENSTA_FULL", status="FAIL", code="TIMING_NO_GAIN"),
+        None,
+        None,
+        policy,
+    )
+
+    assert {item.kind for item in event.primary_evidence_refs} == {"PATH", "METRIC"}
+    assert compile_directive(event, event.primary_evidence_refs, policy)

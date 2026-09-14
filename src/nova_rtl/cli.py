@@ -68,9 +68,9 @@ from nova_rtl.platform.lock import (
 )
 from nova_rtl.platform.signoff import M0SignoffRequest, SignoffError, run_m0_signoff
 from nova_rtl.platform.smoke import SmokeError
+from nova_rtl.recovery.search import SearchRecoveryError, recover_search_bundle
 from nova_rtl.recovery.showcase import (
     PathMigrationRecoveryError,
-    create_path_migration_showcase,
     inspect_failure,
 )
 from nova_rtl.recovery.signoff import M7SignoffError, run_m7_signoff, verify_m7_signoff
@@ -451,15 +451,10 @@ def optimize(
             )
             recovery_report_path = None
             recovery_report = None
-            if recovery == "deterministic" and search.candidate_dag.candidates:
-                candidate = search.candidate_dag.candidates[0]
-                recovery_report_path, recovery_report = create_path_migration_showcase(
-                    output_directory=path.parent / "recovery",
-                    run_id=search.run_id,
-                    candidate_id=candidate.candidate_id,
-                    parent_candidate_id=candidate.parent_candidate_id,
-                    source_hash=candidate.source_hash,
-                    search_bundle_hash=search.bundle_hash,
+            if recovery == "deterministic":
+                recovery_report_path, recovery_report = recover_search_bundle(
+                    path,
+                    repository_root=repository_root,
                 )
             if planner.lower() == "single_agent":
                 path, planning = run_single_agent_planning(
@@ -503,6 +498,7 @@ def optimize(
         M6PlannerFlowError,
         OptimizationFlowError,
         PathMigrationRecoveryError,
+        SearchRecoveryError,
         OSError,
         ValidationError,
         ValueError,

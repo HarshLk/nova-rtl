@@ -1,0 +1,1238 @@
+{
+  "$defs": {
+    "ArtifactRef": {
+      "additionalProperties": false,
+      "description": "Immutable identity and location of exact artifact bytes.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "classification": {
+          "enum": [
+            "PUBLIC",
+            "INTERNAL",
+            "RESTRICTED_RTL"
+          ],
+          "title": "Classification",
+          "type": "string"
+        },
+        "created_at": {
+          "format": "date-time",
+          "title": "Created At",
+          "type": "string"
+        },
+        "media_type": {
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*/[A-Za-z0-9][A-Za-z0-9!#$&^_.+-]*$",
+          "title": "Media Type",
+          "type": "string"
+        },
+        "producer_stage_result_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Producer Stage Result Id"
+        },
+        "sha256": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "size_bytes": {
+          "minimum": 0,
+          "title": "Size Bytes",
+          "type": "integer"
+        },
+        "uri": {
+          "pattern": "^artifact://[a-zA-Z0-9._/-]+$",
+          "title": "Uri",
+          "type": "string"
+        }
+      },
+      "required": [
+        "artifact_id",
+        "uri",
+        "sha256",
+        "media_type",
+        "size_bytes",
+        "created_at",
+        "producer_stage_result_id",
+        "classification"
+      ],
+      "title": "ArtifactRef",
+      "type": "object"
+    },
+    "CandidateFailureFingerprint": {
+      "additionalProperties": false,
+      "properties": {
+        "ancestor_lineage": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Ancestor Lineage",
+          "type": "array"
+        },
+        "ast_diff_fingerprint": {
+          "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+          "title": "Ast Diff Fingerprint",
+          "type": "string"
+        },
+        "candidate_failure_fingerprint_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Candidate Failure Fingerprint Id",
+          "type": "string"
+        },
+        "candidate_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Candidate Id",
+          "type": "string"
+        },
+        "failure_family": {
+          "enum": [
+            "BASELINE_INPUT_ERROR",
+            "ANALYSIS_VIEW_OR_ACTIVITY_MISMATCH",
+            "INFRASTRUCTURE_TRANSIENT",
+            "ADAPTER_OR_PARSER_ERROR",
+            "CONSTRAINT_BINDING_DELTA",
+            "CDC_INVARIANT_DELTA",
+            "FORMAL_MODEL_MISMATCH",
+            "INVALID_PROPOSAL_SCHEMA",
+            "UNKNOWN_OR_INAPPLICABLE_TRANSFORM",
+            "PROTECTED_STRUCTURE_VIOLATION",
+            "RTL_PARSE_OR_ELAB_FAILURE",
+            "FAST_SYNTH_STRUCTURAL_FAILURE",
+            "FORMAL_SEMANTIC_FAILURE",
+            "FORMAL_INCONCLUSIVE",
+            "TIMING_NO_GAIN",
+            "TIMING_REGRESSION",
+            "CRITICAL_PATH_MIGRATION",
+            "HOLD_REGRESSION",
+            "AREA_POLICY_VIOLATION",
+            "POWER_POLICY_VIOLATION",
+            "PHYSICAL_CORRELATION_MISS",
+            "CONGESTION_OR_ROUTABILITY_RISK",
+            "REPEATED_NON_PROGRESS",
+            "VALID_BUT_DOMINATED"
+          ],
+          "title": "Failure Family",
+          "type": "string"
+        },
+        "formal_counterexample_fingerprint": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Formal Counterexample Fingerprint"
+        },
+        "mapped_delta_fingerprint": {
+          "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+          "title": "Mapped Delta Fingerprint",
+          "type": "string"
+        },
+        "metric_response_class": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Metric Response Class",
+          "type": "string"
+        },
+        "operation": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Operation",
+          "type": "string"
+        },
+        "operation_family": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Operation Family",
+          "type": "string"
+        },
+        "parameter_fingerprint": {
+          "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+          "title": "Parameter Fingerprint",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "target_cone_fingerprint": {
+          "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+          "title": "Target Cone Fingerprint",
+          "type": "string"
+        }
+      },
+      "required": [
+        "candidate_failure_fingerprint_id",
+        "candidate_id",
+        "target_cone_fingerprint",
+        "operation_family",
+        "operation",
+        "parameter_fingerprint",
+        "ast_diff_fingerprint",
+        "mapped_delta_fingerprint",
+        "ancestor_lineage",
+        "failure_family",
+        "formal_counterexample_fingerprint",
+        "metric_response_class"
+      ],
+      "title": "CandidateFailureFingerprint",
+      "type": "object"
+    },
+    "EvidenceRef": {
+      "additionalProperties": false,
+      "description": "Stable semantic evidence address within an immutable snapshot.",
+      "properties": {
+        "artifact_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Artifact Id",
+          "type": "string"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "json_pointer": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Json Pointer"
+        },
+        "kind": {
+          "enum": [
+            "PATH",
+            "ARC",
+            "CONE",
+            "SOURCE_SPAN",
+            "CLOCK",
+            "CDC",
+            "BINDING",
+            "PHYSICAL",
+            "FORMAL",
+            "METRIC",
+            "HISTORY"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "snapshot_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Snapshot Hash",
+          "type": "string"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "kind",
+        "artifact_id",
+        "json_pointer",
+        "snapshot_hash"
+      ],
+      "title": "EvidenceRef",
+      "type": "object"
+    },
+    "FailureEvent": {
+      "additionalProperties": false,
+      "description": "Authoritative deterministic bridge from evaluation to recovery.",
+      "properties": {
+        "analysis_view_hash_verified": {
+          "title": "Analysis View Hash Verified",
+          "type": "boolean"
+        },
+        "analysis_view_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Analysis View Id"
+        },
+        "candidate_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Candidate Id"
+        },
+        "classifier_version": {
+          "minLength": 1,
+          "title": "Classifier Version",
+          "type": "string"
+        },
+        "constraint_binding_status": {
+          "enum": [
+            "EQUIVALENT",
+            "APPROVED_SEMANTIC_REMAP",
+            "FORBIDDEN_DELTA",
+            "NOT_CHECKED"
+          ],
+          "title": "Constraint Binding Status",
+          "type": "string"
+        },
+        "constraint_hash_verified": {
+          "title": "Constraint Hash Verified",
+          "type": "boolean"
+        },
+        "failed_stage": {
+          "anyOf": [
+            {
+              "enum": [
+                "RTL_PARSE",
+                "YOSYS_SYNTH",
+                "CONSTRAINT_BINDING",
+                "CLOCK_INVENTORY",
+                "CDC_INVARIANT",
+                "FORMAL_MODEL_PREFLIGHT",
+                "EQY_SMOKE",
+                "FAST_SYNTH",
+                "OPENSTA_FULL",
+                "OPENROAD_PHYSICAL",
+                "OPENROAD_PLACED_CTS",
+                "OPENROAD_ROUTED",
+                "FORMAL_EQUIVALENCE",
+                "SIMULATION",
+                "POWER_ANALYSIS",
+                "EVIDENCE_GRAPH",
+                "OPPORTUNITY_FORMATION"
+              ],
+              "type": "string"
+            },
+            {
+              "const": "PLANNER_PROVIDER",
+              "type": "string"
+            }
+          ],
+          "title": "Failed Stage"
+        },
+        "failure_event_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Failure Event Id",
+          "type": "string"
+        },
+        "failure_family": {
+          "enum": [
+            "BASELINE_INPUT_ERROR",
+            "ANALYSIS_VIEW_OR_ACTIVITY_MISMATCH",
+            "INFRASTRUCTURE_TRANSIENT",
+            "ADAPTER_OR_PARSER_ERROR",
+            "CONSTRAINT_BINDING_DELTA",
+            "CDC_INVARIANT_DELTA",
+            "FORMAL_MODEL_MISMATCH",
+            "INVALID_PROPOSAL_SCHEMA",
+            "UNKNOWN_OR_INAPPLICABLE_TRANSFORM",
+            "PROTECTED_STRUCTURE_VIOLATION",
+            "RTL_PARSE_OR_ELAB_FAILURE",
+            "FAST_SYNTH_STRUCTURAL_FAILURE",
+            "FORMAL_SEMANTIC_FAILURE",
+            "FORMAL_INCONCLUSIVE",
+            "TIMING_NO_GAIN",
+            "TIMING_REGRESSION",
+            "CRITICAL_PATH_MIGRATION",
+            "HOLD_REGRESSION",
+            "AREA_POLICY_VIOLATION",
+            "POWER_POLICY_VIOLATION",
+            "PHYSICAL_CORRELATION_MISS",
+            "CONGESTION_OR_ROUTABILITY_RISK",
+            "REPEATED_NON_PROGRESS",
+            "VALID_BUT_DOMINATED"
+          ],
+          "title": "Failure Family",
+          "type": "string"
+        },
+        "failure_scope": {
+          "enum": [
+            "RUN",
+            "BASELINE",
+            "PLANNER",
+            "PROPOSAL",
+            "CANDIDATE",
+            "OPPORTUNITY",
+            "INFRASTRUCTURE"
+          ],
+          "title": "Failure Scope",
+          "type": "string"
+        },
+        "metric_delta": {
+          "patternProperties": {
+            "^[a-z][a-z0-9_]{2,95}$": {
+              "type": "number"
+            }
+          },
+          "title": "Metric Delta",
+          "type": "object"
+        },
+        "opportunity_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Opportunity Id"
+        },
+        "parent_candidate_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Parent Candidate Id"
+        },
+        "primary_evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Primary Evidence Refs",
+          "type": "array"
+        },
+        "proposal_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Proposal Id"
+        },
+        "protected_structure_status": {
+          "enum": [
+            "UNCHANGED",
+            "CHANGED",
+            "UNKNOWN"
+          ],
+          "title": "Protected Structure Status",
+          "type": "string"
+        },
+        "provider_result_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Provider Result Ref"
+        },
+        "raw_stage_result_ref": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Raw Stage Result Ref"
+        },
+        "repairability": {
+          "enum": [
+            "NO_RETRY",
+            "DETERMINISTIC_RETRY",
+            "LOCAL_REVISION",
+            "FAMILY_SWITCH",
+            "OPPORTUNITY_REANALYSIS",
+            "PARENT_BRANCH",
+            "HUMAN_REVIEW"
+          ],
+          "title": "Repairability",
+          "type": "string"
+        },
+        "retryable": {
+          "title": "Retryable",
+          "type": "boolean"
+        },
+        "run_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Run Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "severity": {
+          "enum": [
+            "LOW",
+            "MEDIUM",
+            "HIGH",
+            "CRITICAL"
+          ],
+          "title": "Severity",
+          "type": "string"
+        },
+        "subject_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Subject Id",
+          "type": "string"
+        },
+        "subject_type": {
+          "enum": [
+            "RUN",
+            "BASELINE",
+            "PLANNER",
+            "PROPOSAL",
+            "CANDIDATE",
+            "OPPORTUNITY",
+            "INFRASTRUCTURE"
+          ],
+          "title": "Subject Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "failure_event_id",
+        "run_id",
+        "subject_type",
+        "subject_id",
+        "candidate_id",
+        "proposal_id",
+        "parent_candidate_id",
+        "opportunity_id",
+        "failed_stage",
+        "analysis_view_id",
+        "failure_family",
+        "failure_scope",
+        "repairability",
+        "severity",
+        "retryable",
+        "constraint_hash_verified",
+        "analysis_view_hash_verified",
+        "constraint_binding_status",
+        "protected_structure_status",
+        "metric_delta",
+        "primary_evidence_refs",
+        "raw_stage_result_ref",
+        "classifier_version"
+      ],
+      "title": "FailureEvent",
+      "type": "object"
+    },
+    "RecoveryDecision": {
+      "additionalProperties": false,
+      "description": "Authoritative deterministic recovery decision.",
+      "properties": {
+        "action": {
+          "enum": [
+            "RETRY_INFRASTRUCTURE",
+            "REPAIR_SCHEMA",
+            "CORRECT_EXECUTOR_OUTPUT",
+            "LOCAL_PARAMETER_REVISION",
+            "NARROW_TRANSFORM_SCOPE",
+            "SWITCH_OPERATION_SAME_FAMILY",
+            "SWITCH_TRANSFORM_FAMILY",
+            "OPPORTUNITY_REANALYSIS",
+            "TARGET_NEW_PATH_CLUSTER",
+            "BRANCH_FROM_ALTERNATE_PARENT",
+            "REPARTITION_FORMAL_PROOF",
+            "PHYSICAL_ONLY_RECOMMENDATION",
+            "REJECT_CANDIDATE",
+            "ABANDON_LINEAGE",
+            "STOP_RUN_OR_REQUEST_HUMAN"
+          ],
+          "title": "Action",
+          "type": "string"
+        },
+        "decision_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Decision Hash",
+          "type": "string"
+        },
+        "excluded_transform_families": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "title": "Excluded Transform Families",
+          "type": "array"
+        },
+        "failure_event_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Failure Event Id",
+          "type": "string"
+        },
+        "invoke_reasoning": {
+          "title": "Invoke Reasoning",
+          "type": "boolean"
+        },
+        "next_parent_candidate_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Next Parent Candidate Id"
+        },
+        "policy_version": {
+          "minLength": 1,
+          "title": "Policy Version",
+          "type": "string"
+        },
+        "reason_codes": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Reason Codes",
+          "type": "array"
+        },
+        "recovery_advice_id": {
+          "anyOf": [
+            {
+              "pattern": "^[a-z][a-z0-9_]{2,95}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "title": "Recovery Advice Id"
+        },
+        "recovery_decision_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Recovery Decision Id",
+          "type": "string"
+        },
+        "recovery_request_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Recovery Request Hash",
+          "type": "string"
+        },
+        "recovery_request_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Recovery Request Id",
+          "type": "string"
+        },
+        "recovery_route_plan_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Recovery Route Plan Hash",
+          "type": "string"
+        },
+        "recovery_route_plan_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Recovery Route Plan Id",
+          "type": "string"
+        },
+        "remaining_family_budget": {
+          "minimum": 0,
+          "title": "Remaining Family Budget",
+          "type": "integer"
+        },
+        "remaining_lineage_budget": {
+          "minimum": 0,
+          "title": "Remaining Lineage Budget",
+          "type": "integer"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        },
+        "selected_roles": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Selected Roles",
+          "type": "array"
+        }
+      },
+      "required": [
+        "recovery_decision_id",
+        "failure_event_id",
+        "recovery_request_id",
+        "recovery_request_hash",
+        "recovery_route_plan_id",
+        "recovery_route_plan_hash",
+        "action",
+        "next_parent_candidate_id",
+        "invoke_reasoning",
+        "selected_roles",
+        "excluded_transform_families",
+        "remaining_family_budget",
+        "remaining_lineage_budget",
+        "reason_codes",
+        "policy_version",
+        "recovery_advice_id",
+        "decision_hash"
+      ],
+      "title": "RecoveryDecision",
+      "type": "object"
+    },
+    "RecoveryRequest": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_actions": {
+          "items": {
+            "enum": [
+              "RETRY_INFRASTRUCTURE",
+              "REPAIR_SCHEMA",
+              "CORRECT_EXECUTOR_OUTPUT",
+              "LOCAL_PARAMETER_REVISION",
+              "NARROW_TRANSFORM_SCOPE",
+              "SWITCH_OPERATION_SAME_FAMILY",
+              "SWITCH_TRANSFORM_FAMILY",
+              "OPPORTUNITY_REANALYSIS",
+              "TARGET_NEW_PATH_CLUSTER",
+              "BRANCH_FROM_ALTERNATE_PARENT",
+              "REPARTITION_FORMAL_PROOF",
+              "PHYSICAL_ONLY_RECOMMENDATION",
+              "REJECT_CANDIDATE",
+              "ABANDON_LINEAGE",
+              "STOP_RUN_OR_REQUEST_HUMAN"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "authorized_evidence_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Authorized Evidence Ids",
+          "type": "array"
+        },
+        "candidate_failure_fingerprint_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Candidate Failure Fingerprint Ids",
+          "type": "array"
+        },
+        "candidate_lineage_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Candidate Lineage Ids",
+          "type": "array"
+        },
+        "deadline": {
+          "format": "date-time",
+          "title": "Deadline",
+          "type": "string"
+        },
+        "eligible_roles": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Eligible Roles",
+          "type": "array"
+        },
+        "excluded_transform_families": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "title": "Excluded Transform Families",
+          "type": "array"
+        },
+        "failure_event_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Failure Event Hash",
+          "type": "string"
+        },
+        "failure_event_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Failure Event Id",
+          "type": "string"
+        },
+        "failure_family": {
+          "enum": [
+            "BASELINE_INPUT_ERROR",
+            "ANALYSIS_VIEW_OR_ACTIVITY_MISMATCH",
+            "INFRASTRUCTURE_TRANSIENT",
+            "ADAPTER_OR_PARSER_ERROR",
+            "CONSTRAINT_BINDING_DELTA",
+            "CDC_INVARIANT_DELTA",
+            "FORMAL_MODEL_MISMATCH",
+            "INVALID_PROPOSAL_SCHEMA",
+            "UNKNOWN_OR_INAPPLICABLE_TRANSFORM",
+            "PROTECTED_STRUCTURE_VIOLATION",
+            "RTL_PARSE_OR_ELAB_FAILURE",
+            "FAST_SYNTH_STRUCTURAL_FAILURE",
+            "FORMAL_SEMANTIC_FAILURE",
+            "FORMAL_INCONCLUSIVE",
+            "TIMING_NO_GAIN",
+            "TIMING_REGRESSION",
+            "CRITICAL_PATH_MIGRATION",
+            "HOLD_REGRESSION",
+            "AREA_POLICY_VIOLATION",
+            "POWER_POLICY_VIOLATION",
+            "PHYSICAL_CORRELATION_MISS",
+            "CONGESTION_OR_ROUTABILITY_RISK",
+            "REPEATED_NON_PROGRESS",
+            "VALID_BUT_DOMINATED"
+          ],
+          "title": "Failure Family",
+          "type": "string"
+        },
+        "policy_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Hash",
+          "type": "string"
+        },
+        "recovery_request_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Recovery Request Id",
+          "type": "string"
+        },
+        "recovery_route_plan_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Recovery Route Plan Hash",
+          "type": "string"
+        },
+        "recovery_route_plan_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Recovery Route Plan Id",
+          "type": "string"
+        },
+        "remaining_family_budget": {
+          "minimum": 0,
+          "title": "Remaining Family Budget",
+          "type": "integer"
+        },
+        "remaining_latency_budget_ms": {
+          "minimum": 0,
+          "title": "Remaining Latency Budget Ms",
+          "type": "integer"
+        },
+        "remaining_lineage_budget": {
+          "minimum": 0,
+          "title": "Remaining Lineage Budget",
+          "type": "integer"
+        },
+        "remaining_token_budget": {
+          "minimum": 0,
+          "title": "Remaining Token Budget",
+          "type": "integer"
+        },
+        "repair_directive_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Repair Directive Hash",
+          "type": "string"
+        },
+        "repair_directive_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Repair Directive Id",
+          "type": "string"
+        },
+        "request_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Request Hash",
+          "type": "string"
+        },
+        "route_plan": {
+          "$ref": "#/$defs/RecoveryRoutePlan"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "recovery_request_id",
+        "failure_event_id",
+        "failure_event_hash",
+        "failure_family",
+        "repair_directive_id",
+        "repair_directive_hash",
+        "recovery_route_plan_id",
+        "recovery_route_plan_hash",
+        "route_plan",
+        "candidate_lineage_ids",
+        "candidate_failure_fingerprint_ids",
+        "allowed_actions",
+        "excluded_transform_families",
+        "eligible_roles",
+        "authorized_evidence_ids",
+        "remaining_family_budget",
+        "remaining_lineage_budget",
+        "remaining_token_budget",
+        "remaining_latency_budget_ms",
+        "policy_hash",
+        "deadline",
+        "request_hash"
+      ],
+      "title": "RecoveryRequest",
+      "type": "object"
+    },
+    "RecoveryRoutePlan": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_actions": {
+          "items": {
+            "enum": [
+              "RETRY_INFRASTRUCTURE",
+              "REPAIR_SCHEMA",
+              "CORRECT_EXECUTOR_OUTPUT",
+              "LOCAL_PARAMETER_REVISION",
+              "NARROW_TRANSFORM_SCOPE",
+              "SWITCH_OPERATION_SAME_FAMILY",
+              "SWITCH_TRANSFORM_FAMILY",
+              "OPPORTUNITY_REANALYSIS",
+              "TARGET_NEW_PATH_CLUSTER",
+              "BRANCH_FROM_ALTERNATE_PARENT",
+              "REPARTITION_FORMAL_PROOF",
+              "PHYSICAL_ONLY_RECOMMENDATION",
+              "REJECT_CANDIDATE",
+              "ABANDON_LINEAGE",
+              "STOP_RUN_OR_REQUEST_HUMAN"
+            ],
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Allowed Actions",
+          "type": "array"
+        },
+        "eligible_roles": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Eligible Roles",
+          "type": "array"
+        },
+        "excluded_transform_families": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "title": "Excluded Transform Families",
+          "type": "array"
+        },
+        "failure_event_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Failure Event Id",
+          "type": "string"
+        },
+        "next_parent_candidate_ids": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Next Parent Candidate Ids",
+          "type": "array"
+        },
+        "policy_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Policy Hash",
+          "type": "string"
+        },
+        "recovery_route_plan_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Recovery Route Plan Id",
+          "type": "string"
+        },
+        "remaining_family_budget": {
+          "minimum": 0,
+          "title": "Remaining Family Budget",
+          "type": "integer"
+        },
+        "remaining_latency_budget_ms": {
+          "minimum": 0,
+          "title": "Remaining Latency Budget Ms",
+          "type": "integer"
+        },
+        "remaining_lineage_budget": {
+          "minimum": 0,
+          "title": "Remaining Lineage Budget",
+          "type": "integer"
+        },
+        "remaining_token_budget": {
+          "minimum": 0,
+          "title": "Remaining Token Budget",
+          "type": "integer"
+        },
+        "repair_directive_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Repair Directive Id",
+          "type": "string"
+        },
+        "route_plan_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Route Plan Hash",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "recovery_route_plan_id",
+        "failure_event_id",
+        "repair_directive_id",
+        "allowed_actions",
+        "eligible_roles",
+        "excluded_transform_families",
+        "next_parent_candidate_ids",
+        "remaining_family_budget",
+        "remaining_lineage_budget",
+        "remaining_token_budget",
+        "remaining_latency_budget_ms",
+        "policy_hash",
+        "route_plan_hash"
+      ],
+      "title": "RecoveryRoutePlan",
+      "type": "object"
+    },
+    "RepairDirective": {
+      "additionalProperties": false,
+      "properties": {
+        "allowed_scope": {
+          "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+          "title": "Allowed Scope",
+          "type": "string"
+        },
+        "compiler_rule_refs": {
+          "items": {
+            "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Compiler Rule Refs",
+          "type": "array"
+        },
+        "evidence_refs": {
+          "items": {
+            "$ref": "#/$defs/EvidenceRef"
+          },
+          "minItems": 1,
+          "title": "Evidence Refs",
+          "type": "array"
+        },
+        "failure_event_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Failure Event Id",
+          "type": "string"
+        },
+        "observed": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Observed",
+          "type": "array"
+        },
+        "preserve": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Preserve",
+          "type": "array"
+        },
+        "prohibit": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,127}$",
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Prohibit",
+          "type": "array"
+        },
+        "recommended_actions": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Recommended Actions",
+          "type": "array"
+        },
+        "recommended_roles": {
+          "items": {
+            "pattern": "^[a-z][a-z0-9_]{2,95}$",
+            "type": "string"
+          },
+          "title": "Recommended Roles",
+          "type": "array"
+        },
+        "repair_directive_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Repair Directive Id",
+          "type": "string"
+        },
+        "schema_version": {
+          "const": 1,
+          "default": 1,
+          "title": "Schema Version",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "repair_directive_id",
+        "failure_event_id",
+        "allowed_scope",
+        "observed",
+        "preserve",
+        "prohibit",
+        "recommended_actions",
+        "recommended_roles",
+        "evidence_refs",
+        "compiler_rule_refs"
+      ],
+      "title": "RepairDirective",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "One evidence-bound recovery route derived from a completed M5 candidate.",
+  "properties": {
+    "candidate_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Bundle Hash",
+      "type": "string"
+    },
+    "decision": {
+      "$ref": "#/$defs/RecoveryDecision"
+    },
+    "directive": {
+      "$ref": "#/$defs/RepairDirective"
+    },
+    "evidence_artifacts": {
+      "items": {
+        "$ref": "#/$defs/ArtifactRef"
+      },
+      "minItems": 1,
+      "title": "Evidence Artifacts",
+      "type": "array"
+    },
+    "failure": {
+      "$ref": "#/$defs/FailureEvent"
+    },
+    "fingerprint": {
+      "$ref": "#/$defs/CandidateFailureFingerprint"
+    },
+    "metric_comparison_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Metric Comparison Hash",
+      "type": "string"
+    },
+    "recovery_outcome": {
+      "const": "ROUTED",
+      "default": "ROUTED",
+      "title": "Recovery Outcome",
+      "type": "string"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "request": {
+      "$ref": "#/$defs/RecoveryRequest"
+    },
+    "route_plan": {
+      "$ref": "#/$defs/RecoveryRoutePlan"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "search_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Bundle Hash",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "status": {
+      "const": "PASS",
+      "default": "PASS",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "run_id",
+    "search_bundle_hash",
+    "candidate_bundle_hash",
+    "metric_comparison_hash",
+    "source_hash",
+    "evidence_artifacts",
+    "failure",
+    "directive",
+    "fingerprint",
+    "route_plan",
+    "request",
+    "decision",
+    "report_hash"
+  ],
+  "title": "SearchRecoveryReport",
+  "type": "object"
+}

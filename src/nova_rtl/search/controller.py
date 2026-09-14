@@ -358,7 +358,11 @@ class SearchController:
                     "evaluator cost differs from its pre-execution estimate"
                 )
             recovery_artifacts: tuple[ArtifactRef, ...] = ()
-            if evaluation.pareto_record is None and self._recovery is not None:
+            recovery_eligible = evaluation.terminal_disposition not in {
+                "FEASIBLE_PARETO",
+                "SELECTED",
+            }
+            if recovery_eligible and self._recovery is not None:
                 application = await self._recovery.recover(candidate, evaluation)
                 if application.experiment_record.candidate_id != candidate.candidate_id:
                     raise SearchControllerError("recovery returned the wrong candidate identity")

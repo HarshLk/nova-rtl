@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from hashlib import sha256
 
-from nova_rtl.contracts.base import EvidenceRef
+from nova_rtl.contracts.base import EvidenceRef, canonical_sha256
 from nova_rtl.contracts.recovery import FailureEvent, RepairDirective
 from nova_rtl.recovery.policy import RecoveryPolicyRegistry
 
@@ -104,7 +104,19 @@ def compile_directive(
         if failure.failure_family == "PROTECTED_STRUCTURE_VIOLATION"
         else (rule.allowed_actions[0],)
     )
-    directive_id = _stable_id("directive", failure.failure_event_id, rule.rule_id)
+    directive_id = _stable_id(
+        "directive",
+        failure.failure_event_id,
+        rule.rule_id,
+        rules.policy_hash,
+        canonical_sha256(
+            {
+                "semantics": semantics,
+                "recommended": recommended,
+                "evidence_ids": tuple(sorted(supplied_ids)),
+            }
+        ),
+    )
     return RepairDirective(
         repair_directive_id=directive_id,
         failure_event_id=failure.failure_event_id,

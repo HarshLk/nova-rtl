@@ -16,7 +16,10 @@ from nova_rtl.contracts.recovery import (
     CandidateFailureFingerprint,
     FailureEvent,
     RecoveryDecision,
+    RecoveryRequest,
+    RecoveryRoutePlan,
     RepairDirective,
+    validate_recovery_authority_chain,
 )
 from nova_rtl.contracts.reporting import ExperimentRecord
 
@@ -26,6 +29,8 @@ class RecoveryChain(StrictContract):
     failure: FailureEvent
     directive: RepairDirective
     fingerprint: CandidateFailureFingerprint
+    route_plan: RecoveryRoutePlan
+    request: RecoveryRequest
     decision: RecoveryDecision
     chain_hash: HashRef
 
@@ -37,6 +42,14 @@ class RecoveryChain(StrictContract):
             raise ValueError("failure fingerprint does not resolve its candidate")
         if self.decision.failure_event_id != self.failure.failure_event_id:
             raise ValueError("recovery decision does not resolve its failure event")
+        if self.route_plan != self.request.route_plan:
+            raise ValueError("recovery route plan does not resolve its request")
+        validate_recovery_authority_chain(
+            failure_event=self.failure,
+            repair_directive=self.directive,
+            request=self.request,
+            decision=self.decision,
+        )
         if self.chain_hash != canonical_sha256(self, exclude=frozenset({"chain_hash"})):
             raise ValueError("recovery chain hash is not canonical")
         return self
@@ -54,6 +67,8 @@ def apply_recovery(
     failure: FailureEvent,
     directive: RepairDirective,
     fingerprint: CandidateFailureFingerprint,
+    route_plan: RecoveryRoutePlan,
+    request: RecoveryRequest,
     decision: RecoveryDecision,
     artifact_store: ArtifactStore,
 ) -> RecoveryApplication:
@@ -64,16 +79,24 @@ def apply_recovery(
         "failure": failure,
         "directive": directive,
         "fingerprint": fingerprint,
+        "route_plan": route_plan,
+        "request": request,
         "decision": decision,
     }
-    if directive.failure_event_id != failure.failure_event_id:
-        raise ValueError("repair directive does not resolve its failure event")
     if fingerprint.candidate_id != failure.candidate_id:
         raise ValueError("failure fingerprint does not resolve its candidate")
-    if decision.failure_event_id != failure.failure_event_id:
-        raise ValueError("recovery decision does not resolve its failure event")
-    unhashed = RecoveryChain.model_construct(**payload, chain_hash="sha256:" + "0" * 64)
-    chain = RecoveryChain.model_construct(
+    validate_recovery_authority_chain(
+        failure_event=failure,
+        repair_directive=directive,
+        request=request,
+        decision=decision,
+    )
+    if route_plan != request.route_plan:
+        raise ValueError("recovery route plan does not resolve its request")
+    unhashed = RecoveryChain.model_construct(
+        **payload, chain_hash="sha256:" + "0" * 64
+    )
+    chain = RecoveryChain(
         **payload,
         chain_hash=canonical_sha256(unhashed, exclude=frozenset({"chain_hash"})),
     )

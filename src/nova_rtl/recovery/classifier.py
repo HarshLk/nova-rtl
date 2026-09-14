@@ -5,7 +5,7 @@ from __future__ import annotations
 from hashlib import sha256
 from typing import Any
 
-from nova_rtl.contracts.base import EvidenceRef
+from nova_rtl.contracts.base import EvidenceRef, canonical_sha256
 from nova_rtl.contracts.execution import StageResult
 from nova_rtl.contracts.recovery import FailureEvent, FailureFamily
 from nova_rtl.recovery.policy import RecoveryPolicyRegistry
@@ -117,14 +117,30 @@ def classify(
     if snapshot_hash is None:
         raise ClassificationError("stage result lacks RTL snapshot identity")
     artifact_id = stage_result.raw_artifacts[0].artifact_id
-    evidence = EvidenceRef(
-        evidence_id=_stable_id("evidence", stage_result.stage_result_id, family),
-        kind=EVIDENCE_KIND.get(family, "HISTORY"),
-        artifact_id=artifact_id,
-        json_pointer="/diagnostics",
-        snapshot_hash=snapshot_hash,
+    evidence_kinds = rule.required_evidence_kinds or (
+        EVIDENCE_KIND.get(family, "HISTORY"),
     )
-    event_id = _stable_id("failure", stage_result.stage_result_id, family)
+    evidence = tuple(
+        EvidenceRef(
+            evidence_id=_stable_id(
+                "evidence", stage_result.stage_result_id, family, kind
+            ),
+            kind=kind,
+            artifact_id=artifact_id,
+            json_pointer=f"/diagnostics/{kind.lower()}",
+            snapshot_hash=snapshot_hash,
+        )
+        for kind in evidence_kinds
+    )
+    metric_delta = _metric_delta(candidate, baseline)
+    event_id = _stable_id(
+        "failure",
+        stage_result.stage_result_id,
+        family,
+        policy.policy_hash,
+        canonical_sha256(metric_delta),
+        *(item.evidence_id for item in evidence),
+    )
     return FailureEvent(
         failure_event_id=event_id,
         run_id=stage_result.run_id,
@@ -155,8 +171,8 @@ def classify(
             if family in {"CDC_INVARIANT_DELTA", "PROTECTED_STRUCTURE_VIOLATION"}
             else "UNKNOWN"
         ),
-        metric_delta=_metric_delta(candidate, baseline),
-        primary_evidence_refs=(evidence,),
+        metric_delta=metric_delta,
+        primary_evidence_refs=evidence,
         raw_stage_result_ref=stage_result.stage_result_id,
         classifier_version=CLASSIFIER_VERSION,
     )

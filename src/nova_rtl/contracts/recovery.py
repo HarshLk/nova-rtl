@@ -7,6 +7,7 @@ from typing import Annotated, Literal, Self
 from pydantic import Field, StringConstraints, model_validator
 
 from nova_rtl.contracts.base import (
+    ArtifactRef,
     EntityId,
     EvidenceRef,
     FiniteFloat,
@@ -474,6 +475,56 @@ class RecoveryDecision(StrictContract):
         return self
 
 
+class SearchRecoveryReport(StrictContract):
+    """One evidence-bound recovery route derived from a completed M5 candidate."""
+
+    schema_version: Literal[1] = 1
+    run_id: EntityId
+    search_bundle_hash: HashRef
+    candidate_bundle_hash: HashRef
+    metric_comparison_hash: HashRef
+    source_hash: HashRef
+    evidence_artifacts: tuple[ArtifactRef, ...] = Field(min_length=1)
+    failure: FailureEvent
+    directive: RepairDirective
+    fingerprint: CandidateFailureFingerprint
+    route_plan: RecoveryRoutePlan
+    request: RecoveryRequest
+    decision: RecoveryDecision
+    recovery_outcome: Literal["ROUTED"] = "ROUTED"
+    status: Literal["PASS"] = "PASS"
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def evidence_authority_and_hash_resolve(self) -> Self:
+        if self.failure.run_id != self.run_id:
+            raise ValueError("search recovery run identity differs")
+        if self.failure.candidate_id != self.fingerprint.candidate_id:
+            raise ValueError("search recovery candidate identity differs")
+        if {
+            item.evidence_id: item for item in self.failure.primary_evidence_refs
+        } != {item.evidence_id: item for item in self.directive.evidence_refs}:
+            raise ValueError("search recovery directive evidence differs")
+        artifact_ids = {item.artifact_id for item in self.evidence_artifacts}
+        if any(
+            item.artifact_id not in artifact_ids
+            for item in self.failure.primary_evidence_refs
+        ):
+            raise ValueError("search recovery evidence artifact does not resolve")
+        if self.route_plan != self.request.route_plan:
+            raise ValueError("search recovery route plan differs")
+        validate_recovery_authority_chain(
+            failure_event=self.failure,
+            repair_directive=self.directive,
+            request=self.request,
+            decision=self.decision,
+        )
+        expected = canonical_sha256(self, exclude=frozenset({"report_hash"}))
+        if self.report_hash != expected:
+            raise ValueError("search recovery report hash is not canonical")
+        return self
+
+
 class M7GateEvidence(StrictContract):
     """One reproducible deterministic-recovery gate and its preserved output."""
 
@@ -665,6 +716,7 @@ __all__ = [
     "RecoveryAdvice",
     "RecoveryDecision",
     "RecoveryRequest",
+    "SearchRecoveryReport",
     "RecoveryRoutePlan",
     "RepairDirective",
     "validate_recovery_authority_chain",

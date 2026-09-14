@@ -47,6 +47,18 @@ def fingerprint(
         {
             "candidate_id": candidate.candidate_id,
             "failure_event_id": failure.failure_event_id,
+            "target_cone_fingerprint": evidence.target_cone_fingerprint,
+            "operation_family": evidence.operation_family,
+            "operation": evidence.operation,
+            "parameters": evidence.parameters,
+            "ast_delta_tokens": sorted(evidence.ast_delta_tokens),
+            "mapped_delta_tokens": sorted(evidence.mapped_delta_tokens),
+            "ancestor_lineage": evidence.ancestor_lineage,
+            "failure_family": failure.failure_family,
+            "formal_counterexample_fingerprint": (
+                evidence.formal_counterexample_fingerprint
+            ),
+            "metric_response_class": evidence.metric_response_class,
             "schema": "semantic-failure-v1",
         },
     ).split(":")[-1]
@@ -74,6 +86,27 @@ def semantic_similarity(
 ) -> float:
     """Return the provisional M7 weighted mechanism similarity score."""
 
+    if (
+        left.failure_family == "FORMAL_SEMANTIC_FAILURE"
+        and left.formal_counterexample_fingerprint
+        != right.formal_counterexample_fingerprint
+    ):
+        return 0.0
+    timing_families = {
+        "TIMING_NO_GAIN",
+        "TIMING_REGRESSION",
+        "CRITICAL_PATH_MIGRATION",
+        "HOLD_REGRESSION",
+        "AREA_POLICY_VIOLATION",
+        "POWER_POLICY_VIOLATION",
+        "PHYSICAL_CORRELATION_MISS",
+        "CONGESTION_OR_ROUTABILITY_RISK",
+    }
+    if (
+        left.failure_family in timing_families
+        and left.metric_response_class != right.metric_response_class
+    ):
+        return 0.0
     score = 0.0
     score += 0.25 * (left.target_cone_fingerprint == right.target_cone_fingerprint)
     score += 0.20 * (
