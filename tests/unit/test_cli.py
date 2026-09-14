@@ -114,6 +114,19 @@ class CliTests(unittest.TestCase):
         self.assertIn("FAILURE_ID", _plain_output(result.output))
         self.assertIn("--runs-root", _plain_output(result.output))
 
+    def test_cli_exposes_m7_signoff_and_verification(self) -> None:
+        signoff = self.runner.invoke(app, ["m7", "signoff", "--help"])
+        verify = self.runner.invoke(app, ["m7", "verify", "--help"])
+
+        self.assertEqual(signoff.exit_code, 0, signoff.output)
+        self.assertEqual(verify.exit_code, 0, verify.output)
+        for output in (signoff.output, verify.output):
+            plain = _plain_output(output)
+            self.assertIn("--m6-packet", plain)
+            self.assertIn("--m5-packet", plain)
+            self.assertIn("--m4-packet", plain)
+            self.assertIn("--m3-packet", plain)
+
     def test_cli_exposes_m4_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m4", "signoff", "--help"])
         verify = self.runner.invoke(app, ["m4", "verify", "--help"])

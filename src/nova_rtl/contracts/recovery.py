@@ -474,6 +474,62 @@ class RecoveryDecision(StrictContract):
         return self
 
 
+class M7GateEvidence(StrictContract):
+    """One reproducible deterministic-recovery gate and its preserved output."""
+
+    evidence_id: EntityId
+    argv: tuple[NonEmptyString, ...] = Field(min_length=1)
+    output_relative_path: NonEmptyString
+    output_hash: HashRef
+    output_size_bytes: NonNegativeInt
+    passed_test_count: int = Field(strict=True, gt=0)
+
+
+class M7SignoffReport(StrictContract):
+    """Commit-bound proof of bounded deterministic failure recovery."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    implementation_tree_hash: Annotated[
+        str, StringConstraints(pattern=r"^[0-9a-f]{40}$")
+    ]
+    m6_commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    m6_packet_hash: HashRef
+    m6_report_hash: HashRef
+    run_id: EntityId
+    search_bundle_hash: HashRef
+    source_hash: HashRef
+    recovery_policy_hash: HashRef
+    recovery_implementation_hash: HashRef
+    path_migration_report_hash: HashRef
+    failure_event_hash: HashRef
+    repair_directive_hash: HashRef
+    candidate_failure_fingerprint_hash: HashRef
+    recovery_decision_hash: HashRef
+    failure_family: Literal["CRITICAL_PATH_MIGRATION"]
+    recovery_action: Literal["OPPORTUNITY_REANALYSIS", "TARGET_NEW_PATH_CLUSTER"]
+    next_target_cone_fingerprint: Fingerprint
+    next_operation_family: StableUpperString
+    deterministic_only: Literal[True]
+    safety_matrix_evidence: M7GateEvidence
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def milestone_is_complete_and_self_hashed(self) -> Self:
+        payload = {
+            key: value
+            for key, value in self.model_dump(mode="python").items()
+            if key not in {"schema_version", "status", "input_set_hash", "report_hash"}
+        }
+        if self.input_set_hash != canonical_sha256(payload):
+            raise ValueError("M7 input_set_hash differs from sign-off evidence")
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
+            raise ValueError("M7 report_hash is not canonical")
+        return self
+
+
 def validate_recovery_authority_chain(
     *,
     failure_event: FailureEvent,
@@ -604,6 +660,8 @@ def validate_recovery_authority_chain(
 __all__ = [
     "CandidateFailureFingerprint",
     "FailureEvent",
+    "M7GateEvidence",
+    "M7SignoffReport",
     "RecoveryAdvice",
     "RecoveryDecision",
     "RecoveryRequest",

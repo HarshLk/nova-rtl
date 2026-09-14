@@ -73,6 +73,7 @@ from nova_rtl.recovery.showcase import (
     create_path_migration_showcase,
     inspect_failure,
 )
+from nova_rtl.recovery.signoff import M7SignoffError, run_m7_signoff, verify_m7_signoff
 from nova_rtl.search.signoff import M5SignoffError, run_m5_signoff, verify_m5_signoff
 from nova_rtl.signoff.m1 import (
     M1SignoffError,
@@ -141,6 +142,12 @@ m6_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m6_app, name="m6")
+m7_app = typer.Typer(
+    name="m7",
+    help="Build and verify the deterministic failure-recovery milestone packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m7_app, name="m7")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -315,6 +322,20 @@ def _m6_failure(error: Exception, json_output: bool) -> None:
         )
     else:
         typer.echo(f"NOVA M6 sign-off: FAIL: {error}", err=True)
+    raise typer.Exit(2)
+
+
+def _m7_failure(error: Exception, json_output: bool) -> None:
+    if json_output:
+        typer.echo(
+            json.dumps(
+                {"status": "FAIL", "milestone": "M7", "error": str(error)},
+                separators=(",", ":"),
+                sort_keys=True,
+            )
+        )
+    else:
+        typer.echo(f"NOVA M7 sign-off: FAIL: {error}", err=True)
     raise typer.Exit(2)
 
 
@@ -813,6 +834,104 @@ def m6_verify(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA M6 verification: PASS: {report_path.resolve()}"
+    )
+
+
+@m7_app.command("signoff")
+def m7_signoff(
+    path_migration_report: Annotated[
+        Path,
+        typer.Argument(
+            exists=True, dir_okay=False, readable=True, metavar="PATH_MIGRATION_REPORT"
+        ),
+    ],
+    m6_packet: Annotated[
+        Path, typer.Option("--m6-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    m5_packet: Annotated[
+        Path, typer.Option("--m5-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    m4_packet: Annotated[
+        Path, typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    m3_packet: Annotated[
+        Path, typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Execute and publish the final commit-bound M7 recovery packet."""
+
+    try:
+        path, report = run_m7_signoff(
+            path_migration_report,
+            m6_packet=m6_packet,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M7SignoffError, OSError, ValidationError, ValueError) as error:
+        _m7_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M7 sign-off: PASS: {path}"
+    )
+
+
+@m7_app.command("verify")
+def m7_verify(
+    report_path: Annotated[
+        Path, typer.Argument(exists=True, dir_okay=False, readable=True, metavar="REPORT")
+    ],
+    path_migration_report: Annotated[
+        Path,
+        typer.Option(
+            "--path-migration-report", exists=True, dir_okay=False, readable=True
+        ),
+    ],
+    m6_packet: Annotated[
+        Path, typer.Option("--m6-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    m5_packet: Annotated[
+        Path, typer.Option("--m5-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    m4_packet: Annotated[
+        Path, typer.Option("--m4-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    m3_packet: Annotated[
+        Path, typer.Option("--m3-packet", exists=True, dir_okay=False, readable=True)
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Reconstruct M7 from immutable recovery and ancestor evidence."""
+
+    try:
+        report = verify_m7_signoff(
+            report_path,
+            path_migration_report=path_migration_report,
+            m6_packet=m6_packet,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M7SignoffError, OSError, ValidationError, ValueError) as error:
+        _m7_failure(error, json_output)
+    payload = {"status": report.status, "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M7 verification: PASS: {report_path.resolve()}"
     )
 
 

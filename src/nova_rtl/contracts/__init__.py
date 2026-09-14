@@ -93,6 +93,8 @@ from nova_rtl.contracts.platform import (
 from nova_rtl.contracts.recovery import (
     CandidateFailureFingerprint,
     FailureEvent,
+    M7GateEvidence,
+    M7SignoffReport,
     RecoveryAdvice,
     RecoveryDecision,
     RecoveryRequest,
@@ -138,6 +140,8 @@ __all__ = [
     "M5SignoffReport",
     "M6GateEvidence",
     "M6SignoffReport",
+    "M7GateEvidence",
+    "M7SignoffReport",
     "CDCInventory",
     "CanonicalEnvironmentEntry",
     "CalibrationReport",

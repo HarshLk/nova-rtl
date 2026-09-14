@@ -72,6 +72,18 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=None,
         help="Use this completed M6 planner run for sign-off verification.",
     )
+    parser.addoption(
+        "--m6-packet",
+        action="store",
+        default=None,
+        help="Use this verified M6 report as the M7 dependency.",
+    )
+    parser.addoption(
+        "--path-migration-report",
+        action="store",
+        default=None,
+        help="Use this deterministic path-migration report for M7 sign-off.",
+    )
 
 
 @pytest.fixture
@@ -192,4 +204,26 @@ def planner_run_path(request: pytest.FixtureRequest) -> Path:
     path = Path(configured).resolve()
     if not path.is_file():
         pytest.fail(f"M6 planner run does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def m6_packet_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--m6-packet")
+    if configured is None:
+        pytest.skip("M7 sign-off validation requires --m6-packet")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"M6 packet does not exist: {path}")
+    return path
+
+
+@pytest.fixture
+def path_migration_report_path(request: pytest.FixtureRequest) -> Path:
+    configured = request.config.getoption("--path-migration-report")
+    if configured is None:
+        pytest.skip("M7 sign-off validation requires --path-migration-report")
+    path = Path(configured).resolve()
+    if not path.is_file():
+        pytest.fail(f"path-migration report does not exist: {path}")
     return path

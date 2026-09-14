@@ -59,6 +59,8 @@ EXPECTED_SCHEMA_FILES = {
     "m5-signoff-report.v1.schema.json",
     "m6-gate-evidence.v1.schema.json",
     "m6-signoff-report.v1.schema.json",
+    "m7-gate-evidence.v1.schema.json",
+    "m7-signoff-report.v1.schema.json",
     "mapped-structural-effect.v1.schema.json",
     "optimization-opportunity.v1.schema.json",
     "optimization-proposal.v2.schema.json",

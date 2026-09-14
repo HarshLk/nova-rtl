@@ -178,12 +178,17 @@ def _build_report(
     gate: M6GateEvidence,
     commit_sha: str,
     implementation_tree_hash: str,
+    frozen_registered_operations: tuple[str, ...] | None = None,
 ) -> M6SignoffReport:
     if run.m5_search_bundle_hash != m5_report.search_bundle_hash:
         raise M6SignoffError("M6 planner run differs from signed M5 search")
-    registry = competition_mvp_registry()
     operations = tuple(sorted({item.transformation.operation for item in run.proposals}))
-    if not operations or not set(operations).issubset(registry.operations):
+    allowed_operations = (
+        frozenset(frozen_registered_operations)
+        if frozen_registered_operations is not None
+        else competition_mvp_registry().operations
+    )
+    if not operations or not set(operations).issubset(allowed_operations):
         raise M6SignoffError("M6 planner emitted an unregistered operation")
     requests = {item.opportunity_id: item for item in run.planner_requests}
     budget_compliance = all(
@@ -359,4 +364,61 @@ def verify_m6_signoff(
     return observed
 
 
-__all__ = ["M6SignoffError", "run_m6_signoff", "verify_m6_signoff"]
+def verify_m6_dependency_snapshot(
+    report_path: Path,
+    *,
+    m5_packet: Path,
+    m4_packet: Path,
+    m3_packet: Path,
+    repository_root: Path,
+    descendant_commit: str,
+) -> tuple[M6SignoffReport, str]:
+    """Verify frozen M6 evidence as an immutable ancestor of a newer milestone."""
+
+    try:
+        resolved = report_path.resolve(strict=True)
+        content = resolved.read_bytes()
+        observed = M6SignoffReport.model_validate_json(content)
+        planner_run_path = resolved.parent / "planner-run.json"
+        run = M6PlannerRun.model_validate_json(planner_run_path.read_bytes())
+    except (OSError, ValueError) as error:
+        raise M6SignoffError("M6 dependency packet is missing or invalid") from error
+    root = repository_root.resolve(strict=True)
+    try:
+        _git_output(root, "merge-base", "--is-ancestor", observed.commit_sha, descendant_commit)
+    except M6SignoffError as error:
+        raise M6SignoffError("M6 commit is not an ancestor of the descendant") from error
+    tree = _git_output(root, "rev-parse", "--verify", f"{observed.commit_sha}^{{tree}}")
+    if tree != observed.implementation_tree_hash:
+        raise M6SignoffError("M6 packet does not match its recorded Git checkpoint")
+    _verify_gate_evidence(resolved.parent, observed.planner_matrix_evidence)
+    try:
+        m5_report, m5_hash = verify_m5_dependency_snapshot(
+            m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=root,
+            descendant_commit=observed.commit_sha,
+        )
+    except (M5SignoffError, OSError, ValueError) as error:
+        raise M6SignoffError("M6 frozen dependency reconstruction failed") from error
+    expected = _build_report(
+        run,
+        m5_report=m5_report,
+        m5_packet_hash=m5_hash,
+        gate=observed.planner_matrix_evidence,
+        commit_sha=observed.commit_sha,
+        implementation_tree_hash=observed.implementation_tree_hash,
+        frozen_registered_operations=observed.registered_operations,
+    )
+    if observed != expected:
+        raise M6SignoffError("M6 dependency differs from reconstructed frozen evidence")
+    return observed, _hash_bytes(content)
+
+
+__all__ = [
+    "M6SignoffError",
+    "run_m6_signoff",
+    "verify_m6_dependency_snapshot",
+    "verify_m6_signoff",
+]

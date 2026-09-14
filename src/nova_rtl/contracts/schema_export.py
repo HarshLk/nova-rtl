@@ -76,6 +76,8 @@ from nova_rtl.contracts.platform import (
 from nova_rtl.contracts.recovery import (
     CandidateFailureFingerprint,
     FailureEvent,
+    M7GateEvidence,
+    M7SignoffReport,
     RecoveryAdvice,
     RecoveryDecision,
     RecoveryRequest,
@@ -184,6 +186,8 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "recovery-request": SchemaRegistration(RecoveryRequest, version=1),
     "recovery-advice": SchemaRegistration(RecoveryAdvice, version=1),
     "recovery-decision": SchemaRegistration(RecoveryDecision, version=1),
+    "m7-gate-evidence": SchemaRegistration(M7GateEvidence, version=1),
+    "m7-signoff-report": SchemaRegistration(M7SignoffReport, version=1),
     "experiment-record": SchemaRegistration(ExperimentRecord, version=1),
     "pareto-record": SchemaRegistration(ParetoRecord, version=1),
     "search-request": SchemaRegistration(SearchRequest, version=1),

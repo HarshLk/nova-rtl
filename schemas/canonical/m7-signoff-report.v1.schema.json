@@ -1,0 +1,213 @@
+{
+  "$defs": {
+    "M7GateEvidence": {
+      "additionalProperties": false,
+      "description": "One reproducible deterministic-recovery gate and its preserved output.",
+      "properties": {
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Argv",
+          "type": "array"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "output_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Output Hash",
+          "type": "string"
+        },
+        "output_relative_path": {
+          "minLength": 1,
+          "title": "Output Relative Path",
+          "type": "string"
+        },
+        "output_size_bytes": {
+          "minimum": 0,
+          "title": "Output Size Bytes",
+          "type": "integer"
+        },
+        "passed_test_count": {
+          "exclusiveMinimum": 0,
+          "title": "Passed Test Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "argv",
+        "output_relative_path",
+        "output_hash",
+        "output_size_bytes",
+        "passed_test_count"
+      ],
+      "title": "M7GateEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Commit-bound proof of bounded deterministic failure recovery.",
+  "properties": {
+    "candidate_failure_fingerprint_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Candidate Failure Fingerprint Hash",
+      "type": "string"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "deterministic_only": {
+      "const": true,
+      "title": "Deterministic Only",
+      "type": "boolean"
+    },
+    "failure_event_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Failure Event Hash",
+      "type": "string"
+    },
+    "failure_family": {
+      "const": "CRITICAL_PATH_MIGRATION",
+      "title": "Failure Family",
+      "type": "string"
+    },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
+    "input_set_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Set Hash",
+      "type": "string"
+    },
+    "m6_commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M6 Commit Sha",
+      "type": "string"
+    },
+    "m6_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M6 Packet Hash",
+      "type": "string"
+    },
+    "m6_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M6 Report Hash",
+      "type": "string"
+    },
+    "next_operation_family": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Next Operation Family",
+      "type": "string"
+    },
+    "next_target_cone_fingerprint": {
+      "pattern": "^[a-z][a-z0-9_]*:v[0-9]+:[A-Za-z0-9._-]+$",
+      "title": "Next Target Cone Fingerprint",
+      "type": "string"
+    },
+    "path_migration_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Path Migration Report Hash",
+      "type": "string"
+    },
+    "recovery_action": {
+      "enum": [
+        "OPPORTUNITY_REANALYSIS",
+        "TARGET_NEW_PATH_CLUSTER"
+      ],
+      "title": "Recovery Action",
+      "type": "string"
+    },
+    "recovery_decision_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Recovery Decision Hash",
+      "type": "string"
+    },
+    "recovery_implementation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Recovery Implementation Hash",
+      "type": "string"
+    },
+    "recovery_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Recovery Policy Hash",
+      "type": "string"
+    },
+    "repair_directive_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Repair Directive Hash",
+      "type": "string"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "safety_matrix_evidence": {
+      "$ref": "#/$defs/M7GateEvidence"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "search_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Search Bundle Hash",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "implementation_tree_hash",
+    "m6_commit_sha",
+    "m6_packet_hash",
+    "m6_report_hash",
+    "run_id",
+    "search_bundle_hash",
+    "source_hash",
+    "recovery_policy_hash",
+    "recovery_implementation_hash",
+    "path_migration_report_hash",
+    "failure_event_hash",
+    "repair_directive_hash",
+    "candidate_failure_fingerprint_hash",
+    "recovery_decision_hash",
+    "failure_family",
+    "recovery_action",
+    "next_target_cone_fingerprint",
+    "next_operation_family",
+    "deterministic_only",
+    "safety_matrix_evidence",
+    "input_set_hash",
+    "report_hash"
+  ],
+  "title": "M7SignoffReport",
+  "type": "object"
+}
