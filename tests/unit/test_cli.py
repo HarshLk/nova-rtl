@@ -148,6 +148,18 @@ class CliTests(unittest.TestCase):
             self.assertIn("--path-migration-report", plain)
             self.assertIn("--m6-packet", plain)
 
+    def test_cli_exposes_m9_report_replay_and_demo_surfaces(self) -> None:
+        report = self.runner.invoke(app, ["report", "--help"])
+        replay = self.runner.invoke(app, ["replay", "--help"])
+        demo = self.runner.invoke(app, ["demo", "--help"])
+
+        for result in (report, replay, demo):
+            self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("--evidence-root", _plain_output(report.output))
+        self.assertIn("--offline", _plain_output(replay.output))
+        self.assertIn("--verify-all-artifacts", _plain_output(replay.output))
+        self.assertIn("--headless", _plain_output(demo.output))
+
     def test_cli_exposes_m4_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m4", "signoff", "--help"])
         verify = self.runner.invoke(app, ["m4", "verify", "--help"])

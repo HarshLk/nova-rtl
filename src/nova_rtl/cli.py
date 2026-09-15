@@ -81,6 +81,8 @@ from nova_rtl.recovery.showcase import (
     inspect_failure,
 )
 from nova_rtl.recovery.signoff import M7SignoffError, run_m7_signoff, verify_m7_signoff
+from nova_rtl.reports.bundle import ReportIntegrityError, verify_report_bundle
+from nova_rtl.reports.replay import OfflineReplayError, verify_offline_replay
 from nova_rtl.search.signoff import M5SignoffError, run_m5_signoff, verify_m5_signoff
 from nova_rtl.signoff.m1 import (
     M1SignoffError,
@@ -88,6 +90,8 @@ from nova_rtl.signoff.m1 import (
     run_m1_signoff,
     verify_m1_signoff_packet,
 )
+from nova_rtl.ui.app import render_text_dashboard
+from nova_rtl.ui.view_models import build_view_model, build_view_model_from_replay
 
 app = typer.Typer(
     name="nova",
@@ -1849,6 +1853,110 @@ def version() -> None:
     """Print the installed NOVA-RTL version."""
 
     typer.echo(f"NOVA-RTL {__version__}")
+
+
+@app.command("report")
+def report_command(
+    report_bundle: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=True, readable=True, metavar="REPORT_BUNDLE"),
+    ],
+    evidence_root: Annotated[
+        Path,
+        typer.Option("--evidence-root", exists=True, file_okay=False, readable=True),
+    ],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Verify and inspect an auditable M9 report bundle."""
+
+    try:
+        bundle = verify_report_bundle(report_bundle, evidence_root=evidence_root)
+        model = build_view_model(bundle)
+    except (OSError, ValidationError, ValueError, ReportIntegrityError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": "PASS",
+        "report_bundle_id": bundle.report_bundle_id,
+        "bundle_hash": bundle.bundle_hash,
+        "view_count": len(model.views),
+        "model_hash": model.model_hash,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else render_text_dashboard(model)
+    )
+
+
+@app.command("replay")
+def replay_command(
+    replay_directory: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, readable=True, metavar="REPLAY_DIRECTORY"),
+    ],
+    offline: Annotated[bool, typer.Option("--offline")] = True,
+    verify_all_artifacts: Annotated[
+        bool, typer.Option("--verify-all-artifacts")
+    ] = True,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Replay a sealed report without network or EDA execution."""
+
+    if not offline or not verify_all_artifacts:
+        _optimization_failure(
+            OfflineReplayError("M9 replay requires offline, complete artifact verification"),
+            json_output,
+        )
+    try:
+        manifest = verify_offline_replay(replay_directory)
+        model = build_view_model_from_replay(replay_directory)
+    except (OSError, ValidationError, ValueError, OfflineReplayError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": "PASS",
+        "replay_id": manifest.replay_id,
+        "manifest_hash": manifest.manifest_hash,
+        "model_hash": model.model_hash,
+        "external_calls": 0,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else render_text_dashboard(model)
+    )
+
+
+@app.command("demo")
+def demo_command(
+    replay_directory: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, readable=True, metavar="REPLAY_DIRECTORY"),
+    ],
+    headless: Annotated[bool, typer.Option("--headless")] = False,
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Open or render the seven-view evaluator demo from sealed replay evidence."""
+
+    try:
+        model = build_view_model_from_replay(replay_directory)
+    except (OSError, ValidationError, ValueError, OfflineReplayError) as error:
+        _optimization_failure(error, json_output)
+    if not headless:
+        typer.echo(
+            "Interactive rendering uses the same canonical view model as this portable CLI."
+        )
+    payload = {
+        "status": "PASS",
+        "mode": "headless" if headless else "interactive-portable",
+        "run_id": model.run_id,
+        "view_count": len(model.views),
+        "model_hash": model.model_hash,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else render_text_dashboard(model)
+    )
 
 
 @app.command()
