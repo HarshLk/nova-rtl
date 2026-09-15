@@ -1,0 +1,264 @@
+{
+  "$defs": {
+    "M8GateEvidence": {
+      "additionalProperties": false,
+      "description": "One reproducible bounded-council safety gate and preserved output.",
+      "properties": {
+        "argv": {
+          "items": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "minItems": 1,
+          "title": "Argv",
+          "type": "array"
+        },
+        "evidence_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Evidence Id",
+          "type": "string"
+        },
+        "output_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Output Hash",
+          "type": "string"
+        },
+        "output_relative_path": {
+          "minLength": 1,
+          "title": "Output Relative Path",
+          "type": "string"
+        },
+        "output_size_bytes": {
+          "minimum": 0,
+          "title": "Output Size Bytes",
+          "type": "integer"
+        },
+        "passed_test_count": {
+          "exclusiveMinimum": 0,
+          "title": "Passed Test Count",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "evidence_id",
+        "argv",
+        "output_relative_path",
+        "output_hash",
+        "output_size_bytes",
+        "passed_test_count"
+      ],
+      "title": "M8GateEvidence",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "description": "Commit-bound proof that the minimum M8 council is safe and replayable.",
+  "properties": {
+    "aggregate_token_budget": {
+      "exclusiveMinimum": 0,
+      "maximum": 30000,
+      "title": "Aggregate Token Budget",
+      "type": "integer"
+    },
+    "bounded_fallback_validated": {
+      "const": true,
+      "title": "Bounded Fallback Validated",
+      "type": "boolean"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "council_deadline_seconds": {
+      "exclusiveMinimum": 0,
+      "maximum": 120,
+      "title": "Council Deadline Seconds",
+      "type": "integer"
+    },
+    "council_implementation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Council Implementation Hash",
+      "type": "string"
+    },
+    "council_matrix_evidence": {
+      "$ref": "#/$defs/M8GateEvidence"
+    },
+    "council_policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Council Policy Hash",
+      "type": "string"
+    },
+    "council_request_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Council Request Hash",
+      "type": "string"
+    },
+    "council_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Council Result Hash",
+      "type": "string"
+    },
+    "council_trace_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Council Trace Hash",
+      "type": "string"
+    },
+    "critic_classes": {
+      "items": {
+        "enum": [
+          "FORMAL",
+          "PPA"
+        ],
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Critic Classes",
+      "type": "array"
+    },
+    "critique_disposition_count": {
+      "exclusiveMinimum": 0,
+      "title": "Critique Disposition Count",
+      "type": "integer"
+    },
+    "critique_objection_count": {
+      "exclusiveMinimum": 0,
+      "title": "Critique Objection Count",
+      "type": "integer"
+    },
+    "deterministic_replay": {
+      "const": true,
+      "title": "Deterministic Replay",
+      "type": "boolean"
+    },
+    "final_proposal_count": {
+      "maximum": 3,
+      "minimum": 1,
+      "title": "Final Proposal Count",
+      "type": "integer"
+    },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
+    "input_set_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Input Set Hash",
+      "type": "string"
+    },
+    "m7_commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M7 Commit Sha",
+      "type": "string"
+    },
+    "m7_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M7 Packet Hash",
+      "type": "string"
+    },
+    "m7_report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M7 Report Hash",
+      "type": "string"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "planner_result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Planner Result Hash",
+      "type": "string"
+    },
+    "proposer_role_count": {
+      "maximum": 3,
+      "minimum": 2,
+      "title": "Proposer Role Count",
+      "type": "integer"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "revision_count": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Revision Count",
+      "type": "integer"
+    },
+    "run_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Run Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "selected_role_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "maxItems": 5,
+      "minItems": 1,
+      "title": "Selected Role Ids",
+      "type": "array"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    },
+    "total_tokens": {
+      "minimum": 0,
+      "title": "Total Tokens",
+      "type": "integer"
+    },
+    "trace_completeness_percent": {
+      "const": 100.0,
+      "title": "Trace Completeness Percent",
+      "type": "number"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "implementation_tree_hash",
+    "m7_commit_sha",
+    "m7_packet_hash",
+    "m7_report_hash",
+    "run_id",
+    "opportunity_id",
+    "council_request_hash",
+    "council_result_hash",
+    "council_trace_hash",
+    "planner_result_hash",
+    "council_policy_hash",
+    "selected_role_ids",
+    "proposer_role_count",
+    "critic_classes",
+    "final_proposal_count",
+    "critique_objection_count",
+    "critique_disposition_count",
+    "revision_count",
+    "aggregate_token_budget",
+    "total_tokens",
+    "council_deadline_seconds",
+    "trace_completeness_percent",
+    "deterministic_replay",
+    "bounded_fallback_validated",
+    "council_implementation_hash",
+    "council_matrix_evidence",
+    "input_set_hash",
+    "report_hash"
+  ],
+  "title": "M8SignoffReport",
+  "type": "object"
+}

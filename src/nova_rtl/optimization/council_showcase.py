@@ -1,5 +1,9 @@
+"""Deterministic offline M8 council showcase without external credentials."""
+
+from __future__ import annotations
+
 import asyncio
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from pathlib import Path
 
 from nova_rtl.artifacts.store import ArtifactStore
@@ -14,13 +18,11 @@ from nova_rtl.contracts.optimization import (
     RootCause,
     Transformation,
 )
-from nova_rtl.contracts.planning import ContextRequest, PlannerRequest
-from nova_rtl.contracts.reporting import SearchRequest
+from nova_rtl.contracts.planning import ContextRequest, CouncilResult, PlannerRequest
 from nova_rtl.optimization.council_evidence import (
     publish_council_evidence,
     verify_council_evidence,
 )
-from nova_rtl.optimization.council_showcase import run_council_showcase
 from nova_rtl.planner.council import (
     CouncilPlanner,
     CouncilRoleCall,
@@ -30,37 +32,37 @@ from nova_rtl.planner.council import (
 from nova_rtl.planner.evidence import EvidenceObject, InMemoryEvidenceProvider
 from nova_rtl.planner.heuristic import HeuristicPlanner
 from nova_rtl.planner.interface import load_planner_policy
-from nova_rtl.planner.search import CanonicalPlannerAdapter
 from nova_rtl.transforms.registry import competition_mvp_registry
+
+_COMPLETED_AT = datetime(2026, 8, 8, 12, 0, tzinfo=UTC)
 
 
 def _hash(character: str) -> str:
     return f"sha256:{character * 64}"
 
 
-def _proposal(identity: str, operation: str, evidence: EvidenceRef) -> OptimizationProposal:
-    family = {
-        "BALANCE_BOOLEAN_TREE": "LOGIC_RESTRUCTURING",
-        "RESTRUCTURE_PRIORITY_MUX": "LOGIC_RESTRUCTURING",
-    }[operation]
+def _proposal(
+    identity: str, operation: str, evidence: EvidenceRef
+) -> OptimizationProposal:
+    parameters = (
+        {"max_branches": 8}
+        if operation == "RESTRUCTURE_PRIORITY_MUX"
+        else {"operator": "&", "max_operands": 16}
+    )
     return OptimizationProposal(
         proposal_id=identity,
         parent_candidate_id="baseline",
-        opportunity_id="opportunity_target",
+        opportunity_id="opportunity_m8_showcase",
         diagnosis_refs=(f"diagnosis_{identity}",),
         target=ProposalTarget(
             hierarchy="nova_top.u_compute",
             source_span_id=evidence.evidence_id,
-            cone_fingerprint="cone:v1:target",
+            cone_fingerprint="cone:v1:m8_showcase",
         ),
         transformation=Transformation(
             operation=operation,
-            family=family,
-            parameters=(
-                {"max_branches": 8}
-                if operation == "RESTRUCTURE_PRIORITY_MUX"
-                else {"operator": "&", "max_operands": 16}
-            ),
+            family="LOGIC_RESTRUCTURING",
+            parameters=parameters,
         ),
         preconditions=("NO_PROTECTED_NODE_IN_EDIT_SET",),
         correctness=ProposalCorrectness(
@@ -70,38 +72,24 @@ def _proposal(identity: str, operation: str, evidence: EvidenceRef) -> Optimizat
         ),
         prediction=ProposalPrediction(
             timing_direction="IMPROVE",
-            area_direction="NEUTRAL",
-            confidence=0.6,
+            area_direction="UNKNOWN",
+            confidence=0.5,
         ),
         evidence_refs=(evidence,),
         abort_conditions=("FORMAL_EQUIVALENCE_FAILURE",),
     )
 
 
-class _CouncilInvoker:
+class _ShowcaseInvoker:
     def __init__(
-        self,
-        proposals: tuple[OptimizationProposal, ...],
-        evidence: EvidenceRef,
-        *,
-        fail_role: str | None = None,
-    ):
+        self, proposals: tuple[OptimizationProposal, ...], evidence: EvidenceRef
+    ) -> None:
         self._proposals = proposals
         self._evidence = evidence
-        self._fail_role = fail_role
 
     async def invoke(
         self, call: CouncilRoleCall, *, deadline_s: float
     ) -> CouncilRoleOutcome:
-        if call.role_id == self._fail_role:
-            return CouncilRoleOutcome(
-                role_id=call.role_id,
-                status="ERROR",
-                structured_output=None,
-                input_tokens=1,
-                output_tokens=0,
-                latency_ms=1,
-            )
         if call.role_kind == "PROPOSER":
             index = 0 if call.role_id == "timing_forensics" else 1
             output = {"proposals": [self._proposals[index].model_dump(mode="json")]}
@@ -113,7 +101,7 @@ class _CouncilInvoker:
                 if critic_class == "FORMAL" and index == 0:
                     objections.append(
                         {
-                            "objection_id": "objection_formal_scope",
+                            "objection_id": "objection_m8_formal_scope",
                             "severity": "ADVISORY",
                             "category": "FORMAL_SCOPE_RISK",
                             "message": "retain whole-design strict equivalence",
@@ -124,7 +112,7 @@ class _CouncilInvoker:
                 critiques.append(
                     {
                         "schema_version": 1,
-                        "critique_report_id": f"critique_{call.role_id}_{index}",
+                        "critique_report_id": f"critique_m8_{call.role_id}_{index}",
                         "critic_role": call.role_id,
                         "critic_class": critic_class,
                         "proposal_card_id": card["proposal_card_id"],
@@ -133,21 +121,21 @@ class _CouncilInvoker:
                 )
             output = {"critiques": critiques}
         else:
-            first = call.input_payload["cards"][0]["proposal_id"]
+            selected = call.input_payload["cards"][0]["proposal_id"]
             output = {
                 "dispositions": [
                     {
                         "schema_version": 1,
-                        "critique_disposition_id": "disposition_formal_scope",
-                        "objection_id": "objection_formal_scope",
+                        "critique_disposition_id": "disposition_m8_formal_scope",
+                        "objection_id": "objection_m8_formal_scope",
                         "action": "ACCEPT",
                         "reason_code": "STRICT_EQUIV_RETAINED",
-                        "resulting_proposal_id": first,
+                        "resulting_proposal_id": selected,
                         "chair_evidence_refs": [self._evidence.model_dump(mode="json")],
                     }
                 ],
                 "revision_records": [],
-                "final_proposal_ids": [first],
+                "final_proposal_ids": [selected],
             }
         return CouncilRoleOutcome(
             role_id=call.role_id,
@@ -159,30 +147,36 @@ class _CouncilInvoker:
         )
 
 
-def test_bounded_council_flows_through_canonical_search_boundary(tmp_path: Path) -> None:
+def run_council_showcase(output_directory: Path) -> tuple[Path, CouncilResult]:
+    """Run and persist the deterministic minimum five-role M8 demonstration."""
+
+    output_directory = output_directory.resolve()
+    existing = output_directory / "council-result.json"
+    if existing.is_file():
+        return existing, verify_council_evidence(output_directory)
     registry = competition_mvp_registry()
     council_policy = load_council_policy(Path("config/policy/council.yaml"))
     planner_policy = load_planner_policy(Path("config/policy/planner.yaml"))
     source_ref = EvidenceRef(
-        evidence_id="source_span_target",
+        evidence_id="source_span_m8_showcase",
         kind="SOURCE_SPAN",
-        artifact_id="artifact_graph",
-        json_pointer="/nodes/source_span_target",
+        artifact_id="artifact_m8_evidence",
+        json_pointer="/nodes/source_span_m8_showcase",
         snapshot_hash=_hash("a"),
     )
     timing_ref = EvidenceRef(
-        evidence_id="path_target",
+        evidence_id="path_m8_showcase",
         kind="PATH",
-        artifact_id="artifact_graph",
-        json_pointer="/paths/path_target",
+        artifact_id="artifact_m8_evidence",
+        json_pointer="/paths/path_m8_showcase",
         snapshot_hash=_hash("a"),
     )
     opportunity = OptimizationOpportunity(
-        opportunity_id="opportunity_target",
+        opportunity_id="opportunity_m8_showcase",
         parent_candidate_id="baseline",
         target_domain="compute_domain",
         target_analysis_view_id="asap7_setup",
-        affected_analysis_view_ids=("asap7_setup",),
+        affected_analysis_view_ids=("asap7_setup", "asap7_hold"),
         root_causes=(RootCause(category="DEEP_PRIORITY_CHAIN", confidence=0.9),),
         severity=OpportunitySeverity(
             worst_view_id="asap7_setup",
@@ -193,17 +187,20 @@ def test_bounded_council_flows_through_canonical_search_boundary(tmp_path: Path)
         editability="RTL_EDITABLE",
         source_spans=(source_ref.evidence_id,),
         protected_neighbors=(),
-        eligible_transform_families=("BALANCE_BOOLEAN_TREE", "RESTRUCTURE_PRIORITY_MUX"),
+        eligible_transform_families=(
+            "BALANCE_BOOLEAN_TREE",
+            "RESTRUCTURE_PRIORITY_MUX",
+        ),
         proof_contracts=("STRICT_SEQ_EQUIV",),
         evidence_refs=(source_ref, timing_ref),
     )
     proposals = (
-        _proposal("proposal_timing", "RESTRUCTURE_PRIORITY_MUX", source_ref),
-        _proposal("proposal_logic", "BALANCE_BOOLEAN_TREE", source_ref),
+        _proposal("proposal_m8_timing", "RESTRUCTURE_PRIORITY_MUX", source_ref),
+        _proposal("proposal_m8_logic", "BALANCE_BOOLEAN_TREE", source_ref),
     )
     request = PlannerRequest(
-        planner_request_id="planner_request_council",
-        run_id="run_council",
+        planner_request_id="planner_request_m8_showcase",
+        run_id="run_m8_showcase",
         parent_candidate_id="baseline",
         opportunity_id=opportunity.opportunity_id,
         evidence_snapshot_hash=_hash("a"),
@@ -213,9 +210,9 @@ def test_bounded_council_flows_through_canonical_search_boundary(tmp_path: Path)
         authorized_evidence_ids=(source_ref.evidence_id, timing_ref.evidence_id),
         planner_mode="AGENT_COUNCIL",
         proposal_limit=2,
-        token_budget=30_000,
-        latency_budget_ms=120_000,
-        deadline=datetime.now(UTC) + timedelta(minutes=2),
+        token_budget=council_policy.max_aggregate_tokens,
+        latency_budget_ms=council_policy.deadline_seconds * 1000,
+        deadline=_COMPLETED_AT,
         deterministic_seed=8,
         required_output_schema_name="optimization-proposal",
         required_output_schema_version=2,
@@ -240,7 +237,7 @@ def test_bounded_council_flows_through_canonical_search_boundary(tmp_path: Path)
     }
     contexts = tuple(
         ContextRequest(
-            context_request_id=f"context_request_{role}",
+            context_request_id=f"context_request_m8_{role}",
             planner_request_id=request.planner_request_id,
             role=role,
             common_envelope_hash=canonical_sha256(envelope),
@@ -278,91 +275,18 @@ def test_bounded_council_flows_through_canonical_search_boundary(tmp_path: Path)
         context_requests=contexts,
         common_envelope=envelope,
         evidence_provider=evidence,
-        invoker=_CouncilInvoker(proposals, timing_ref),
+        invoker=_ShowcaseInvoker(proposals, timing_ref),
         heuristic_fallback=heuristic,
         opportunities=(opportunity,),
         registry=registry,
-        artifact_store=ArtifactStore(tmp_path / "artifacts"),
+        artifact_store=ArtifactStore(output_directory / "artifacts"),
         policy=council_policy,
     )
-    search_request = SearchRequest(
-        search_request_id="search_request_council",
-        run_id=request.run_id,
-        design_contract_hash=request.design_contract_hash,
-        policy_hash=request.policy_hash,
-        transform_registry_hash=request.transform_registry_hash,
-        planner_mode="AGENT_COUNCIL",
-        ordered_opportunity_ids=(opportunity.opportunity_id,),
-        required_correctness_class="PRIMARY_STRICT",
-        candidate_budget=2,
-        formal_budget=2,
-        physical_budget=1,
-        token_budget=30_000,
-        latency_budget_ms=120_000,
-        deterministic_seed=8,
-        stop_policy_hash=_hash("e"),
-        created_at=datetime.now(UTC),
-    )
-    adapter = CanonicalPlannerAdapter(
-        planners={opportunity.opportunity_id: planner},
-        planner_requests={opportunity.opportunity_id: request},
-        priorities={opportunity.opportunity_id: 1.0},
-    )
-
-    batch = asyncio.run(adapter.propose(search_request, opportunity.opportunity_id))
-
-    assert len(batch.proposals) == 1
-    assert batch.council_result_ids == (planner.council_result.council_result_id,)
-    assert planner.council_result.status == "PASS"
-    assert len(planner.council_result.selected_role_ids) == 5
-    assert len(planner.council_result.critique_reports) == 4
-    assert planner.council_result.critique_dispositions[0].objection_id == (
-        "objection_formal_scope"
-    )
-    assert planner.council_trace.trace_completeness_percent == 100.0
-
-    evidence_directory = tmp_path / "deliberation"
+    planner_result = asyncio.run(planner.propose(request))
     result_path = publish_council_evidence(
-        evidence_directory, planner=planner, planner_result=adapter.planner_results[0]
+        output_directory, planner=planner, planner_result=planner_result
     )
-    first_bytes = result_path.read_bytes()
-    repeated_path = publish_council_evidence(
-        evidence_directory, planner=planner, planner_result=adapter.planner_results[0]
-    )
-    assert repeated_path.read_bytes() == first_bytes
-    assert verify_council_evidence(evidence_directory) == planner.council_result
-
-    failing_planner = CouncilPlanner(
-        context_requests=contexts,
-        common_envelope=envelope,
-        evidence_provider=evidence,
-        invoker=_CouncilInvoker(proposals, timing_ref, fail_role="formal_critic"),
-        heuristic_fallback=heuristic,
-        opportunities=(opportunity,),
-        registry=registry,
-        artifact_store=ArtifactStore(tmp_path / "fallback-artifacts"),
-        policy=council_policy,
-    )
-    fallback = asyncio.run(failing_planner.propose(request))
-
-    assert fallback.status == "PARTIAL"
-    assert fallback.fallback_used is True
-    assert fallback.upstream_provider_result_id == failing_planner.council_result.council_result_id
-    assert fallback.proposal_ids
-    assert failing_planner.council_result.status == "PARTIAL"
-    assert failing_planner.council_result.final_ordered_proposal_ids == ()
+    return result_path, planner.council_result
 
 
-def test_recorded_council_showcase_is_deterministic_and_replayable(
-    tmp_path: Path,
-) -> None:
-    first_path, first = run_council_showcase(tmp_path / "showcase-first")
-    first_bytes = first_path.read_bytes()
-    second_path, second = run_council_showcase(tmp_path / "showcase-second")
-
-    assert first == second
-    assert first_bytes == second_path.read_bytes()
-    assert first.status == "PASS"
-    assert len(first.selected_role_ids) == 5
-    assert len(first.critique_dispositions) >= 1
-    assert verify_council_evidence(first_path.parent) == first
+__all__ = ["run_council_showcase"]

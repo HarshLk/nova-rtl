@@ -415,6 +415,8 @@ class CouncilPlanner:
             classification="RESTRICTED_RTL",
             producer_stage_result_id=None,
         )
+        if self._council_request is not None:
+            artifact = artifact.model_copy(update={"created_at": self._council_request.deadline})
         return PrivateRoleRecord(
             role_id=call.role_id,
             role_kind=call.role_kind,
@@ -846,8 +848,7 @@ class CouncilPlanner:
             "output_tokens": 0,
             "latency_ms": 0,
             "fallback_used": True,
-            "upstream_provider_result_id": None,
-            "upstream_council_result_id": self._council_result.council_result_id,
+            "upstream_provider_result_id": self._council_result.council_result_id,
         }
         identity = canonical_sha256(
             {

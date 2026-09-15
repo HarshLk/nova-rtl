@@ -353,6 +353,78 @@ class M6SignoffReport(StrictContract):
         return self
 
 
+class M8GateEvidence(StrictContract):
+    """One reproducible bounded-council safety gate and preserved output."""
+
+    evidence_id: EntityId
+    argv: tuple[NonEmptyString, ...] = Field(min_length=1)
+    output_relative_path: NonEmptyString
+    output_hash: HashRef
+    output_size_bytes: NonNegativeInt
+    passed_test_count: int = Field(strict=True, gt=0)
+
+
+class M8SignoffReport(StrictContract):
+    """Commit-bound proof that the minimum M8 council is safe and replayable."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    implementation_tree_hash: Annotated[
+        str, StringConstraints(pattern=r"^[0-9a-f]{40}$")
+    ]
+    m7_commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    m7_packet_hash: HashRef
+    m7_report_hash: HashRef
+    run_id: EntityId
+    opportunity_id: EntityId
+    council_request_hash: HashRef
+    council_result_hash: HashRef
+    council_trace_hash: HashRef
+    planner_result_hash: HashRef
+    council_policy_hash: HashRef
+    selected_role_ids: tuple[EntityId, ...] = Field(min_length=1, max_length=5)
+    proposer_role_count: int = Field(strict=True, ge=2, le=3)
+    critic_classes: tuple[Literal["FORMAL", "PPA"], ...] = Field(
+        min_length=2, max_length=2
+    )
+    final_proposal_count: int = Field(strict=True, ge=1, le=3)
+    critique_objection_count: int = Field(strict=True, gt=0)
+    critique_disposition_count: int = Field(strict=True, gt=0)
+    revision_count: int = Field(strict=True, ge=0, le=1)
+    aggregate_token_budget: int = Field(strict=True, gt=0, le=30_000)
+    total_tokens: NonNegativeInt
+    council_deadline_seconds: int = Field(strict=True, gt=0, le=120)
+    trace_completeness_percent: Literal[100.0]
+    deterministic_replay: Literal[True]
+    bounded_fallback_validated: Literal[True]
+    council_implementation_hash: HashRef
+    council_matrix_evidence: M8GateEvidence
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def milestone_boundary_is_complete_and_hashed(self) -> Self:
+        _require_unique(self.selected_role_ids, "M8 selected role IDs")
+        _require_unique(self.critic_classes, "M8 critic classes")
+        if set(self.critic_classes) != {"FORMAL", "PPA"}:
+            raise ValueError("M8 requires formal and PPA criticism")
+        if self.total_tokens > self.aggregate_token_budget:
+            raise ValueError("M8 council exceeded its aggregate token budget")
+        if self.critique_disposition_count != self.critique_objection_count:
+            raise ValueError("M8 requires every critique objection to be dispositioned")
+        payload = {
+            key: value
+            for key, value in self.model_dump(mode="python").items()
+            if key not in {"schema_version", "status", "input_set_hash", "report_hash"}
+        }
+        if self.input_set_hash != canonical_sha256(payload):
+            raise ValueError("M8 input_set_hash differs from sign-off evidence")
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
+            raise ValueError("M8 report_hash is not canonical")
+        return self
+
+
 class PlannerResult(StrictContract):
     schema_version: Literal[1] = 1
     planner_result_id: EntityId
@@ -375,7 +447,6 @@ class PlannerResult(StrictContract):
     latency_ms: NonNegativeInt
     fallback_used: bool
     upstream_provider_result_id: EntityId | None
-    upstream_council_result_id: EntityId | None = None
 
     @model_validator(mode="after")
     def status_and_lineage_are_coherent(self) -> Self:
@@ -388,22 +459,12 @@ class PlannerResult(StrictContract):
         ):
             raise ValueError(f"{self.status} planner result cannot contain proposals")
         if self.fallback_used:
-            if self.planner_mode == "AGENT_COUNCIL":
-                if self.upstream_council_result_id is None:
-                    raise ValueError("council fallback must retain its upstream council result")
-                if self.upstream_provider_result_id is not None:
-                    raise ValueError("council fallback cannot claim a provider result")
-            elif self.upstream_provider_result_id is None:
+            if self.upstream_provider_result_id is None:
                 raise ValueError("fallback must retain its upstream provider result")
             if not self.rejected_output_diagnostics:
                 raise ValueError("fallback must retain upstream rejection diagnostics")
-        elif (
-            self.upstream_provider_result_id is not None
-            or self.upstream_council_result_id is not None
-        ):
-            raise ValueError("non-fallback result cannot declare an upstream result")
-        if self.planner_mode != "AGENT_COUNCIL" and self.upstream_council_result_id is not None:
-            raise ValueError("non-council planner cannot declare an upstream council result")
+        elif self.upstream_provider_result_id is not None:
+            raise ValueError("non-fallback result cannot declare an upstream provider result")
         if self.planner_mode == "AGENT_COUNCIL" and self.status in {"PASS", "PARTIAL"}:
             if self.council_result_id is None:
                 raise ValueError("council planner result requires council_result_id")
@@ -843,6 +904,8 @@ __all__ = [
     "DiagnosisReport",
     "M6GateEvidence",
     "M6SignoffReport",
+    "M8GateEvidence",
+    "M8SignoffReport",
     "PlannerRequest",
     "PlannerResult",
     "ProposalShortlist",
