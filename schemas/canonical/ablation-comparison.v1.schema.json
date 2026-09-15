@@ -1,0 +1,119 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "adopted": {
+      "title": "Adopted",
+      "type": "boolean"
+    },
+    "baseline_best_strict_ppa": {
+      "title": "Baseline Best Strict Ppa",
+      "type": "number"
+    },
+    "baseline_budget_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Baseline Budget Hash",
+      "type": "string"
+    },
+    "baseline_feasible_yield": {
+      "minimum": 0,
+      "title": "Baseline Feasible Yield",
+      "type": "number"
+    },
+    "baseline_variant": {
+      "enum": [
+        "H",
+        "S",
+        "MC",
+        "F0",
+        "F4"
+      ],
+      "title": "Baseline Variant",
+      "type": "string"
+    },
+    "comparison_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Comparison Id",
+      "type": "string"
+    },
+    "contender_best_strict_ppa": {
+      "title": "Contender Best Strict Ppa",
+      "type": "number"
+    },
+    "contender_budget_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Contender Budget Hash",
+      "type": "string"
+    },
+    "contender_feasible_yield": {
+      "minimum": 0,
+      "title": "Contender Feasible Yield",
+      "type": "number"
+    },
+    "contender_variant": {
+      "enum": [
+        "H",
+        "S",
+        "MC",
+        "F0",
+        "F4"
+      ],
+      "title": "Contender Variant",
+      "type": "string"
+    },
+    "cost_ratio": {
+      "minimum": 0,
+      "title": "Cost Ratio",
+      "type": "number"
+    },
+    "median_latency_seconds": {
+      "minimum": 0,
+      "title": "Median Latency Seconds",
+      "type": "number"
+    },
+    "reasons": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "title": "Reasons",
+      "type": "array"
+    },
+    "schema_valid_rate": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Schema Valid Rate",
+      "type": "number"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "trace_completeness": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Trace Completeness",
+      "type": "number"
+    }
+  },
+  "required": [
+    "comparison_id",
+    "baseline_variant",
+    "contender_variant",
+    "baseline_budget_hash",
+    "contender_budget_hash",
+    "baseline_feasible_yield",
+    "contender_feasible_yield",
+    "baseline_best_strict_ppa",
+    "contender_best_strict_ppa",
+    "schema_valid_rate",
+    "trace_completeness",
+    "median_latency_seconds",
+    "cost_ratio",
+    "adopted",
+    "reasons"
+  ],
+  "title": "AblationComparison",
+  "type": "object"
+}

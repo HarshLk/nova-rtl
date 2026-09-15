@@ -1,0 +1,70 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "artifact_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Artifact Ids",
+      "type": "array"
+    },
+    "authority": {
+      "enum": [
+        "ADVISORY_AI",
+        "DETERMINISTIC_POLICY",
+        "TRUTH_GATE",
+        "MEASURED_EDA",
+        "HISTORICAL_EVIDENCE",
+        "RECOVERY_DECISION"
+      ],
+      "title": "Authority",
+      "type": "string"
+    },
+    "claim_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Claim Id",
+      "type": "string"
+    },
+    "comparison_identity_hashes": {
+      "additionalProperties": {
+        "pattern": "^sha256:[0-9a-f]{64}$",
+        "type": "string"
+      },
+      "minProperties": 1,
+      "title": "Comparison Identity Hashes",
+      "type": "object"
+    },
+    "evidence_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Evidence Ids",
+      "type": "array"
+    },
+    "label": {
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "value": {
+      "minLength": 1,
+      "title": "Value",
+      "type": "string"
+    }
+  },
+  "required": [
+    "claim_id",
+    "label",
+    "value",
+    "authority",
+    "artifact_ids",
+    "evidence_ids",
+    "comparison_identity_hashes"
+  ],
+  "title": "EvidenceClaim",
+  "type": "object"
+}

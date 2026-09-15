@@ -1,0 +1,136 @@
+{
+  "$defs": {
+    "FrequencySweepTrial": {
+      "additionalProperties": false,
+      "properties": {
+        "frequency_mhz": {
+          "exclusiveMinimum": 0,
+          "title": "Frequency Mhz",
+          "type": "number"
+        },
+        "hold_stage_result_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Hold Stage Result Id",
+          "type": "string"
+        },
+        "hold_status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INCONCLUSIVE"
+          ],
+          "title": "Hold Status",
+          "type": "string"
+        },
+        "overlay_hash": {
+          "pattern": "^sha256:[0-9a-f]{64}$",
+          "title": "Overlay Hash",
+          "type": "string"
+        },
+        "period_ns": {
+          "exclusiveMinimum": 0,
+          "title": "Period Ns",
+          "type": "number"
+        },
+        "setup_stage_result_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Setup Stage Result Id",
+          "type": "string"
+        },
+        "setup_status": {
+          "enum": [
+            "PASS",
+            "FAIL",
+            "INCONCLUSIVE"
+          ],
+          "title": "Setup Status",
+          "type": "string"
+        },
+        "trial_id": {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "title": "Trial Id",
+          "type": "string"
+        }
+      },
+      "required": [
+        "trial_id",
+        "period_ns",
+        "frequency_mhz",
+        "setup_status",
+        "hold_status",
+        "setup_stage_result_id",
+        "hold_stage_result_id",
+        "overlay_hash"
+      ],
+      "title": "FrequencySweepTrial",
+      "type": "object"
+    }
+  },
+  "additionalProperties": false,
+  "properties": {
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "contract_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Contract Hash",
+      "type": "string"
+    },
+    "fmax_mhz": {
+      "anyOf": [
+        {
+          "type": "number"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "title": "Fmax Mhz"
+    },
+    "passing_trial_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "title": "Passing Trial Ids",
+      "type": "array"
+    },
+    "result_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Result Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "sweep_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Sweep Id",
+      "type": "string"
+    },
+    "trials": {
+      "items": {
+        "$ref": "#/$defs/FrequencySweepTrial"
+      },
+      "minItems": 1,
+      "title": "Trials",
+      "type": "array"
+    }
+  },
+  "required": [
+    "sweep_id",
+    "candidate_id",
+    "contract_hash",
+    "trials",
+    "passing_trial_ids",
+    "fmax_mhz",
+    "result_hash"
+  ],
+  "title": "FrequencySweepResult",
+  "type": "object"
+}

@@ -1,0 +1,131 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "binding_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Binding Hash",
+      "type": "string"
+    },
+    "candidate_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Candidate Id",
+      "type": "string"
+    },
+    "cdc_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Cdc Hash",
+      "type": "string"
+    },
+    "clock_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Clock Hash",
+      "type": "string"
+    },
+    "completed_view_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Completed View Ids",
+      "type": "array"
+    },
+    "constraint_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Constraint Hash",
+      "type": "string"
+    },
+    "correctness_contract": {
+      "enum": [
+        "STRICT_SEQ_EQUIV",
+        "RETIMING_EQUIV",
+        "LATENCY_AWARE"
+      ],
+      "title": "Correctness Contract",
+      "type": "string"
+    },
+    "formal_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Formal Hash",
+      "type": "string"
+    },
+    "patch_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Patch Hash",
+      "type": "string"
+    },
+    "platform_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Platform Hash",
+      "type": "string"
+    },
+    "recipe_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Recipe Hash",
+      "type": "string"
+    },
+    "required_view_ids": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Required View Ids",
+      "type": "array"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "seal_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Seal Hash",
+      "type": "string"
+    },
+    "selection_class": {
+      "enum": [
+        "PRIMARY_STRICT",
+        "SECONDARY_RETIMED",
+        "EXPLORATORY_LATENCY_AWARE"
+      ],
+      "title": "Selection Class",
+      "type": "string"
+    },
+    "source_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Source Hash",
+      "type": "string"
+    },
+    "strict_proof_outcome": {
+      "enum": [
+        "PASS",
+        "FAIL",
+        "INCONCLUSIVE"
+      ],
+      "title": "Strict Proof Outcome",
+      "type": "string"
+    }
+  },
+  "required": [
+    "candidate_id",
+    "selection_class",
+    "correctness_contract",
+    "source_hash",
+    "patch_hash",
+    "constraint_hash",
+    "binding_hash",
+    "clock_hash",
+    "cdc_hash",
+    "formal_hash",
+    "platform_hash",
+    "recipe_hash",
+    "required_view_ids",
+    "completed_view_ids",
+    "strict_proof_outcome",
+    "seal_hash"
+  ],
+  "title": "FinalCandidateSeal",
+  "type": "object"
+}

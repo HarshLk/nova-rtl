@@ -1,0 +1,105 @@
+{
+  "additionalProperties": false,
+  "properties": {
+    "ablation_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Ablation Hash",
+      "type": "string"
+    },
+    "acceptance_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Acceptance Hash",
+      "type": "string"
+    },
+    "commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Commit Sha",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "final_candidate_seal_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Final Candidate Seal Hash",
+      "type": "string"
+    },
+    "frequency_sweep_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Frequency Sweep Hash",
+      "type": "string"
+    },
+    "gate_evidence_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Gate Evidence Hash",
+      "type": "string"
+    },
+    "implementation_tree_hash": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "Implementation Tree Hash",
+      "type": "string"
+    },
+    "m8_commit_sha": {
+      "pattern": "^[0-9a-f]{40}$",
+      "title": "M8 Commit Sha",
+      "type": "string"
+    },
+    "m8_packet_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "M8 Packet Hash",
+      "type": "string"
+    },
+    "replay_manifest_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Replay Manifest Hash",
+      "type": "string"
+    },
+    "report_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Bundle Hash",
+      "type": "string"
+    },
+    "report_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Report Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    },
+    "status": {
+      "const": "PASS",
+      "title": "Status",
+      "type": "string"
+    },
+    "submission_bundle_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Submission Bundle Hash",
+      "type": "string"
+    }
+  },
+  "required": [
+    "status",
+    "commit_sha",
+    "implementation_tree_hash",
+    "m8_commit_sha",
+    "m8_packet_hash",
+    "report_bundle_hash",
+    "replay_manifest_hash",
+    "final_candidate_seal_hash",
+    "ablation_hash",
+    "frequency_sweep_hash",
+    "acceptance_hash",
+    "submission_bundle_hash",
+    "gate_evidence_hash",
+    "created_at",
+    "report_hash"
+  ],
+  "title": "M9SignoffReport",
+  "type": "object"
+}

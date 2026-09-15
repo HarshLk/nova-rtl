@@ -107,6 +107,15 @@ from nova_rtl.contracts.recovery import (
     SearchRecoveryReport,
     validate_recovery_authority_chain,
 )
+from nova_rtl.contracts.release import (
+    AblationComparison,
+    EvidenceClaim,
+    FinalCandidateSeal,
+    FrequencySweepResult,
+    FrequencySweepTrial,
+    M9SignoffReport,
+    ReplayManifest,
+)
 from nova_rtl.contracts.reporting import (
     ExperimentRecord,
     M5GateEvidence,
@@ -124,6 +133,7 @@ from nova_rtl.contracts.verification import (
 )
 
 __all__ = [
+    "AblationComparison",
     "AnalysisViewContract",
     "ArchiveMetadata",
     "ArtifactRef",
@@ -149,6 +159,7 @@ __all__ = [
     "M7SignoffReport",
     "M8GateEvidence",
     "M8SignoffReport",
+    "M9SignoffReport",
     "CDCInventory",
     "CanonicalEnvironmentEntry",
     "CalibrationReport",
@@ -172,12 +183,16 @@ __all__ = [
     "DiagnosisReport",
     "DoctorIssue",
     "DoctorReport",
+    "EvidenceClaim",
     "EvidenceRef",
     "EvidenceGraphSnapshot",
     "ExperimentRecord",
     "FailureEvent",
+    "FinalCandidateSeal",
     "FormalModelContract",
     "FrequencySweepContract",
+    "FrequencySweepResult",
+    "FrequencySweepTrial",
     "GeneratedClockExpectation",
     "HostPlatform",
     "HydrationComponentReceipt",
@@ -211,6 +226,7 @@ __all__ = [
     "RecoveryRoutePlan",
     "RepairDirective",
     "ReportBundle",
+    "ReplayManifest",
     "RoleContextPack",
     "RuntimeEnvironmentEntry",
     "RunEvent",

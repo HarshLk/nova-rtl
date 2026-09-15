@@ -15,6 +15,7 @@ from nova_rtl.contracts.schema_export import (
 )
 
 EXPECTED_SCHEMA_FILES = {
+    "ablation-comparison.v1.schema.json",
     "analysis-view-contract.v1.schema.json",
     "artifact-ref.v1.schema.json",
     "benchmark-constraint-contract.v1.schema.json",
@@ -46,11 +47,14 @@ EXPECTED_SCHEMA_FILES = {
     "doctor-check.v1.schema.json",
     "doctor-report.v1.schema.json",
     "evidence-graph-snapshot.v1.schema.json",
+    "evidence-claim.v1.schema.json",
     "evidence-ref.v1.schema.json",
     "experiment-record.v1.schema.json",
     "failure-event.v1.schema.json",
     "formal-model-contract.v1.schema.json",
+    "final-candidate-seal.v1.schema.json",
     "frequency-sweep-contract.v1.schema.json",
+    "frequency-sweep-result.v1.schema.json",
     "gate-event.v1.schema.json",
     "metric-set.v1.schema.json",
     "m2-signoff-report.v1.schema.json",
@@ -65,6 +69,7 @@ EXPECTED_SCHEMA_FILES = {
     "m7-signoff-report.v1.schema.json",
     "m8-gate-evidence.v1.schema.json",
     "m8-signoff-report.v1.schema.json",
+    "m9-signoff-report.v1.schema.json",
     "mapped-structural-effect.v1.schema.json",
     "optimization-opportunity.v1.schema.json",
     "optimization-proposal.v2.schema.json",
@@ -85,6 +90,7 @@ EXPECTED_SCHEMA_FILES = {
     "recovery-route-plan.v1.schema.json",
     "repair-directive.v1.schema.json",
     "report-bundle.v1.schema.json",
+    "replay-manifest.v1.schema.json",
     "role-context-pack.v1.schema.json",
     "run-event.v1.schema.json",
     "search-request.v1.schema.json",

@@ -89,6 +89,14 @@ from nova_rtl.contracts.recovery import (
     RepairDirective,
     SearchRecoveryReport,
 )
+from nova_rtl.contracts.release import (
+    AblationComparison,
+    EvidenceClaim,
+    FinalCandidateSeal,
+    FrequencySweepResult,
+    M9SignoffReport,
+    ReplayManifest,
+)
 from nova_rtl.contracts.reporting import (
     ExperimentRecord,
     M5GateEvidence,
@@ -203,6 +211,12 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "search-request": SchemaRegistration(SearchRequest, version=1),
     "search-result": SchemaRegistration(SearchResult, version=1),
     "report-bundle": SchemaRegistration(ReportBundle, version=1),
+    "ablation-comparison": SchemaRegistration(AblationComparison, version=1),
+    "evidence-claim": SchemaRegistration(EvidenceClaim, version=1),
+    "final-candidate-seal": SchemaRegistration(FinalCandidateSeal, version=1),
+    "frequency-sweep-result": SchemaRegistration(FrequencySweepResult, version=1),
+    "m9-signoff-report": SchemaRegistration(M9SignoffReport, version=1),
+    "replay-manifest": SchemaRegistration(ReplayManifest, version=1),
     "run-event": SchemaRegistration(RunEvent, version=1),
 }
 
