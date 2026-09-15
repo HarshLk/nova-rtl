@@ -47,6 +47,86 @@ def _require_one_snapshot(refs: tuple[EvidenceRef, ...], label: str) -> str:
     return next(iter(snapshots))
 
 
+class CouncilPolicy(StrictContract):
+    """Hard authority and resource ceiling for one M8 deliberation."""
+
+    schema_version: Literal[1] = 1
+    max_reasoning_roles: int = Field(strict=True, gt=0, le=5)
+    max_strategist_roles: int = Field(strict=True, ge=2, le=3)
+    max_final_proposals: int = Field(strict=True, gt=0, le=3)
+    max_revisions: int = Field(strict=True, ge=0, le=1)
+    max_aggregate_tokens: int = Field(strict=True, gt=0, le=30_000)
+    deadline_seconds: int = Field(strict=True, gt=0, le=120)
+    fan_out_limit: int = Field(strict=True, gt=0, le=4)
+    fan_in_limit: int = Field(strict=True, gt=0, le=4)
+    fallback_order: tuple[Literal["SINGLE_AGENT", "HEURISTIC"], ...] = Field(
+        min_length=1, max_length=2
+    )
+    allow_model_tools: Literal[False]
+    allow_model_writes: Literal[False]
+    external_tracing: Literal[False]
+    policy_hash: HashRef
+
+    @model_validator(mode="after")
+    def bounds_and_identity_are_coherent(self) -> Self:
+        _require_unique(self.fallback_order, "council fallback order")
+        if self.fallback_order[-1] != "HEURISTIC":
+            raise ValueError("council policy must terminate in deterministic fallback")
+        if self.fan_in_limit > self.fan_out_limit:
+            raise ValueError("council fan-in cannot exceed fan-out")
+        if self.policy_hash != canonical_sha256(
+            self, exclude=frozenset({"policy_hash"})
+        ):
+            raise ValueError("council policy hash is not canonical")
+        return self
+
+    @classmethod
+    def build(cls, **values: object) -> CouncilPolicy:
+        payload = {"schema_version": 1, **values}
+        return cls(**payload, policy_hash=canonical_sha256(payload))
+
+
+class CouncilRoute(StrictContract):
+    """Deterministic, auditable selection of bounded council roles."""
+
+    schema_version: Literal[1] = 1
+    council_route_id: EntityId
+    opportunity_id: EntityId
+    root_cause: StableUpperString
+    proposer_roles: tuple[EntityId, ...] = Field(min_length=2, max_length=2)
+    critic_roles: tuple[EntityId, ...] = Field(min_length=2, max_length=2)
+    chair_role: EntityId
+    reason_codes: tuple[StableUpperString, ...] = Field(min_length=1)
+    route_hash: HashRef
+
+    @model_validator(mode="after")
+    def route_is_independent_and_self_hashed(self) -> Self:
+        _require_unique(self.proposer_roles, "council proposer roles")
+        _require_unique(self.critic_roles, "council critic roles")
+        _require_unique(self.reason_codes, "council route reason codes")
+        if set(self.critic_roles) != {"formal_critic", "ppa_critic"}:
+            raise ValueError("council route requires formal and PPA critics")
+        selected = (*self.proposer_roles, *self.critic_roles, self.chair_role)
+        _require_unique(selected, "council selected roles")
+        if len(selected) > 5:
+            raise ValueError("council route exceeds the absolute role bound")
+        if self.route_hash != canonical_sha256(
+            self, exclude=frozenset({"route_hash"})
+        ):
+            raise ValueError("council route hash is not canonical")
+        return self
+
+    @classmethod
+    def build(cls, **values: object) -> CouncilRoute:
+        payload = {"schema_version": 1, **values}
+        route_hash = canonical_sha256(payload)
+        return cls(
+            **payload,
+            council_route_id=f"council_route_{route_hash[-24:]}",
+            route_hash=route_hash,
+        )
+
+
 class PlannerRequest(StrictContract):
     schema_version: Literal[1] = 1
     planner_request_id: EntityId
@@ -737,6 +817,8 @@ class CouncilResult(StrictContract):
 __all__ = [
     "ContextRequest",
     "CouncilRequest",
+    "CouncilPolicy",
+    "CouncilRoute",
     "CouncilResult",
     "CouncilTrace",
     "CritiqueDisposition",

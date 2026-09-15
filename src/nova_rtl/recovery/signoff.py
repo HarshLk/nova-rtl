@@ -76,6 +76,40 @@ def _clean_checkpoint(repository_root: Path) -> tuple[str, str]:
     )
 
 
+def _require_git_ancestor(
+    repository_root: Path, ancestor_commit: str, descendant_commit: str
+) -> None:
+    """Require a trusted milestone commit to precede the current milestone."""
+
+    executable = shutil.which("git")
+    if executable is None:
+        raise M7SignoffError("Git is required for M7 dependency verification")
+    completed = subprocess.run(
+        (
+            str(Path(executable).resolve()),
+            "-C",
+            str(repository_root),
+            "merge-base",
+            "--is-ancestor",
+            ancestor_commit,
+            descendant_commit,
+        ),
+        env={
+            "GIT_NO_REPLACE_OBJECTS": "1",
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": f"{Path(executable).resolve().parent}:/usr/bin:/bin",
+        },
+        shell=False,
+        check=False,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    if completed.returncode != 0:
+        raise M7SignoffError("M7 checkpoint is not a trusted ancestor")
+
+
 def _implementation_hash(repository_root: Path) -> str:
     paths = (
         "src/nova_rtl/recovery/classifier.py",
@@ -378,4 +412,50 @@ def verify_m7_signoff(
     return observed
 
 
-__all__ = ["M7SignoffError", "run_m7_signoff", "verify_m7_signoff"]
+def verify_m7_dependency_snapshot(
+    report_path: Path,
+    *,
+    path_migration_report: Path,
+    m6_packet: Path,
+    m5_packet: Path,
+    m4_packet: Path,
+    m3_packet: Path,
+    repository_root: Path = Path("."),
+    descendant_commit: str,
+) -> tuple[M7SignoffReport, str]:
+    """Reconstruct an immutable M7 packet at its signed ancestor commit."""
+
+    root = repository_root.resolve(strict=True)
+    try:
+        resolved = report_path.resolve(strict=True)
+        content = resolved.read_bytes()
+        observed = M7SignoffReport.model_validate_json(content)
+        _verify_gate_evidence(resolved.parent, observed.safety_matrix_evidence)
+    except (OSError, UnicodeError, ValueError) as error:
+        raise M7SignoffError("M7 dependency report is missing or invalid") from error
+    _require_git_ancestor(root, observed.commit_sha, descendant_commit)
+    tree = _git_output(root, "rev-parse", "--verify", f"{observed.commit_sha}^{{tree}}")
+    if tree != observed.implementation_tree_hash:
+        raise M7SignoffError("M7 dependency implementation tree changed")
+    expected = _build_report(
+        path_migration_report.resolve(strict=True),
+        m6_packet=m6_packet,
+        m5_packet=m5_packet,
+        m4_packet=m4_packet,
+        m3_packet=m3_packet,
+        repository_root=root,
+        gate=observed.safety_matrix_evidence,
+        commit_sha=observed.commit_sha,
+        implementation_tree_hash=observed.implementation_tree_hash,
+    )
+    if observed != expected:
+        raise M7SignoffError("M7 dependency differs from reconstructed evidence")
+    return observed, _hash_bytes(content)
+
+
+__all__ = [
+    "M7SignoffError",
+    "run_m7_signoff",
+    "verify_m7_dependency_snapshot",
+    "verify_m7_signoff",
+]

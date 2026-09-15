@@ -45,8 +45,10 @@ from nova_rtl.contracts.optimization import (
 )
 from nova_rtl.contracts.planning import (
     ContextRequest,
+    CouncilPolicy,
     CouncilRequest,
     CouncilResult,
+    CouncilRoute,
     CouncilTrace,
     CritiqueDisposition,
     CritiqueReport,
@@ -153,7 +155,9 @@ __all__ = [
     "ConstraintBindingManifest",
     "ContextRequest",
     "CouncilRequest",
+    "CouncilPolicy",
     "CouncilResult",
+    "CouncilRoute",
     "CouncilTrace",
     "CritiqueDisposition",
     "CritiqueReport",

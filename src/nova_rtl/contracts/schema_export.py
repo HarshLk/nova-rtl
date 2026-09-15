@@ -52,8 +52,10 @@ from nova_rtl.contracts.optimization import (
 )
 from nova_rtl.contracts.planning import (
     ContextRequest,
+    CouncilPolicy,
     CouncilRequest,
     CouncilResult,
+    CouncilRoute,
     CouncilTrace,
     CritiqueDisposition,
     CritiqueReport,
@@ -176,6 +178,8 @@ SCHEMA_REGISTRY: dict[str, SchemaRegistration] = {
     "critique-disposition": SchemaRegistration(CritiqueDisposition, version=1),
     "proposal-shortlist": SchemaRegistration(ProposalShortlist, version=1),
     "council-trace": SchemaRegistration(CouncilTrace, version=1),
+    "council-policy": SchemaRegistration(CouncilPolicy, version=1),
+    "council-route": SchemaRegistration(CouncilRoute, version=1),
     "council-request": SchemaRegistration(CouncilRequest, version=1),
     "council-result": SchemaRegistration(CouncilResult, version=1),
     "failure-event": SchemaRegistration(FailureEvent, version=1),
