@@ -12,7 +12,7 @@ from typing import Any, Literal, Protocol
 import yaml
 
 from nova_rtl.artifacts.store import ArtifactStore
-from nova_rtl.contracts.base import canonical_json_bytes, canonical_sha256
+from nova_rtl.contracts.base import Diagnostic, canonical_json_bytes, canonical_sha256
 from nova_rtl.contracts.optimization import OptimizationOpportunity, OptimizationProposal
 from nova_rtl.contracts.planning import (
     ContextRequest,
@@ -428,7 +428,7 @@ class CouncilPlanner:
             status=outcome.status,
         )
 
-    async def propose(self, request: PlannerRequest) -> PlannerResult:
+    async def _deliberate(self, request: PlannerRequest) -> PlannerResult:
         """Run blinded proposers, mandatory critics, and one chair fan-in."""
 
         if request.planner_mode != "AGENT_COUNCIL":
@@ -728,6 +728,158 @@ class CouncilPlanner:
             planner_result_id=f"planner_result_{planner_hash[-24:]}",
             **planner_payload,
         )
+
+    async def _fallback(
+        self, request: PlannerRequest, error: Exception
+    ) -> PlannerResult:
+        opportunity = self._opportunities[request.opportunity_id]
+        route = route_roles(opportunity, self._policy)
+        selected_roles = (*route.proposer_roles, *route.critic_roles, route.chair_role)
+        failure_hash = canonical_sha256(
+            {
+                "planner_request_id": request.planner_request_id,
+                "error_type": type(error).__name__,
+                "error": str(error),
+            }
+        )
+        shortlist = ProposalShortlist(
+            proposal_shortlist_id=f"proposal_shortlist_{failure_hash[-24:]}",
+            status="PARTIAL",
+            ordered_proposal_ids=(),
+            fallback_eligible=True,
+            unresolved_mandatory_finding_count=1,
+        )
+        self._council_trace = CouncilTrace(
+            council_trace_id=f"council_trace_{failure_hash[-24:]}",
+            selected_role_ids=selected_roles,
+            events=(
+                CouncilTraceEvent(
+                    sequence=0,
+                    event_type="COUNCIL_FAILED",
+                    role_id=selected_roles[0],
+                    timestamp=request.deadline,
+                ),
+            ),
+            prompt_hashes=(),
+            model_configuration_hashes=(),
+            context_pack_hashes=(),
+            retrieval_log_hashes=(),
+            input_tokens=0,
+            output_tokens=0,
+            latency_ms=0,
+            deadline_outcome="MET",
+            cancelled=False,
+            trace_completeness_percent=20.0,
+        )
+        if self._council_request is None:
+            self._council_request = CouncilRequest(
+                council_request_id=f"council_request_{failure_hash[-24:]}",
+                planner_request_id=request.planner_request_id,
+                council_route_id=route.council_route_id,
+                council_route_hash=route.route_hash,
+                blinded_proposer_roles=route.proposer_roles,
+                critic_roles=route.critic_roles,
+                chair_role=route.chair_role,
+                context_policy_hash=canonical_sha256({"failure": failure_hash}),
+                fan_out_limit=self._policy.fan_out_limit,
+                fan_in_limit=self._policy.fan_in_limit,
+                aggregate_token_budget=min(
+                    request.token_budget, self._policy.max_aggregate_tokens
+                ),
+                aggregate_latency_budget_ms=min(
+                    request.latency_budget_ms, self._policy.deadline_seconds * 1000
+                ),
+                deadline=request.deadline,
+                event_stream_id=f"council_events_{failure_hash[-24:]}",
+            )
+        self._council_result = CouncilResult(
+            council_result_id=f"council_result_{failure_hash[-24:]}",
+            council_request_id=self._council_request.council_request_id,
+            status="PARTIAL",
+            proposal_shortlist=shortlist,
+            council_trace_id=self._council_trace.council_trace_id,
+            run_id=request.run_id,
+            opportunity_id=request.opportunity_id,
+            snapshot_hash=request.evidence_snapshot_hash,
+            policy_hash=self._policy.policy_hash,
+            route_reason_codes=(*route.reason_codes, "COUNCIL_FAILURE_FALLBACK"),
+            selected_role_ids=selected_roles,
+            common_safety_envelope_hash=canonical_sha256(self._common_envelope),
+            private_role_records=(),
+            proposal_cards=(),
+            critique_reports=(),
+            critique_dispositions=(),
+            revision_records=(),
+            final_ordered_proposal_ids=(),
+            total_tokens=0,
+            total_latency_ms=0,
+            deadline_outcome="MET",
+            trace_completeness_percent=20.0,
+        )
+        heuristic = await self._heuristic.propose(
+            request.model_copy(update={"planner_mode": "HEURISTIC"})
+        )
+        proposals = self._heuristic.proposals_for(heuristic)
+        self._resolved.update({item.proposal_id: item for item in proposals})
+        diagnostic = Diagnostic(
+            code="COUNCIL_FALLBACK",
+            severity="ERROR",
+            message=f"{type(error).__name__}: {error}",
+            evidence_refs=(request.opportunity_id,),
+        )
+        payload = {
+            "run_id": request.run_id,
+            "opportunity_id": request.opportunity_id,
+            "planner_mode": "AGENT_COUNCIL",
+            "status": "PARTIAL",
+            "proposal_ids": tuple(item.proposal_id for item in proposals),
+            "rejected_output_diagnostics": (diagnostic,),
+            "context_pack_hashes": (),
+            "council_result_id": self._council_result.council_result_id,
+            "provider_id": None,
+            "model_id": None,
+            "prompt_hash": None,
+            "output_schema_hash": canonical_sha256(
+                OptimizationProposal.model_json_schema(mode="validation")
+            ),
+            "input_tokens": 0,
+            "output_tokens": 0,
+            "latency_ms": 0,
+            "fallback_used": True,
+            "upstream_provider_result_id": None,
+            "upstream_council_result_id": self._council_result.council_result_id,
+        }
+        identity = canonical_sha256(
+            {
+                "request": request.planner_request_id,
+                "fallback": heuristic.planner_result_id,
+                "failure": failure_hash,
+            }
+        )
+        return PlannerResult(
+            planner_result_id=f"planner_result_{identity[-24:]}", **payload
+        )
+
+    async def propose(self, request: PlannerRequest) -> PlannerResult:
+        """Deliberate or retain an explicit failure before bounded fallback."""
+
+        if request.planner_mode != "AGENT_COUNCIL":
+            raise CouncilPlanningError("council planner requires AGENT_COUNCIL mode")
+        if request.policy_hash != self._policy.policy_hash:
+            raise CouncilPlanningError("council policy identity changed")
+        if request.transform_registry_hash != self._registry.registry_hash:
+            raise CouncilPlanningError("council transform registry identity changed")
+        if request.opportunity_id not in self._opportunities:
+            raise CouncilPlanningError("council opportunity identity is unknown")
+        try:
+            return await self._deliberate(request)
+        except (
+            CouncilBudgetError,
+            CouncilFaninError,
+            CouncilIsolationError,
+            CouncilPlanningError,
+        ) as error:
+            return await self._fallback(request, error)
 
 
 __all__ = [

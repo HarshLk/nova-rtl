@@ -16,6 +16,10 @@ from nova_rtl.contracts.optimization import (
 )
 from nova_rtl.contracts.planning import ContextRequest, PlannerRequest
 from nova_rtl.contracts.reporting import SearchRequest
+from nova_rtl.optimization.council_evidence import (
+    publish_council_evidence,
+    verify_council_evidence,
+)
 from nova_rtl.planner.council import (
     CouncilPlanner,
     CouncilRoleCall,
@@ -74,13 +78,29 @@ def _proposal(identity: str, operation: str, evidence: EvidenceRef) -> Optimizat
 
 
 class _CouncilInvoker:
-    def __init__(self, proposals: tuple[OptimizationProposal, ...], evidence: EvidenceRef):
+    def __init__(
+        self,
+        proposals: tuple[OptimizationProposal, ...],
+        evidence: EvidenceRef,
+        *,
+        fail_role: str | None = None,
+    ):
         self._proposals = proposals
         self._evidence = evidence
+        self._fail_role = fail_role
 
     async def invoke(
         self, call: CouncilRoleCall, *, deadline_s: float
     ) -> CouncilRoleOutcome:
+        if call.role_id == self._fail_role:
+            return CouncilRoleOutcome(
+                role_id=call.role_id,
+                status="ERROR",
+                structured_output=None,
+                input_tokens=1,
+                output_tokens=0,
+                latency_ms=1,
+            )
         if call.role_kind == "PROPOSER":
             index = 0 if call.role_id == "timing_forensics" else 1
             output = {"proposals": [self._proposals[index].model_dump(mode="json")]}
@@ -299,3 +319,34 @@ def test_bounded_council_flows_through_canonical_search_boundary(tmp_path: Path)
         "objection_formal_scope"
     )
     assert planner.council_trace.trace_completeness_percent == 100.0
+
+    evidence_directory = tmp_path / "deliberation"
+    result_path = publish_council_evidence(
+        evidence_directory, planner=planner, planner_result=adapter.planner_results[0]
+    )
+    first_bytes = result_path.read_bytes()
+    repeated_path = publish_council_evidence(
+        evidence_directory, planner=planner, planner_result=adapter.planner_results[0]
+    )
+    assert repeated_path.read_bytes() == first_bytes
+    assert verify_council_evidence(evidence_directory) == planner.council_result
+
+    failing_planner = CouncilPlanner(
+        context_requests=contexts,
+        common_envelope=envelope,
+        evidence_provider=evidence,
+        invoker=_CouncilInvoker(proposals, timing_ref, fail_role="formal_critic"),
+        heuristic_fallback=heuristic,
+        opportunities=(opportunity,),
+        registry=registry,
+        artifact_store=ArtifactStore(tmp_path / "fallback-artifacts"),
+        policy=council_policy,
+    )
+    fallback = asyncio.run(failing_planner.propose(request))
+
+    assert fallback.status == "PARTIAL"
+    assert fallback.fallback_used is True
+    assert fallback.upstream_council_result_id == failing_planner.council_result.council_result_id
+    assert fallback.proposal_ids
+    assert failing_planner.council_result.status == "PARTIAL"
+    assert failing_planner.council_result.final_ordered_proposal_ids == ()

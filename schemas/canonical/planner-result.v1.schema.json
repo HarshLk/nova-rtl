@@ -181,6 +181,19 @@
       "title": "Status",
       "type": "string"
     },
+    "upstream_council_result_id": {
+      "anyOf": [
+        {
+          "pattern": "^[a-z][a-z0-9_]{2,95}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Upstream Council Result Id"
+    },
     "upstream_provider_result_id": {
       "anyOf": [
         {

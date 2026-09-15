@@ -375,6 +375,7 @@ class PlannerResult(StrictContract):
     latency_ms: NonNegativeInt
     fallback_used: bool
     upstream_provider_result_id: EntityId | None
+    upstream_council_result_id: EntityId | None = None
 
     @model_validator(mode="after")
     def status_and_lineage_are_coherent(self) -> Self:
@@ -387,12 +388,22 @@ class PlannerResult(StrictContract):
         ):
             raise ValueError(f"{self.status} planner result cannot contain proposals")
         if self.fallback_used:
-            if self.upstream_provider_result_id is None:
+            if self.planner_mode == "AGENT_COUNCIL":
+                if self.upstream_council_result_id is None:
+                    raise ValueError("council fallback must retain its upstream council result")
+                if self.upstream_provider_result_id is not None:
+                    raise ValueError("council fallback cannot claim a provider result")
+            elif self.upstream_provider_result_id is None:
                 raise ValueError("fallback must retain its upstream provider result")
             if not self.rejected_output_diagnostics:
                 raise ValueError("fallback must retain upstream rejection diagnostics")
-        elif self.upstream_provider_result_id is not None:
-            raise ValueError("non-fallback result cannot declare an upstream provider result")
+        elif (
+            self.upstream_provider_result_id is not None
+            or self.upstream_council_result_id is not None
+        ):
+            raise ValueError("non-fallback result cannot declare an upstream result")
+        if self.planner_mode != "AGENT_COUNCIL" and self.upstream_council_result_id is not None:
+            raise ValueError("non-council planner cannot declare an upstream council result")
         if self.planner_mode == "AGENT_COUNCIL" and self.status in {"PASS", "PARTIAL"}:
             if self.council_result_id is None:
                 raise ValueError("council planner result requires council_result_id")
