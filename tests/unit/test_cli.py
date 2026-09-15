@@ -160,6 +160,16 @@ class CliTests(unittest.TestCase):
         self.assertIn("--verify-all-artifacts", _plain_output(replay.output))
         self.assertIn("--headless", _plain_output(demo.output))
 
+    def test_cli_exposes_controlled_frequency_sweep(self) -> None:
+        result = self.runner.invoke(app, ["evaluate-frequency", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        output = _plain_output(result.output)
+        self.assertIn("OBSERVATIONS", output)
+        self.assertIn("--contract", output)
+        self.assertIn("--candidate", output)
+        self.assertIn("--output", output)
+
     def test_cli_exposes_m4_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m4", "signoff", "--help"])
         verify = self.runner.invoke(app, ["m4", "verify", "--help"])

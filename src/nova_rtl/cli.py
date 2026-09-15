@@ -21,6 +21,11 @@ from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_conf
 from nova_rtl.benchmark.validate import validate_benchmark
 from nova_rtl.contracts.planning import CouncilResult
 from nova_rtl.contracts.platform import PlatformLockRequest
+from nova_rtl.evaluation.frequency import (
+    FrequencyObservation,
+    evaluate_frequency_sweep,
+    load_frequency_sweep_contract,
+)
 from nova_rtl.evidence.execution import EvidenceExecutionError, analyze_evidence_run
 from nova_rtl.evidence.signoff import M3SignoffError, run_m3_signoff, verify_m3_signoff
 from nova_rtl.optimization.council_showcase import run_council_showcase
@@ -1956,6 +1961,46 @@ def demo_command(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else render_text_dashboard(model)
+    )
+
+
+@app.command("evaluate-frequency")
+def evaluate_frequency_command(
+    observations: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=True, readable=True, metavar="OBSERVATIONS"),
+    ],
+    contract: Annotated[
+        Path, typer.Option("--contract", exists=True, file_okay=True, readable=True)
+    ],
+    candidate: Annotated[str, typer.Option("--candidate")],
+    output: Annotated[Path, typer.Option("--output", file_okay=True)],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Evaluate recorded setup/hold evidence under one bounded period contract."""
+
+    try:
+        raw = json.loads(observations.read_text(encoding="utf-8"))
+        if not isinstance(raw, list):
+            raise ValueError("frequency observations must be a JSON list")
+        parsed = tuple(FrequencyObservation.model_validate(item) for item in raw)
+        result = evaluate_frequency_sweep(
+            candidate, load_frequency_sweep_contract(contract), parsed
+        )
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_text(result.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    except (OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": "PASS",
+        "result": str(output.resolve()),
+        "result_hash": result.result_hash,
+        "fmax_mhz": result.fmax_mhz,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA frequency sweep: PASS: {output.resolve()}"
     )
 
 

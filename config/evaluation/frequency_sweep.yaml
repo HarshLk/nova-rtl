@@ -1,0 +1,13 @@
+schema_version: 1
+frequency_sweep_contract_id: sweep_contract_control
+baseline_analysis_view_hash: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+target_master_clock_id: clk_control
+target_domain_id: control
+ordered_trial_periods_ns: [1.5, 2.0, 2.5]
+fixed_non_target_clock_definitions_hash: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+setup_pass_limit_ns: 0.0
+hold_pass_limit_ns: 0.0
+constraint_overlay_generator_hash: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+search_method: BOUNDED_BINARY
+maximum_trials: 3
+result_label_policy: ACHIEVED_BY_SWEEP_ONLY_ON_SETUP_HOLD_PASS
