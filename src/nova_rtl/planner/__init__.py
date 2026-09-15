@@ -10,6 +10,7 @@ from nova_rtl.planner.council import (
     CouncilRoleOutcome,
     build_blinded_proposer_contexts,
     load_council_policy,
+    normalize_proposal_cards,
     route_roles,
     run_role_round,
 )
@@ -64,6 +65,7 @@ __all__ = [
     "CouncilRoleInvoker",
     "CouncilRoleOutcome",
     "load_council_policy",
+    "normalize_proposal_cards",
     "route_roles",
     "run_role_round",
     "RetrievalAuditRecord",

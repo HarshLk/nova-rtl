@@ -11,12 +11,14 @@ from typing import Any, Literal, Protocol
 import yaml
 
 from nova_rtl.artifacts.store import ArtifactStore
-from nova_rtl.contracts.optimization import OptimizationOpportunity
+from nova_rtl.contracts.base import canonical_sha256
+from nova_rtl.contracts.optimization import OptimizationOpportunity, OptimizationProposal
 from nova_rtl.contracts.planning import (
     ContextRequest,
     CouncilPolicy,
     CouncilRoute,
     PlannerRequest,
+    ProposalCard,
     RoleContextPack,
     RoleStatus,
 )
@@ -188,6 +190,44 @@ async def run_role_round(
     return outcomes
 
 
+def _proposal_semantics(proposal: OptimizationProposal) -> dict[str, Any]:
+    return {
+        "parent_candidate_id": proposal.parent_candidate_id,
+        "opportunity_id": proposal.opportunity_id,
+        "target": proposal.target.model_dump(mode="json"),
+        "transformation": proposal.transformation.model_dump(mode="json"),
+        "preconditions": proposal.preconditions,
+        "correctness": proposal.correctness.model_dump(mode="json"),
+        "evidence_refs": tuple(
+            item.model_dump(mode="json") for item in proposal.evidence_refs
+        ),
+        "abort_conditions": proposal.abort_conditions,
+    }
+
+
+def normalize_proposal_cards(
+    proposals: Sequence[OptimizationProposal],
+) -> tuple[tuple[ProposalCard, ...], tuple[OptimizationProposal, ...]]:
+    """Semantically deduplicate proposals and remove proposer identity before criticism."""
+
+    by_hash: dict[str, OptimizationProposal] = {}
+    for proposal in proposals:
+        semantic_hash = canonical_sha256(_proposal_semantics(proposal))
+        incumbent = by_hash.get(semantic_hash)
+        if incumbent is None or proposal.proposal_id < incumbent.proposal_id:
+            by_hash[semantic_hash] = proposal
+    ordered = tuple(sorted(by_hash.items()))
+    cards = tuple(
+        ProposalCard(
+            proposal_card_id=f"proposal_card_{semantic_hash[-24:]}",
+            proposal_id=proposal.proposal_id,
+            normalized_proposal_hash=semantic_hash,
+        )
+        for semantic_hash, proposal in ordered
+    )
+    return cards, tuple(proposal for _, proposal in ordered)
+
+
 __all__ = [
     "CouncilIsolationError",
     "CouncilBudgetError",
@@ -197,6 +237,7 @@ __all__ = [
     "CouncilRoleOutcome",
     "build_blinded_proposer_contexts",
     "load_council_policy",
+    "normalize_proposal_cards",
     "route_roles",
     "run_role_round",
 ]
