@@ -16,9 +16,13 @@ from nova_rtl.contracts.optimization import OptimizationOpportunity, Optimizatio
 from nova_rtl.contracts.planning import (
     ContextRequest,
     CouncilPolicy,
+    CouncilRevisionRecord,
     CouncilRoute,
+    CritiqueDisposition,
+    CritiqueReport,
     PlannerRequest,
     ProposalCard,
+    ProposalShortlist,
     RoleContextPack,
     RoleStatus,
 )
@@ -36,6 +40,10 @@ class CouncilIsolationError(RuntimeError):
 
 class CouncilBudgetError(RuntimeError):
     """A council call, fan-out, deadline, or aggregate budget was exceeded."""
+
+
+class CouncilFaninError(RuntimeError):
+    """Critic or chair fan-in is incomplete, ambiguous, or unsafe."""
 
 
 @dataclass(frozen=True)
@@ -228,14 +236,72 @@ def normalize_proposal_cards(
     return cards, tuple(proposal for _, proposal in ordered)
 
 
+def build_council_shortlist(
+    *,
+    cards: Sequence[ProposalCard],
+    critiques: Sequence[CritiqueReport],
+    dispositions: Sequence[CritiqueDisposition],
+    revisions: Sequence[CouncilRevisionRecord],
+    final_proposal_ids: Sequence[str],
+    policy_path: Path,
+) -> ProposalShortlist:
+    """Apply deterministic mandatory-critic and chair closure rules."""
+
+    policy = load_council_policy(policy_path)
+    card_tuple = tuple(cards)
+    critique_tuple = tuple(critiques)
+    disposition_tuple = tuple(dispositions)
+    revision_tuple = tuple(revisions)
+    final_ids = tuple(final_proposal_ids)
+    if len(revision_tuple) > policy.max_revisions:
+        raise CouncilFaninError("council revision count exceeds policy")
+    if len(final_ids) > policy.max_final_proposals or len(final_ids) != len(set(final_ids)):
+        raise CouncilFaninError("council final proposal set exceeds policy or is duplicated")
+    required_reviews = {
+        (card.proposal_card_id, critic_class)
+        for card in card_tuple
+        for critic_class in ("FORMAL", "PPA")
+    }
+    observed_reviews = {
+        (report.proposal_card_id, report.critic_class) for report in critique_tuple
+    }
+    if observed_reviews != required_reviews:
+        raise CouncilFaninError("every proposal card requires both mandatory critics")
+    objections = {
+        objection.objection_id
+        for report in critique_tuple
+        for objection in report.objections
+    }
+    dispositioned = {item.objection_id for item in disposition_tuple}
+    if dispositioned != objections or len(disposition_tuple) != len(dispositioned):
+        raise CouncilFaninError("chair must disposition every critic objection exactly once")
+    original_ids = {item.proposal_id for item in card_tuple}
+    revised_ids = {item.revised_proposal_id for item in revision_tuple}
+    if not set(final_ids).issubset(original_ids | revised_ids):
+        raise CouncilFaninError("shortlist proposal does not resolve through reviewed cards")
+    payload = {
+        "status": "PASS" if final_ids else "NO_SAFE_PROPOSAL",
+        "ordered_proposal_ids": final_ids,
+        "fallback_eligible": not final_ids,
+        "unresolved_mandatory_finding_count": 0,
+    }
+    identity = canonical_sha256(payload)
+    return ProposalShortlist(
+        proposal_shortlist_id=f"proposal_shortlist_{identity[-24:]}",
+        **payload,
+    )
+
+
 __all__ = [
     "CouncilIsolationError",
     "CouncilBudgetError",
+    "CouncilFaninError",
     "CouncilPolicyError",
     "CouncilRoleCall",
     "CouncilRoleInvoker",
     "CouncilRoleOutcome",
     "build_blinded_proposer_contexts",
+    "build_council_shortlist",
     "load_council_policy",
     "normalize_proposal_cards",
     "route_roles",

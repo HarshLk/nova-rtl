@@ -755,7 +755,12 @@ class CouncilResult(StrictContract):
             raise ValueError("critique disposition must resolve to an objection")
 
         _require_unique(self.final_ordered_proposal_ids, "final proposal IDs")
-        if not set(self.final_ordered_proposal_ids).issubset(proposal_ids):
+        revised_proposal_ids = {
+            item.revised_proposal_id for item in self.revision_records
+        }
+        if not set(self.final_ordered_proposal_ids).issubset(
+            set(proposal_ids) | revised_proposal_ids
+        ):
             raise ValueError("final proposals must resolve through neutral proposal cards")
         if self.deadline_outcome != "MET" and self.final_ordered_proposal_ids:
             raise ValueError("deadline failure cannot emit executable final proposals")

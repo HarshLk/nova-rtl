@@ -1,0 +1,1 @@
+Produce zero to three reviewed proposal IDs. Disposition every objection explicitly, preserve safe alternatives, revise at most once, and never introduce an unreviewed transform family or execution decision.

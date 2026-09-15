@@ -1,0 +1,1 @@
+Independently challenge semantics, reset, enable, width, signedness, X behavior, ordering, CDC proximity, and proof scope. Identify mandatory objections with supplied evidence; do not approve execution.
