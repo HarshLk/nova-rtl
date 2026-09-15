@@ -27,6 +27,11 @@
       "title": "Opportunity Id",
       "type": "string"
     },
+    "policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
     "proposer_roles": {
       "items": {
         "pattern": "^[a-z][a-z0-9_]{2,95}$",
@@ -66,6 +71,7 @@
   "required": [
     "council_route_id",
     "opportunity_id",
+    "policy_hash",
     "root_cause",
     "proposer_roles",
     "critic_roles",

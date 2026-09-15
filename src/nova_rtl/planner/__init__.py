@@ -1,7 +1,7 @@
 """Constrained advisory planners for deterministic NOVA-RTL search."""
 
 from nova_rtl.planner.context import build_context
-from nova_rtl.planner.council import CouncilPolicyError, load_council_policy
+from nova_rtl.planner.council import CouncilPolicyError, load_council_policy, route_roles
 from nova_rtl.planner.evidence import (
     ContextIntegrityError,
     EvidenceObject,
@@ -47,5 +47,6 @@ __all__ = [
     "ContextIntegrityError",
     "CouncilPolicyError",
     "load_council_policy",
+    "route_roles",
     "RetrievalAuditRecord",
 ]

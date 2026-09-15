@@ -92,6 +92,7 @@ class CouncilRoute(StrictContract):
     schema_version: Literal[1] = 1
     council_route_id: EntityId
     opportunity_id: EntityId
+    policy_hash: HashRef
     root_cause: StableUpperString
     proposer_roles: tuple[EntityId, ...] = Field(min_length=2, max_length=2)
     critic_roles: tuple[EntityId, ...] = Field(min_length=2, max_length=2)
@@ -111,7 +112,7 @@ class CouncilRoute(StrictContract):
         if len(selected) > 5:
             raise ValueError("council route exceeds the absolute role bound")
         if self.route_hash != canonical_sha256(
-            self, exclude=frozenset({"route_hash"})
+            self, exclude=frozenset({"council_route_id", "route_hash"})
         ):
             raise ValueError("council route hash is not canonical")
         return self
