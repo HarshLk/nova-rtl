@@ -170,6 +170,16 @@ class CliTests(unittest.TestCase):
         self.assertIn("--candidate", output)
         self.assertIn("--output", output)
 
+    def test_cli_exposes_m9_signoff_and_verification(self) -> None:
+        signoff = self.runner.invoke(app, ["m9", "signoff", "--help"])
+        verify = self.runner.invoke(app, ["m9", "verify", "--help"])
+
+        for result in (signoff, verify):
+            self.assertEqual(result.exit_code, 0, result.output)
+            output = _plain_output(result.output)
+            self.assertIn("--release-directory", output)
+            self.assertIn("--m8-packet", output)
+
     def test_cli_exposes_m4_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m4", "signoff", "--help"])
         verify = self.runner.invoke(app, ["m4", "verify", "--help"])

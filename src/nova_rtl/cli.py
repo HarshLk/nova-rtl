@@ -88,6 +88,11 @@ from nova_rtl.recovery.showcase import (
 from nova_rtl.recovery.signoff import M7SignoffError, run_m7_signoff, verify_m7_signoff
 from nova_rtl.reports.bundle import ReportIntegrityError, verify_report_bundle
 from nova_rtl.reports.replay import OfflineReplayError, verify_offline_replay
+from nova_rtl.reports.signoff import (
+    M9SignoffError,
+    run_m9_signoff,
+    verify_m9_signoff,
+)
 from nova_rtl.search.signoff import M5SignoffError, run_m5_signoff, verify_m5_signoff
 from nova_rtl.signoff.m1 import (
     M1SignoffError,
@@ -170,6 +175,12 @@ m8_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m8_app, name="m8")
+m9_app = typer.Typer(
+    name="m9",
+    help="Build and verify the final evaluation and replay release packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m9_app, name="m9")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -530,6 +541,74 @@ def m8_verify(
         json.dumps(payload, separators=(",", ":"), sort_keys=True)
         if json_output
         else f"NOVA M8 verification: PASS: {verified.report_hash}"
+    )
+
+
+@m9_app.command("signoff")
+def m9_signoff(
+    release_directory: Annotated[
+        Path,
+        typer.Option("--release-directory", exists=True, file_okay=False, readable=True),
+    ],
+    m8_packet: Annotated[
+        Path, typer.Option("--m8-packet", exists=True, file_okay=True, readable=True)
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create the exact commit-bound M9 release packet."""
+
+    try:
+        path, report = run_m9_signoff(
+            release_directory, m8_packet=m8_packet, repository_root=repository_root
+        )
+    except (M9SignoffError, OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M9 sign-off: PASS: {path}"
+    )
+
+
+@m9_app.command("verify")
+def m9_verify(
+    report: Annotated[
+        Path, typer.Argument(exists=True, file_okay=True, readable=True, metavar="REPORT")
+    ],
+    release_directory: Annotated[
+        Path,
+        typer.Option("--release-directory", exists=True, file_okay=False, readable=True),
+    ],
+    m8_packet: Annotated[
+        Path, typer.Option("--m8-packet", exists=True, file_okay=True, readable=True)
+    ],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Independently reconstruct and verify one M9 packet."""
+
+    try:
+        verified = verify_m9_signoff(
+            report,
+            release_directory=release_directory,
+            m8_packet=m8_packet,
+            repository_root=repository_root,
+        )
+    except (M9SignoffError, OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {"status": verified.status, "report_hash": verified.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M9 verification: PASS: {verified.report_hash}"
     )
 
 

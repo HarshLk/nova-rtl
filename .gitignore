@@ -27,6 +27,13 @@ benchmark/build/
 *.fst
 *.wlf
 
+# Generated M9 submission evidence (the runbook remains tracked)
+submission/*.pdf
+submission/*.tar.zst
+submission/*.json
+submission/replay/
+submission/gate-evidence.txt
+
 # Local agent and workspace metadata
 .agents/
 .codex/
