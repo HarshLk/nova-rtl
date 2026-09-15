@@ -553,6 +553,17 @@ def m9_signoff(
     m8_packet: Annotated[
         Path, typer.Option("--m8-packet", exists=True, file_okay=True, readable=True)
     ],
+    council_directory: Annotated[
+        Path, typer.Option("--council-directory", exists=True, file_okay=False)
+    ],
+    m7_packet: Annotated[Path, typer.Option("--m7-packet", exists=True)],
+    path_migration_report: Annotated[
+        Path, typer.Option("--path-migration-report", exists=True)
+    ],
+    m6_packet: Annotated[Path, typer.Option("--m6-packet", exists=True)],
+    m5_packet: Annotated[Path, typer.Option("--m5-packet", exists=True)],
+    m4_packet: Annotated[Path, typer.Option("--m4-packet", exists=True)],
+    m3_packet: Annotated[Path, typer.Option("--m3-packet", exists=True)],
     repository_root: Annotated[
         Path,
         typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
@@ -563,9 +574,18 @@ def m9_signoff(
 
     try:
         path, report = run_m9_signoff(
-            release_directory, m8_packet=m8_packet, repository_root=repository_root
+            release_directory,
+            m8_packet=m8_packet,
+            council_directory=council_directory,
+            m7_packet=m7_packet,
+            path_migration_report=path_migration_report,
+            m6_packet=m6_packet,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
         )
-    except (M9SignoffError, OSError, ValidationError, ValueError) as error:
+    except (M8SignoffError, M9SignoffError, OSError, ValidationError, ValueError) as error:
         _optimization_failure(error, json_output)
     payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
     typer.echo(
@@ -587,6 +607,17 @@ def m9_verify(
     m8_packet: Annotated[
         Path, typer.Option("--m8-packet", exists=True, file_okay=True, readable=True)
     ],
+    council_directory: Annotated[
+        Path, typer.Option("--council-directory", exists=True, file_okay=False)
+    ],
+    m7_packet: Annotated[Path, typer.Option("--m7-packet", exists=True)],
+    path_migration_report: Annotated[
+        Path, typer.Option("--path-migration-report", exists=True)
+    ],
+    m6_packet: Annotated[Path, typer.Option("--m6-packet", exists=True)],
+    m5_packet: Annotated[Path, typer.Option("--m5-packet", exists=True)],
+    m4_packet: Annotated[Path, typer.Option("--m4-packet", exists=True)],
+    m3_packet: Annotated[Path, typer.Option("--m3-packet", exists=True)],
     repository_root: Annotated[
         Path,
         typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
@@ -600,9 +631,16 @@ def m9_verify(
             report,
             release_directory=release_directory,
             m8_packet=m8_packet,
+            council_directory=council_directory,
+            m7_packet=m7_packet,
+            path_migration_report=path_migration_report,
+            m6_packet=m6_packet,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
             repository_root=repository_root,
         )
-    except (M9SignoffError, OSError, ValidationError, ValueError) as error:
+    except (M8SignoffError, M9SignoffError, OSError, ValidationError, ValueError) as error:
         _optimization_failure(error, json_output)
     payload = {"status": verified.status, "report_hash": verified.report_hash}
     typer.echo(

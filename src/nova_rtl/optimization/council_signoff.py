@@ -222,6 +222,7 @@ def _build_report(
     gate: M8GateEvidence,
     commit_sha: str,
     implementation_tree_hash: str,
+    frozen_council_implementation_hash: str | None = None,
 ) -> M8SignoffReport:
     try:
         council = verify_council_evidence(council_directory)
@@ -295,7 +296,11 @@ def _build_report(
         "trace_completeness_percent": 100.0,
         "deterministic_replay": True,
         "bounded_fallback_validated": True,
-        "council_implementation_hash": _implementation_hash(repository_root),
+        "council_implementation_hash": (
+            frozen_council_implementation_hash
+            if frozen_council_implementation_hash is not None
+            else _implementation_hash(repository_root)
+        ),
         "council_matrix_evidence": gate,
     }
     input_payload = {
@@ -394,4 +399,64 @@ def verify_m8_signoff(
     return observed
 
 
-__all__ = ["M8SignoffError", "run_m8_signoff", "verify_m8_signoff"]
+def verify_m8_dependency_snapshot(
+    report_path: Path,
+    *,
+    council_directory: Path,
+    m7_packet: Path,
+    path_migration_report: Path,
+    m6_packet: Path,
+    m5_packet: Path,
+    m4_packet: Path,
+    m3_packet: Path,
+    repository_root: Path,
+    descendant_commit: str,
+) -> tuple[M8SignoffReport, str]:
+    """Reconstruct an immutable M8 packet at its signed ancestor commit."""
+
+    try:
+        resolved = report_path.resolve(strict=True)
+        content = resolved.read_bytes()
+        observed = M8SignoffReport.model_validate_json(content)
+        _verify_gate_evidence(resolved.parent, observed.council_matrix_evidence)
+    except (OSError, ValueError) as error:
+        raise M8SignoffError("M8 dependency report is missing or invalid") from error
+    root = repository_root.resolve(strict=True)
+    try:
+        _git_output(
+            root,
+            "merge-base",
+            "--is-ancestor",
+            observed.commit_sha,
+            descendant_commit,
+        )
+    except M8SignoffError as error:
+        raise M8SignoffError("M8 commit is not an ancestor of the descendant") from error
+    tree = _git_output(root, "rev-parse", "--verify", f"{observed.commit_sha}^{{tree}}")
+    if tree != observed.implementation_tree_hash:
+        raise M8SignoffError("M8 dependency implementation tree changed")
+    expected = _build_report(
+        council_directory.resolve(strict=True),
+        m7_packet=m7_packet,
+        path_migration_report=path_migration_report,
+        m6_packet=m6_packet,
+        m5_packet=m5_packet,
+        m4_packet=m4_packet,
+        m3_packet=m3_packet,
+        repository_root=root,
+        gate=observed.council_matrix_evidence,
+        commit_sha=observed.commit_sha,
+        implementation_tree_hash=observed.implementation_tree_hash,
+        frozen_council_implementation_hash=observed.council_implementation_hash,
+    )
+    if observed != expected:
+        raise M8SignoffError("M8 dependency differs from reconstructed evidence")
+    return observed, _hash_bytes(content)
+
+
+__all__ = [
+    "M8SignoffError",
+    "run_m8_signoff",
+    "verify_m8_dependency_snapshot",
+    "verify_m8_signoff",
+]

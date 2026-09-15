@@ -9,7 +9,6 @@ from hashlib import sha256
 from pathlib import Path
 
 from nova_rtl.contracts.base import canonical_json_bytes, canonical_sha256
-from nova_rtl.contracts.planning import M8SignoffReport
 from nova_rtl.contracts.release import (
     AblationComparison,
     FinalCandidateSeal,
@@ -17,6 +16,7 @@ from nova_rtl.contracts.release import (
     M9SignoffReport,
 )
 from nova_rtl.evaluation.acceptance import AcceptanceResult
+from nova_rtl.optimization.council_signoff import verify_m8_dependency_snapshot
 from nova_rtl.reports.replay import verify_offline_replay
 
 
@@ -54,7 +54,17 @@ def assemble_m9_report(**values: object) -> M9SignoffReport:
 
 
 def _construct(
-    release_directory: Path, *, m8_packet: Path, repository_root: Path
+    release_directory: Path,
+    *,
+    m8_packet: Path,
+    council_directory: Path,
+    m7_packet: Path,
+    path_migration_report: Path,
+    m6_packet: Path,
+    m5_packet: Path,
+    m4_packet: Path,
+    m3_packet: Path,
+    repository_root: Path,
 ) -> M9SignoffReport:
     root = repository_root.resolve(strict=True)
     release = release_directory.resolve(strict=True)
@@ -62,16 +72,18 @@ def _construct(
         raise M9SignoffError("M9 sign-off requires a clean final commit")
     commit = _git(root, "rev-parse", "HEAD")
     tree = _git(root, "rev-parse", "HEAD^{tree}")
-    m8 = M8SignoffReport.model_validate_json(m8_packet.read_bytes())
-    if subprocess.run(
-        ("git", "-C", str(root), "merge-base", "--is-ancestor", m8.commit_sha, commit),
-        shell=False,
-        check=False,
-        capture_output=True,
-        timeout=30,
-        env={"LANG": "C", "LC_ALL": "C", "PATH": "/usr/bin:/bin"},
-    ).returncode:
-        raise M9SignoffError("M8 packet commit is not an ancestor of M9")
+    m8, m8_packet_hash = verify_m8_dependency_snapshot(
+        m8_packet,
+        council_directory=council_directory,
+        m7_packet=m7_packet,
+        path_migration_report=path_migration_report,
+        m6_packet=m6_packet,
+        m5_packet=m5_packet,
+        m4_packet=m4_packet,
+        m3_packet=m3_packet,
+        repository_root=root,
+        descendant_commit=commit,
+    )
     replay = verify_offline_replay(release / "replay")
     seal = FinalCandidateSeal.model_validate_json(
         (release / "final-candidate-seal.json").read_bytes()
@@ -96,7 +108,7 @@ def _construct(
         commit_sha=commit,
         implementation_tree_hash=tree,
         m8_commit_sha=m8.commit_sha,
-        m8_packet_hash=_hash_file(m8_packet),
+        m8_packet_hash=m8_packet_hash,
         report_bundle_hash=replay.terminal_state_hash,
         replay_manifest_hash=replay.manifest_hash,
         final_candidate_seal_hash=seal.seal_hash,
@@ -110,10 +122,29 @@ def _construct(
 
 
 def run_m9_signoff(
-    release_directory: Path, *, m8_packet: Path, repository_root: Path
+    release_directory: Path,
+    *,
+    m8_packet: Path,
+    council_directory: Path,
+    m7_packet: Path,
+    path_migration_report: Path,
+    m6_packet: Path,
+    m5_packet: Path,
+    m4_packet: Path,
+    m3_packet: Path,
+    repository_root: Path,
 ) -> tuple[Path, M9SignoffReport]:
     report = _construct(
-        release_directory, m8_packet=m8_packet, repository_root=repository_root
+        release_directory,
+        m8_packet=m8_packet,
+        council_directory=council_directory,
+        m7_packet=m7_packet,
+        path_migration_report=path_migration_report,
+        m6_packet=m6_packet,
+        m5_packet=m5_packet,
+        m4_packet=m4_packet,
+        m3_packet=m3_packet,
+        repository_root=repository_root,
     )
     path = release_directory.resolve() / "m9-signoff.json"
     path.write_bytes(canonical_json_bytes(report) + b"\n")
@@ -125,11 +156,27 @@ def verify_m9_signoff(
     *,
     release_directory: Path,
     m8_packet: Path,
+    council_directory: Path,
+    m7_packet: Path,
+    path_migration_report: Path,
+    m6_packet: Path,
+    m5_packet: Path,
+    m4_packet: Path,
+    m3_packet: Path,
     repository_root: Path,
 ) -> M9SignoffReport:
     recorded = M9SignoffReport.model_validate_json(report_path.read_bytes())
     rebuilt = _construct(
-        release_directory, m8_packet=m8_packet, repository_root=repository_root
+        release_directory,
+        m8_packet=m8_packet,
+        council_directory=council_directory,
+        m7_packet=m7_packet,
+        path_migration_report=path_migration_report,
+        m6_packet=m6_packet,
+        m5_packet=m5_packet,
+        m4_packet=m4_packet,
+        m3_packet=m3_packet,
+        repository_root=repository_root,
     )
     if recorded != rebuilt:
         raise M9SignoffError("M9 packet differs from independently reconstructed evidence")
