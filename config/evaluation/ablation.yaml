@@ -1,0 +1,16 @@
+schema_version: 1
+budget:
+  maximum_candidates: 12
+  formal_slots: 4
+  sta_slots: 8
+  openroad_slots: 2
+  analysis_view_ids: [asap7_hold, asap7_setup]
+  seed: 20260915
+  wall_clock_seconds: 120
+policy:
+  minimum_relative_feasible_yield: 0.15
+  minimum_schema_valid_rate: 0.98
+  minimum_trace_completeness: 0.99
+  maximum_latency_seconds: 120.0
+  maximum_cost_ratio: 2.0
+  require_nonregressing_ppa: true
