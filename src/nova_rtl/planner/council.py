@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Protocol
 
 import yaml
 
@@ -16,6 +18,7 @@ from nova_rtl.contracts.planning import (
     CouncilRoute,
     PlannerRequest,
     RoleContextPack,
+    RoleStatus,
 )
 from nova_rtl.planner.context import build_context
 from nova_rtl.planner.evidence import InMemoryEvidenceProvider
@@ -27,6 +30,34 @@ class CouncilPolicyError(RuntimeError):
 
 class CouncilIsolationError(RuntimeError):
     """Council private context boundaries overlap or are incomplete."""
+
+
+class CouncilBudgetError(RuntimeError):
+    """A council call, fan-out, deadline, or aggregate budget was exceeded."""
+
+
+@dataclass(frozen=True)
+class CouncilRoleCall:
+    role_id: str
+    role_kind: Literal["PROPOSER", "CRITIC", "CHAIR"]
+    input_payload: Mapping[str, Any]
+    token_budget: int
+
+
+@dataclass(frozen=True)
+class CouncilRoleOutcome:
+    role_id: str
+    status: RoleStatus
+    structured_output: Mapping[str, Any] | None
+    input_tokens: int
+    output_tokens: int
+    latency_ms: int
+
+
+class CouncilRoleInvoker(Protocol):
+    async def invoke(
+        self, call: CouncilRoleCall, *, deadline_s: float
+    ) -> CouncilRoleOutcome: ...
 
 
 def load_council_policy(path: Path) -> CouncilPolicy:
@@ -117,10 +148,55 @@ def build_blinded_proposer_contexts(
     return packs
 
 
+async def run_role_round(
+    calls: Sequence[CouncilRoleCall],
+    *,
+    invoker: CouncilRoleInvoker,
+    policy: CouncilPolicy,
+    deadline_s: float,
+) -> tuple[CouncilRoleOutcome, ...]:
+    """Run one bounded parallel council round and preserve deterministic order."""
+
+    ordered = tuple(calls)
+    if not ordered or len(ordered) > policy.fan_out_limit:
+        raise CouncilBudgetError("council round exceeds its fan-out policy")
+    if len({item.role_id for item in ordered}) != len(ordered):
+        raise CouncilBudgetError("council round role identities must be unique")
+    if deadline_s <= 0 or deadline_s > policy.deadline_seconds:
+        raise CouncilBudgetError("council round deadline exceeds policy")
+    if any(item.token_budget <= 0 for item in ordered):
+        raise CouncilBudgetError("council role token budgets must be positive")
+    try:
+        async with asyncio.timeout(deadline_s):
+            outcomes = tuple(
+                await asyncio.gather(
+                    *(invoker.invoke(item, deadline_s=deadline_s) for item in ordered)
+                )
+            )
+    except TimeoutError as error:
+        raise CouncilBudgetError("council round exceeded its deadline") from error
+    if tuple(item.role_id for item in outcomes) != tuple(item.role_id for item in ordered):
+        raise CouncilBudgetError("council invoker changed deterministic role order")
+    total_tokens = sum(item.input_tokens + item.output_tokens for item in outcomes)
+    if total_tokens > policy.max_aggregate_tokens:
+        raise CouncilBudgetError("council exceeded its aggregate token budget")
+    if any(
+        outcome.input_tokens + outcome.output_tokens > call.token_budget
+        for call, outcome in zip(ordered, outcomes, strict=True)
+    ):
+        raise CouncilBudgetError("council role exceeded its assigned token budget")
+    return outcomes
+
+
 __all__ = [
     "CouncilIsolationError",
+    "CouncilBudgetError",
     "CouncilPolicyError",
+    "CouncilRoleCall",
+    "CouncilRoleInvoker",
+    "CouncilRoleOutcome",
     "build_blinded_proposer_contexts",
     "load_council_policy",
     "route_roles",
+    "run_role_round",
 ]

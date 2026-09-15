@@ -2,11 +2,16 @@
 
 from nova_rtl.planner.context import build_context
 from nova_rtl.planner.council import (
+    CouncilBudgetError,
     CouncilIsolationError,
     CouncilPolicyError,
+    CouncilRoleCall,
+    CouncilRoleInvoker,
+    CouncilRoleOutcome,
     build_blinded_proposer_contexts,
     load_council_policy,
     route_roles,
+    run_role_round,
 )
 from nova_rtl.planner.evidence import (
     ContextIntegrityError,
@@ -52,9 +57,14 @@ __all__ = [
     "build_context",
     "ContextIntegrityError",
     "CouncilPolicyError",
+    "CouncilBudgetError",
     "CouncilIsolationError",
     "build_blinded_proposer_contexts",
+    "CouncilRoleCall",
+    "CouncilRoleInvoker",
+    "CouncilRoleOutcome",
     "load_council_policy",
     "route_roles",
+    "run_role_round",
     "RetrievalAuditRecord",
 ]
