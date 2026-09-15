@@ -19,6 +19,7 @@ from nova_rtl.baseline.signoff import M2SignoffError, run_m2_signoff, verify_m2_
 from nova_rtl.benchmark.calibrate import CalibrationError, run_full_calibration
 from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_config
 from nova_rtl.benchmark.validate import validate_benchmark
+from nova_rtl.contracts.planning import CouncilResult
 from nova_rtl.contracts.platform import PlatformLockRequest
 from nova_rtl.evidence.execution import EvidenceExecutionError, analyze_evidence_run
 from nova_rtl.evidence.signoff import M3SignoffError, run_m3_signoff, verify_m3_signoff
@@ -166,6 +167,12 @@ failure_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(failure_app, name="failure")
+council_app = typer.Typer(
+    name="council",
+    help="Inspect bounded role-scoped council evidence.",
+    no_args_is_help=True,
+)
+app.add_typer(council_app, name="council")
 
 
 def _tool_root(
@@ -355,6 +362,41 @@ def _candidate_bundle_path(candidate: str, runs_root: Path) -> Path:
             f"candidate ID must resolve to exactly one bundle under {runs_root}: {candidate}"
         )
     return matches[0]
+
+
+@council_app.command("inspect")
+def council_inspect(
+    council_result: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            readable=True,
+            metavar="COUNCIL_RESULT",
+        ),
+    ],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Validate and display one persisted bounded-council result."""
+
+    try:
+        result = CouncilResult.model_validate_json(council_result.read_bytes())
+    except (OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": result.status,
+        "council_result_id": result.council_result_id,
+        "selected_role_ids": result.selected_role_ids,
+        "proposal_ids": result.final_ordered_proposal_ids,
+        "total_tokens": result.total_tokens,
+        "total_latency_ms": result.total_latency_ms,
+        "trace_completeness_percent": result.trace_completeness_percent,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA council: {result.status}: {result.council_result_id}"
+    )
 
 
 @app.command("optimize")

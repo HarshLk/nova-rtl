@@ -105,7 +105,9 @@ class CanonicalPlannerAdapter:
         return PlannerBatch(
             proposals=normalized,
             planner_result_ids=(result.planner_result_id,),
-            council_result_ids=(),
+            council_result_ids=(
+                (result.council_result_id,) if result.council_result_id else ()
+            ),
             tokens=result.input_tokens + result.output_tokens,
             latency_ms=result.latency_ms,
         )

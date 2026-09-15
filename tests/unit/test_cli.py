@@ -127,6 +127,13 @@ class CliTests(unittest.TestCase):
             self.assertIn("--m4-packet", plain)
             self.assertIn("--m3-packet", plain)
 
+    def test_cli_exposes_council_inspection(self) -> None:
+        result = self.runner.invoke(app, ["council", "inspect", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("COUNCIL_RESULT", _plain_output(result.output))
+        self.assertIn("--json", _plain_output(result.output))
+
     def test_cli_exposes_m4_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m4", "signoff", "--help"])
         verify = self.runner.invoke(app, ["m4", "verify", "--help"])
