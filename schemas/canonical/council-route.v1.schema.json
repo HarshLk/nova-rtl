@@ -1,0 +1,84 @@
+{
+  "additionalProperties": false,
+  "description": "Deterministic, auditable selection of bounded council roles.",
+  "properties": {
+    "chair_role": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Chair Role",
+      "type": "string"
+    },
+    "council_route_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Council Route Id",
+      "type": "string"
+    },
+    "critic_roles": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Critic Roles",
+      "type": "array"
+    },
+    "opportunity_id": {
+      "pattern": "^[a-z][a-z0-9_]{2,95}$",
+      "title": "Opportunity Id",
+      "type": "string"
+    },
+    "policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "proposer_roles": {
+      "items": {
+        "pattern": "^[a-z][a-z0-9_]{2,95}$",
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 2,
+      "title": "Proposer Roles",
+      "type": "array"
+    },
+    "reason_codes": {
+      "items": {
+        "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Reason Codes",
+      "type": "array"
+    },
+    "root_cause": {
+      "pattern": "^[A-Z][A-Z0-9_]{2,127}$",
+      "title": "Root Cause",
+      "type": "string"
+    },
+    "route_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Route Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "council_route_id",
+    "opportunity_id",
+    "policy_hash",
+    "root_cause",
+    "proposer_roles",
+    "critic_roles",
+    "chair_role",
+    "reason_codes",
+    "route_hash"
+  ],
+  "title": "CouncilRoute",
+  "type": "object"
+}

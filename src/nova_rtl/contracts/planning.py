@@ -47,6 +47,87 @@ def _require_one_snapshot(refs: tuple[EvidenceRef, ...], label: str) -> str:
     return next(iter(snapshots))
 
 
+class CouncilPolicy(StrictContract):
+    """Hard authority and resource ceiling for one M8 deliberation."""
+
+    schema_version: Literal[1] = 1
+    max_reasoning_roles: int = Field(strict=True, gt=0, le=5)
+    max_strategist_roles: int = Field(strict=True, ge=2, le=3)
+    max_final_proposals: int = Field(strict=True, gt=0, le=3)
+    max_revisions: int = Field(strict=True, ge=0, le=1)
+    max_aggregate_tokens: int = Field(strict=True, gt=0, le=30_000)
+    deadline_seconds: int = Field(strict=True, gt=0, le=120)
+    fan_out_limit: int = Field(strict=True, gt=0, le=4)
+    fan_in_limit: int = Field(strict=True, gt=0, le=4)
+    fallback_order: tuple[Literal["SINGLE_AGENT", "HEURISTIC"], ...] = Field(
+        min_length=1, max_length=2
+    )
+    allow_model_tools: Literal[False]
+    allow_model_writes: Literal[False]
+    external_tracing: Literal[False]
+    policy_hash: HashRef
+
+    @model_validator(mode="after")
+    def bounds_and_identity_are_coherent(self) -> Self:
+        _require_unique(self.fallback_order, "council fallback order")
+        if self.fallback_order[-1] != "HEURISTIC":
+            raise ValueError("council policy must terminate in deterministic fallback")
+        if self.fan_in_limit > self.fan_out_limit:
+            raise ValueError("council fan-in cannot exceed fan-out")
+        if self.policy_hash != canonical_sha256(
+            self, exclude=frozenset({"policy_hash"})
+        ):
+            raise ValueError("council policy hash is not canonical")
+        return self
+
+    @classmethod
+    def build(cls, **values: object) -> CouncilPolicy:
+        payload = {"schema_version": 1, **values}
+        return cls(**payload, policy_hash=canonical_sha256(payload))
+
+
+class CouncilRoute(StrictContract):
+    """Deterministic, auditable selection of bounded council roles."""
+
+    schema_version: Literal[1] = 1
+    council_route_id: EntityId
+    opportunity_id: EntityId
+    policy_hash: HashRef
+    root_cause: StableUpperString
+    proposer_roles: tuple[EntityId, ...] = Field(min_length=2, max_length=2)
+    critic_roles: tuple[EntityId, ...] = Field(min_length=2, max_length=2)
+    chair_role: EntityId
+    reason_codes: tuple[StableUpperString, ...] = Field(min_length=1)
+    route_hash: HashRef
+
+    @model_validator(mode="after")
+    def route_is_independent_and_self_hashed(self) -> Self:
+        _require_unique(self.proposer_roles, "council proposer roles")
+        _require_unique(self.critic_roles, "council critic roles")
+        _require_unique(self.reason_codes, "council route reason codes")
+        if set(self.critic_roles) != {"formal_critic", "ppa_critic"}:
+            raise ValueError("council route requires formal and PPA critics")
+        selected = (*self.proposer_roles, *self.critic_roles, self.chair_role)
+        _require_unique(selected, "council selected roles")
+        if len(selected) > 5:
+            raise ValueError("council route exceeds the absolute role bound")
+        if self.route_hash != canonical_sha256(
+            self, exclude=frozenset({"council_route_id", "route_hash"})
+        ):
+            raise ValueError("council route hash is not canonical")
+        return self
+
+    @classmethod
+    def build(cls, **values: object) -> CouncilRoute:
+        payload = {"schema_version": 1, **values}
+        route_hash = canonical_sha256(payload)
+        return cls(
+            **payload,
+            council_route_id=f"council_route_{route_hash[-24:]}",
+            route_hash=route_hash,
+        )
+
+
 class PlannerRequest(StrictContract):
     schema_version: Literal[1] = 1
     planner_request_id: EntityId
@@ -269,6 +350,78 @@ class M6SignoffReport(StrictContract):
             raise ValueError("M6 input_set_hash differs from sign-off evidence")
         if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
             raise ValueError("M6 report_hash is not canonical")
+        return self
+
+
+class M8GateEvidence(StrictContract):
+    """One reproducible bounded-council safety gate and preserved output."""
+
+    evidence_id: EntityId
+    argv: tuple[NonEmptyString, ...] = Field(min_length=1)
+    output_relative_path: NonEmptyString
+    output_hash: HashRef
+    output_size_bytes: NonNegativeInt
+    passed_test_count: int = Field(strict=True, gt=0)
+
+
+class M8SignoffReport(StrictContract):
+    """Commit-bound proof that the minimum M8 council is safe and replayable."""
+
+    schema_version: Literal[1] = 1
+    status: Literal["PASS"]
+    commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    implementation_tree_hash: Annotated[
+        str, StringConstraints(pattern=r"^[0-9a-f]{40}$")
+    ]
+    m7_commit_sha: Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{40}$")]
+    m7_packet_hash: HashRef
+    m7_report_hash: HashRef
+    run_id: EntityId
+    opportunity_id: EntityId
+    council_request_hash: HashRef
+    council_result_hash: HashRef
+    council_trace_hash: HashRef
+    planner_result_hash: HashRef
+    council_policy_hash: HashRef
+    selected_role_ids: tuple[EntityId, ...] = Field(min_length=1, max_length=5)
+    proposer_role_count: int = Field(strict=True, ge=2, le=3)
+    critic_classes: tuple[Literal["FORMAL", "PPA"], ...] = Field(
+        min_length=2, max_length=2
+    )
+    final_proposal_count: int = Field(strict=True, ge=1, le=3)
+    critique_objection_count: int = Field(strict=True, gt=0)
+    critique_disposition_count: int = Field(strict=True, gt=0)
+    revision_count: int = Field(strict=True, ge=0, le=1)
+    aggregate_token_budget: int = Field(strict=True, gt=0, le=30_000)
+    total_tokens: NonNegativeInt
+    council_deadline_seconds: int = Field(strict=True, gt=0, le=120)
+    trace_completeness_percent: Literal[100.0]
+    deterministic_replay: Literal[True]
+    bounded_fallback_validated: Literal[True]
+    council_implementation_hash: HashRef
+    council_matrix_evidence: M8GateEvidence
+    input_set_hash: HashRef
+    report_hash: HashRef
+
+    @model_validator(mode="after")
+    def milestone_boundary_is_complete_and_hashed(self) -> Self:
+        _require_unique(self.selected_role_ids, "M8 selected role IDs")
+        _require_unique(self.critic_classes, "M8 critic classes")
+        if set(self.critic_classes) != {"FORMAL", "PPA"}:
+            raise ValueError("M8 requires formal and PPA criticism")
+        if self.total_tokens > self.aggregate_token_budget:
+            raise ValueError("M8 council exceeded its aggregate token budget")
+        if self.critique_disposition_count != self.critique_objection_count:
+            raise ValueError("M8 requires every critique objection to be dispositioned")
+        payload = {
+            key: value
+            for key, value in self.model_dump(mode="python").items()
+            if key not in {"schema_version", "status", "input_set_hash", "report_hash"}
+        }
+        if self.input_set_hash != canonical_sha256(payload):
+            raise ValueError("M8 input_set_hash differs from sign-off evidence")
+        if self.report_hash != canonical_sha256(self, exclude=frozenset({"report_hash"})):
+            raise ValueError("M8 report_hash is not canonical")
         return self
 
 
@@ -674,7 +827,12 @@ class CouncilResult(StrictContract):
             raise ValueError("critique disposition must resolve to an objection")
 
         _require_unique(self.final_ordered_proposal_ids, "final proposal IDs")
-        if not set(self.final_ordered_proposal_ids).issubset(proposal_ids):
+        revised_proposal_ids = {
+            item.revised_proposal_id for item in self.revision_records
+        }
+        if not set(self.final_ordered_proposal_ids).issubset(
+            set(proposal_ids) | revised_proposal_ids
+        ):
             raise ValueError("final proposals must resolve through neutral proposal cards")
         if self.deadline_outcome != "MET" and self.final_ordered_proposal_ids:
             raise ValueError("deadline failure cannot emit executable final proposals")
@@ -737,6 +895,8 @@ class CouncilResult(StrictContract):
 __all__ = [
     "ContextRequest",
     "CouncilRequest",
+    "CouncilPolicy",
+    "CouncilRoute",
     "CouncilResult",
     "CouncilTrace",
     "CritiqueDisposition",
@@ -744,6 +904,8 @@ __all__ = [
     "DiagnosisReport",
     "M6GateEvidence",
     "M6SignoffReport",
+    "M8GateEvidence",
+    "M8SignoffReport",
     "PlannerRequest",
     "PlannerResult",
     "ProposalShortlist",

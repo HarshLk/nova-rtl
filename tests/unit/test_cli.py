@@ -127,6 +127,27 @@ class CliTests(unittest.TestCase):
             self.assertIn("--m4-packet", plain)
             self.assertIn("--m3-packet", plain)
 
+    def test_cli_exposes_council_inspection(self) -> None:
+        result = self.runner.invoke(app, ["council", "inspect", "--help"])
+
+        self.assertEqual(result.exit_code, 0, result.output)
+        self.assertIn("COUNCIL_RESULT", _plain_output(result.output))
+        self.assertIn("--json", _plain_output(result.output))
+
+    def test_cli_exposes_council_showcase_and_m8_signoff(self) -> None:
+        showcase = self.runner.invoke(app, ["council", "run", "--help"])
+        signoff = self.runner.invoke(app, ["m8", "signoff", "--help"])
+        verify = self.runner.invoke(app, ["m8", "verify", "--help"])
+
+        self.assertEqual(showcase.exit_code, 0, showcase.output)
+        self.assertIn("--output", _plain_output(showcase.output))
+        for result in (signoff, verify):
+            self.assertEqual(result.exit_code, 0, result.output)
+            plain = _plain_output(result.output)
+            self.assertIn("--m7-packet", plain)
+            self.assertIn("--path-migration-report", plain)
+            self.assertIn("--m6-packet", plain)
+
     def test_cli_exposes_m4_signoff_and_verification_commands(self) -> None:
         signoff = self.runner.invoke(app, ["m4", "signoff", "--help"])
         verify = self.runner.invoke(app, ["m4", "verify", "--help"])

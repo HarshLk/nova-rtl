@@ -19,9 +19,16 @@ from nova_rtl.baseline.signoff import M2SignoffError, run_m2_signoff, verify_m2_
 from nova_rtl.benchmark.calibrate import CalibrationError, run_full_calibration
 from nova_rtl.benchmark.generator import generate_benchmark, load_benchmark_config
 from nova_rtl.benchmark.validate import validate_benchmark
+from nova_rtl.contracts.planning import CouncilResult
 from nova_rtl.contracts.platform import PlatformLockRequest
 from nova_rtl.evidence.execution import EvidenceExecutionError, analyze_evidence_run
 from nova_rtl.evidence.signoff import M3SignoffError, run_m3_signoff, verify_m3_signoff
+from nova_rtl.optimization.council_showcase import run_council_showcase
+from nova_rtl.optimization.council_signoff import (
+    M8SignoffError,
+    run_m8_signoff,
+    verify_m8_signoff,
+)
 from nova_rtl.optimization.flow import (
     OptimizationFlowError,
     inspect_candidate,
@@ -148,6 +155,12 @@ m7_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(m7_app, name="m7")
+m8_app = typer.Typer(
+    name="m8",
+    help="Build and verify the bounded role-scoped council milestone packet.",
+    no_args_is_help=True,
+)
+app.add_typer(m8_app, name="m8")
 m1_app = typer.Typer(
     name="m1",
     help="Execute and verify the contracts, artifacts, ledger, and replay sign-off gate.",
@@ -166,6 +179,12 @@ failure_app = typer.Typer(
     no_args_is_help=True,
 )
 app.add_typer(failure_app, name="failure")
+council_app = typer.Typer(
+    name="council",
+    help="Inspect bounded role-scoped council evidence.",
+    no_args_is_help=True,
+)
+app.add_typer(council_app, name="council")
 
 
 def _tool_root(
@@ -355,6 +374,154 @@ def _candidate_bundle_path(candidate: str, runs_root: Path) -> Path:
             f"candidate ID must resolve to exactly one bundle under {runs_root}: {candidate}"
         )
     return matches[0]
+
+
+@council_app.command("inspect")
+def council_inspect(
+    council_result: Annotated[
+        Path,
+        typer.Argument(
+            exists=True,
+            file_okay=True,
+            readable=True,
+            metavar="COUNCIL_RESULT",
+        ),
+    ],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Validate and display one persisted bounded-council result."""
+
+    try:
+        result = CouncilResult.model_validate_json(council_result.read_bytes())
+    except (OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": result.status,
+        "council_result_id": result.council_result_id,
+        "selected_role_ids": result.selected_role_ids,
+        "proposal_ids": result.final_ordered_proposal_ids,
+        "total_tokens": result.total_tokens,
+        "total_latency_ms": result.total_latency_ms,
+        "trace_completeness_percent": result.trace_completeness_percent,
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA council: {result.status}: {result.council_result_id}"
+    )
+
+
+@council_app.command("run")
+def council_run(
+    output: Annotated[Path, typer.Option("--output", file_okay=False)],
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Run the reproducible offline minimum-council showcase."""
+
+    try:
+        path, result = run_council_showcase(output)
+    except (OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {
+        "status": result.status,
+        "council_result_id": result.council_result_id,
+        "selected_role_ids": result.selected_role_ids,
+        "proposal_ids": result.final_ordered_proposal_ids,
+        "result": str(path),
+    }
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M8 council showcase: {result.status}: {path}"
+    )
+
+
+@m8_app.command("signoff")
+def m8_signoff(
+    council_directory: Annotated[
+        Path,
+        typer.Argument(exists=True, file_okay=False, readable=True, metavar="COUNCIL_DIRECTORY"),
+    ],
+    m7_packet: Annotated[Path, typer.Option("--m7-packet", exists=True, readable=True)],
+    path_migration_report: Annotated[
+        Path, typer.Option("--path-migration-report", exists=True, readable=True)
+    ],
+    m6_packet: Annotated[Path, typer.Option("--m6-packet", exists=True, readable=True)],
+    m5_packet: Annotated[Path, typer.Option("--m5-packet", exists=True, readable=True)],
+    m4_packet: Annotated[Path, typer.Option("--m4-packet", exists=True, readable=True)],
+    m3_packet: Annotated[Path, typer.Option("--m3-packet", exists=True, readable=True)],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Create the commit-bound M8 council sign-off packet."""
+
+    try:
+        path, report = run_m8_signoff(
+            council_directory,
+            m7_packet=m7_packet,
+            path_migration_report=path_migration_report,
+            m6_packet=m6_packet,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M8SignoffError, OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {"status": report.status, "report": str(path), "report_hash": report.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M8 sign-off: PASS: {path}"
+    )
+
+
+@m8_app.command("verify")
+def m8_verify(
+    report: Annotated[Path, typer.Argument(exists=True, readable=True, metavar="REPORT")],
+    council_directory: Annotated[
+        Path,
+        typer.Option("--council-directory", exists=True, file_okay=False, readable=True),
+    ],
+    m7_packet: Annotated[Path, typer.Option("--m7-packet", exists=True, readable=True)],
+    path_migration_report: Annotated[
+        Path, typer.Option("--path-migration-report", exists=True, readable=True)
+    ],
+    m6_packet: Annotated[Path, typer.Option("--m6-packet", exists=True, readable=True)],
+    m5_packet: Annotated[Path, typer.Option("--m5-packet", exists=True, readable=True)],
+    m4_packet: Annotated[Path, typer.Option("--m4-packet", exists=True, readable=True)],
+    m3_packet: Annotated[Path, typer.Option("--m3-packet", exists=True, readable=True)],
+    repository_root: Annotated[
+        Path,
+        typer.Option("--repository-root", exists=True, file_okay=False, readable=True),
+    ] = Path("."),
+    json_output: Annotated[bool, typer.Option("--json")] = False,
+) -> None:
+    """Independently reconstruct the M8 packet at the current commit."""
+
+    try:
+        verified = verify_m8_signoff(
+            report,
+            council_directory=council_directory,
+            m7_packet=m7_packet,
+            path_migration_report=path_migration_report,
+            m6_packet=m6_packet,
+            m5_packet=m5_packet,
+            m4_packet=m4_packet,
+            m3_packet=m3_packet,
+            repository_root=repository_root,
+        )
+    except (M8SignoffError, OSError, ValidationError, ValueError) as error:
+        _optimization_failure(error, json_output)
+    payload = {"status": verified.status, "report_hash": verified.report_hash}
+    typer.echo(
+        json.dumps(payload, separators=(",", ":"), sort_keys=True)
+        if json_output
+        else f"NOVA M8 verification: PASS: {verified.report_hash}"
+    )
 
 
 @app.command("optimize")

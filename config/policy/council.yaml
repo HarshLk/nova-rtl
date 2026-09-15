@@ -1,0 +1,14 @@
+max_reasoning_roles: 5
+max_strategist_roles: 2
+max_final_proposals: 3
+max_revisions: 1
+max_aggregate_tokens: 30000
+deadline_seconds: 120
+fan_out_limit: 4
+fan_in_limit: 4
+fallback_order:
+  - SINGLE_AGENT
+  - HEURISTIC
+allow_model_tools: false
+allow_model_writes: false
+external_tracing: false

@@ -1,0 +1,110 @@
+{
+  "additionalProperties": false,
+  "description": "Hard authority and resource ceiling for one M8 deliberation.",
+  "properties": {
+    "allow_model_tools": {
+      "const": false,
+      "title": "Allow Model Tools",
+      "type": "boolean"
+    },
+    "allow_model_writes": {
+      "const": false,
+      "title": "Allow Model Writes",
+      "type": "boolean"
+    },
+    "deadline_seconds": {
+      "exclusiveMinimum": 0,
+      "maximum": 120,
+      "title": "Deadline Seconds",
+      "type": "integer"
+    },
+    "external_tracing": {
+      "const": false,
+      "title": "External Tracing",
+      "type": "boolean"
+    },
+    "fallback_order": {
+      "items": {
+        "enum": [
+          "SINGLE_AGENT",
+          "HEURISTIC"
+        ],
+        "type": "string"
+      },
+      "maxItems": 2,
+      "minItems": 1,
+      "title": "Fallback Order",
+      "type": "array"
+    },
+    "fan_in_limit": {
+      "exclusiveMinimum": 0,
+      "maximum": 4,
+      "title": "Fan In Limit",
+      "type": "integer"
+    },
+    "fan_out_limit": {
+      "exclusiveMinimum": 0,
+      "maximum": 4,
+      "title": "Fan Out Limit",
+      "type": "integer"
+    },
+    "max_aggregate_tokens": {
+      "exclusiveMinimum": 0,
+      "maximum": 30000,
+      "title": "Max Aggregate Tokens",
+      "type": "integer"
+    },
+    "max_final_proposals": {
+      "exclusiveMinimum": 0,
+      "maximum": 3,
+      "title": "Max Final Proposals",
+      "type": "integer"
+    },
+    "max_reasoning_roles": {
+      "exclusiveMinimum": 0,
+      "maximum": 5,
+      "title": "Max Reasoning Roles",
+      "type": "integer"
+    },
+    "max_revisions": {
+      "maximum": 1,
+      "minimum": 0,
+      "title": "Max Revisions",
+      "type": "integer"
+    },
+    "max_strategist_roles": {
+      "maximum": 3,
+      "minimum": 2,
+      "title": "Max Strategist Roles",
+      "type": "integer"
+    },
+    "policy_hash": {
+      "pattern": "^sha256:[0-9a-f]{64}$",
+      "title": "Policy Hash",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": 1,
+      "default": 1,
+      "title": "Schema Version",
+      "type": "integer"
+    }
+  },
+  "required": [
+    "max_reasoning_roles",
+    "max_strategist_roles",
+    "max_final_proposals",
+    "max_revisions",
+    "max_aggregate_tokens",
+    "deadline_seconds",
+    "fan_out_limit",
+    "fan_in_limit",
+    "fallback_order",
+    "allow_model_tools",
+    "allow_model_writes",
+    "external_tracing",
+    "policy_hash"
+  ],
+  "title": "CouncilPolicy",
+  "type": "object"
+}

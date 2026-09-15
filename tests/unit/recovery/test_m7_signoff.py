@@ -55,3 +55,18 @@ def test_gate_output_normalization_removes_elapsed_time_only() -> None:
 
     assert signoff._normalize_gate_output(first) == signoff._normalize_gate_output(second)
     assert b"40 passed" in signoff._normalize_gate_output(first)
+
+
+def test_m7_dependency_accepts_current_commit_as_its_own_descendant() -> None:
+    root = Path(__file__).resolve().parents[3]
+    commit = signoff._git_output(root, "rev-parse", "HEAD")
+
+    signoff._require_git_ancestor(root, commit, commit)
+
+
+def test_m7_dependency_rejects_unknown_ancestor() -> None:
+    root = Path(__file__).resolve().parents[3]
+
+    with pytest.raises(signoff.M7SignoffError, match="trusted ancestor"):
+        descendant = signoff._git_output(root, "rev-parse", "HEAD")
+        signoff._require_git_ancestor(root, "0" * 40, descendant)
